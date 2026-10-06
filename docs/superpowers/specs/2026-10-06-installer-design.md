@@ -1,7 +1,7 @@
 # Installer — Design Spec
 
 - **Date:** 2026-10-06
-- **Status:** Draft for review
+- **Status:** Reviewed 2026-10-07 (D35–D39 applied)
 - **Source of decisions:** [`DECISIONS.md`](../../../DECISIONS.md) (D1–D34). Every
   normative rule in this spec cites the decision it comes from.
 - **Working name:** `installer` (the CLI). Final name is an open item (§19).
@@ -210,7 +210,7 @@ embeds this reference.
 | 1 | MODE | Q1–Q3 → mode + roles | `ask` |
 | 2 | BRAIN | Skills Wiki key → register Skills Wiki MCP in the host agent → verify → **human activates the combo in the Skills Wiki dashboard** → verify via `get_active_combo` → pin pack versions | `human_action` (key entry via browser page; combo activation), `agent_action`, `verify` |
 | 3 | DATA | Locate system of record; connect; map data contract | `ask`, `human_action`, `agent_action`, `verify` |
-| 4 | CHANNELS | Internal channel (required), external channels (optional) | `ask`, `human_action`, `verify` |
+| 4 | CHANNELS | Internal channel (required), external channels (optional), receipt recipients + channel + fallback (D39) | `ask`, `human_action`, `verify` |
 | 5 | WORKFLOWS | Recipe suggestions or plain-language descriptions → workflow v1 | `ask`, `auto` |
 | 6 | DRY RUN | Run each workflow in sandbox; human confirms output | `auto`, `ask` |
 | 7 | ACTIVATE | Register OS schedules, start gateway, leave sandbox | `auto`, `verify` |
@@ -316,9 +316,8 @@ Overall status: `ready` | `ready_with_limits` | `blocked`.
 | `installer uninstall` | Remove the body; keep business records (§16.4) |
 | `installer support bundle` | Redacted diagnostic package (§16.5) |
 
-> **Naming adjustment (for review):** D34 used `/resume` for un-pausing,
-> which collides with `installer resume` (install). This spec uses
-> `installer unpause` and channel command `/unpause`.
+> **Naming (D36):** un-pausing is `installer unpause` / `/unpause`;
+> `installer resume` is reserved for resuming an install.
 
 ---
 
@@ -585,6 +584,40 @@ Rule: **judges think, tools act, humans approve.**
 
 Schedules never live in the host agent's own scheduler (D12).
 
+**Missed and late runs (D38).** A scheduled run never executes late:
+- If a run would start later than `scheduled_time + tolerance` (default
+  5 minutes, configurable per workflow), it is **skipped** and recorded as
+  `missed` in `ops.sqlite` and the audit trail. This covers host asleep or
+  off, runner crashed, engine paused, or OS scheduler delay.
+- The runner writes a heartbeat (default every minute) to `ops.sqlite`. On
+  startup or wake, it compares the cron schedule against the heartbeat gap
+  and the run log, records every missed run, and sends the human a
+  **"host back online"** notice: downtime window and the list of missed
+  runs (not run). Missed runs are never replayed automatically; the human
+  may trigger one manually.
+- Downtime itself is silent unless the client enables an optional
+  **external watchdog** (dead-man's switch: an outside service alerts the
+  human when heartbeats stop).
+
+**Run receipts (D39).** After every scheduled run the runner sends a
+receipt to the recipients and channels chosen in phase 4 (email, Slack,
+WhatsApp, Telegram, …):
+
+```
+✅ morning-inbox-scan · Tue 08:00 · completed in 2m 10s
+   12 messages checked · 3 need attention (report sent to decision maker)
+   2 items awaiting your approval: #41, #42
+   run: 2026-10-07-a1
+```
+
+- Status: `completed | partial | failed | skipped(missed)`; actions taken;
+  items awaiting approval; run reference.
+- Receipts are internal (L1): no approval needed.
+- If the primary channel fails, the receipt goes to the configured
+  fallback channel, and the failure appears in `doctor`.
+- WhatsApp receipts require an approved WhatsApp Business template
+  (business-initiated messages outside the 24-hour window).
+
 ### 10.4 Judge invocation (D14–D16)
 
 The runner builds the judge prompt:
@@ -702,7 +735,7 @@ describe (plain words) → v1 agentic → dry run (sandbox, human confirms)
 | L2 | External messages; ordinary record writes | Human approval; eligible for earned autonomy (§11.6) |
 | L3 | **Floor** (§11.3) | Human approval always; never auto |
 
-L3 execution split (interpretation for review): for **external-effect**
+L3 execution split (D35): for **external-effect**
 L3 actions (serving a legal notice, making a payment, signing a contract)
 approval produces the final artefact plus a checklist, and **a human
 executes and marks it done** (D23). For **internal-record** L3 actions
@@ -1005,7 +1038,7 @@ privacy obligations (e.g. PIPEDA, GDPR).
 
 ### 16.1 `doctor` (daily on the host)
 Connector health; logins nearing expiry; audit chain; schedules
-registered; gateway alive; pinned pack updates (shadow, §14.3); drift
+registered; missed runs and receipt delivery failures (D38, D39); gateway alive; pinned pack updates (shadow, §14.3); drift
 alerts (judge label distribution shift, approval edit-rate jump); disk
 space and retention. Findings posted to the decision maker's channel.
 
@@ -1082,8 +1115,7 @@ Same engine, same phases, same contracts.
 | O10 | Whether Skills Wiki `enterprise` routes support team seats | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
-| O13 | Review: L3 execution split (§11.2) and `/unpause` rename (§6.6) are spec interpretations | User review |
-| O14 | Missed schedules: behaviour when the host was asleep/off at a scheduled time (skip vs run late, per workflow `catch_up` policy); OS schedulers differ (cron skips, launchd may coalesce) | §10.3 |
+| O14 | Verify per-OS scheduler behaviour after sleep (cron skips, launchd may coalesce missed fires into one late fire) so the D38 tolerance check catches it | §10.3 |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
 ---
@@ -1095,12 +1127,12 @@ Same engine, same phases, same contracts.
 | §1–3 | D1–D3, D5, D27 |
 | §4 | D1, D13, D30 |
 | §5 | D9, D12 |
-| §6 | D3, D4, D17, D20–D22 |
+| §6 | D3, D4, D17, D20–D22, D36, D37 |
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34 |
 | §9 | D28, D29 |
-| §10 | D10–D19 |
-| §11 | D23–D26 |
+| §10 | D10–D19, D38, D39 |
+| §11 | D23–D26, D35 |
 | §12 | D30 |
 | §13 | D1, D6, D8, D19 |
 | §14 | D24, D34 |
