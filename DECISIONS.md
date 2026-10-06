@@ -8,7 +8,7 @@ property management for investor-owners. Must stay industry-agnostic.
 - Started: 2026-10-06
 - Process: superpowers brainstorming, **architectural path** (sectioned
   design → written spec → implementation plan). No code yet.
-- Status: Spec reviewed; D35–D39 added 2026-10-07. Next: writing-plans after user go-ahead.
+- Status: D41–D42 added 2026-10-07. Open: encryption vs unattended recovery (§5.2). Then writing-plans.
 
 ---
 
@@ -165,6 +165,9 @@ Autonomy ladder (applies to any industry):
 | D37 | **Combo activation is a manual dashboard step (confirmed):** phase 2 `human_action`, then verify via `get_active_combo`. | 2026-10-07 |
 | D38 | **Missed or late scheduled runs are never run.** A run whose start is later than its scheduled time + tolerance (default 5 min) is skipped and recorded as `missed` (audit). When the host/runner is back (startup check against a heartbeat), the engine sends the human a "host back online" notice listing every missed run since the last heartbeat. Optional external watchdog (dead-man's switch) for alerts *during* downtime. | 2026-10-07 |
 | D39 | **Run receipt after every scheduled run:** confirmation sent to a human-chosen channel (email, Slack, WhatsApp, Telegram, …; chosen in phase 4 per recipient) with status (completed / partial / failed / skipped), actions taken, items awaiting approval, link/ref to run log. Internal L1 → no approval. Fallback channel if delivery fails. WhatsApp receipts need an approved Business template (outside the 24h window). | 2026-10-07 |
+| D40 | **Receipts become a twice-daily report** at **09:00 and 17:00 in each recipient's time zone** (replaces one receipt per run, D39 otherwise unchanged: channel chosen by the human, fallback channel, L1). 09:00 covers 17:00→09:00, 17:00 covers 09:00→17:00: every scheduled run in the window with status, actions taken, pending approvals, missed runs. Immediate messages stay immediate: urgent alerts (D26), approval requests (D23), host-back-online notice (D38). The report is itself a scheduled job under D38 (if missed, it is not sent late; the host-back-online notice covers the gap). O14 approach accepted (tolerance check; per-OS verification still to run). | 2026-10-07 |
+| D41 | **Outside watchdog deferred.** No alerts during downtime for now; the twice-daily report (D40) plus the host-back-online notice (D38) are sufficient. Watchdog options (Healthchecks.io via a `watchdog.ping` connector; Google Apps Script / Power Automate; Skills Wiki-hosted — not recommended) kept for later. | 2026-10-07 |
+| D42 | **Layer 1 host readiness is part of the installer** (Team host / Hybrid host only; Personal-mode laptops are informed, not changed): preflight checks + offered fixes (human confirms; admin rights entered by the human), re-checked daily by `doctor`, shown as a readiness score in the report. Checks: no sleep; auto power-on after power loss; engine starts at boot as a system service and restarts on crash; OS updates/restarts outside a quiet window derived from schedules + 09:00/17:00 reports; time sync; wired network advice; disk space; UPS / cloud-server advice. Open conflict with disk encryption (see §5.2). | 2026-10-07 |
 
 ---
 
@@ -214,6 +217,14 @@ immediately, escalating channel); vendor dispatch (financial + outbound)
 still needs a human, via an urgent fast-path approval; tenant safety
 instructions (e.g. "shut the water valve, leave if you smell gas") are
 pre-approved fixed templates, not model-written.
+
+### 5.2 Disk encryption vs unattended recovery (OPEN)
+D34 preflight checks disk encryption. But an encrypted host that restarts
+unexpectedly (power loss) waits at the unlock screen before the engine can
+start: macOS FileVault requires a password at startup (`fdesetup
+authrestart` only helps planned restarts); Linux LUKS needs a TPM/network
+unlock to boot unattended. Unattended recovery and full-disk encryption
+conflict on a physical office host. Decision pending.
 
 ## 6. Open items to verify (before the spec)
 

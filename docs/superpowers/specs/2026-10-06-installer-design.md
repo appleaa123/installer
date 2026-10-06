@@ -174,6 +174,38 @@ Rules:
 - Cloud-hosted agent schedulers are not used for jobs that need local
   secrets (D12; verified constraint for Claude Code cloud routines).
 
+### 5.1 Host readiness (D42)
+
+Applies to a **Team host** and the host side of **Hybrid**. On Personal-mode
+laptops the installer only informs ("scheduled jobs are skipped while this
+laptop sleeps", D38) and changes nothing.
+
+Phase 0 runs the checks; each failing check becomes an `ask` ("Change this
+setting? It keeps your assistant running after a power cut") followed by a
+fix the human authorises (admin password entered by the human, never
+through chat). `doctor` re-checks daily; the report shows a readiness score.
+
+| Check | macOS | Linux | Windows |
+|---|---|---|---|
+| Never sleeps | `pmset` sleep 0 | mask sleep/suspend targets | `powercfg` standby 0 |
+| Powers on after power loss | `pmset autorestart 1` | firmware setting → `human_action` | firmware setting → `human_action` |
+| Engine starts at boot (not at login) and restarts on crash | LaunchDaemon, `KeepAlive` | systemd unit, `Restart=always` | service / startup task |
+| Updates and restarts outside the quiet window | software-update schedule advice | unattended-upgrades reboot window | Active Hours |
+| Clock correct | time sync on | NTP on | time sync on |
+| Disk space ≥ threshold | ✓ | ✓ | ✓ |
+| Wired network, UPS, or cloud server | advice | advice | advice |
+
+**Quiet window.** Computed from all workflow schedules plus the 09:00 and
+17:00 reports (D40): OS updates and restarts are steered to the longest gap.
+
+**Downtime alerts.** An outside watchdog is deferred (D41). Downtime is
+reported afterwards by the host-back-online notice (D38) and in the next
+twice-daily report (D40).
+
+**Open (O16): disk encryption vs unattended recovery.** An encrypted
+physical host that restarts unexpectedly waits at the unlock screen
+(FileVault, LUKS), so the engine cannot start until a person unlocks it.
+
 ---
 
 ## 6. Installer
@@ -206,7 +238,7 @@ embeds this reference.
 
 | # | Phase | Purpose | Typical steps |
 |---|---|---|---|
-| 0 | PREFLIGHT | Detect OS, host agent, versions, always-on capability, disk encryption; run `probe` | `auto`, `verify` |
+| 0 | PREFLIGHT | Detect OS, host agent, versions, disk encryption; **host readiness checks and fixes (§5.1)**; run `probe` | `auto`, `verify`, `ask` |
 | 1 | MODE | Q1–Q3 → mode + roles | `ask` |
 | 2 | BRAIN | Skills Wiki key → register Skills Wiki MCP in the host agent → verify → **human activates the combo in the Skills Wiki dashboard** → verify via `get_active_combo` → pin pack versions | `human_action` (key entry via browser page; combo activation), `agent_action`, `verify` |
 | 3 | DATA | Locate system of record; connect; map data contract | `ask`, `human_action`, `agent_action`, `verify` |
@@ -595,13 +627,14 @@ Schedules never live in the host agent's own scheduler (D12).
   **"host back online"** notice: downtime window and the list of missed
   runs (not run). Missed runs are never replayed automatically; the human
   may trigger one manually.
-- Downtime itself is silent unless the client enables an optional
-  **external watchdog** (dead-man's switch: an outside service alerts the
-  human when heartbeats stop).
+- Downtime itself is silent: an external watchdog is deferred (D41).
+  Host readiness (§5.1) reduces downtime.
 
-**Run receipts (D39).** After every scheduled run the runner sends a
-receipt to the recipients and channels chosen in phase 4 (email, Slack,
-WhatsApp, Telegram, …):
+**Twice-daily report (D39, D40).** At **09:00 and 17:00 in each
+recipient's time zone**, the runner sends a report on the channel chosen
+in phase 4 (email, Slack, WhatsApp, Telegram, …). The 09:00 report covers
+17:00→09:00; the 17:00 report covers 09:00→17:00. It lists every scheduled
+run in the window. Example entry:
 
 ```
 ✅ morning-inbox-scan · Tue 08:00 · completed in 2m 10s
@@ -610,12 +643,17 @@ WhatsApp, Telegram, …):
    run: 2026-10-07-a1
 ```
 
-- Status: `completed | partial | failed | skipped(missed)`; actions taken;
-  items awaiting approval; run reference.
-- Receipts are internal (L1): no approval needed.
-- If the primary channel fails, the receipt goes to the configured
+- Per run: status `completed | partial | failed | skipped(missed)`,
+  actions taken, items awaiting approval, run reference.
+- Immediate messages stay immediate: urgent alerts (§11.7), approval
+  requests (§11.5), host-back-online notice.
+- The report is itself a scheduled job under the missed-run rule: if the
+  host is down at 09:00, that report is not sent late; the host-back-online
+  notice covers the gap.
+- The report is internal (L1): no approval needed.
+- If the primary channel fails, the report goes to the configured
   fallback channel, and the failure appears in `doctor`.
-- WhatsApp receipts require an approved WhatsApp Business template
+- WhatsApp delivery requires an approved WhatsApp Business template
   (business-initiated messages outside the 24-hour window).
 
 ### 10.4 Judge invocation (D14–D16)
@@ -1116,6 +1154,7 @@ Same engine, same phases, same contracts.
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
 | O14 | Verify per-OS scheduler behaviour after sleep (cron skips, launchd may coalesce missed fires into one late fire) so the D38 tolerance check catches it | §10.3 |
+| O16 | Disk encryption vs unattended recovery on a physical team host (§5.1) | Host readiness defaults |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
 ---
@@ -1126,12 +1165,12 @@ Same engine, same phases, same contracts.
 |---|---|
 | §1–3 | D1–D3, D5, D27 |
 | §4 | D1, D13, D30 |
-| §5 | D9, D12 |
+| §5 | D9, D12, D41, D42 |
 | §6 | D3, D4, D17, D20–D22, D36, D37 |
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34 |
 | §9 | D28, D29 |
-| §10 | D10–D19, D38, D39 |
+| §10 | D10–D19, D38–D40 |
 | §11 | D23–D26, D35 |
 | §12 | D30 |
 | §13 | D1, D6, D8, D19 |
