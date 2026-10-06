@@ -1,7 +1,7 @@
 # Installer — Design Spec
 
 - **Date:** 2026-10-06
-- **Status:** Reviewed 2026-10-07 (D35–D39 applied)
+- **Status:** Reviewed 2026-10-06 (D35–D45 applied)
 - **Source of decisions:** [`DECISIONS.md`](../../../DECISIONS.md) (D1–D34). Every
   normative rule in this spec cites the decision it comes from.
 - **Working name:** `installer` (the CLI). Final name is an open item (§19).
@@ -333,7 +333,8 @@ humans; also posted to the internal channel once connected):
 🔒 Data flow personal fields → <model vendor> (judge inputs only); none → Skills Wiki
 ```
 
-Overall status: `ready` | `ready_with_limits` | `blocked`.
+Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
+(unfinished, nothing blocking; D45).
 
 ### 6.6 CLI commands (D20, adjusted)
 
@@ -1156,7 +1157,6 @@ Same engine, same phases, same contracts.
 | O6 | Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header | Claude Code profile |
 | O7 | CI monthly budget cap amount | §15.2 |
 | O8 | Final CLI / product name | Packaging |
-| O9 | Implementation language | Planning |
 | O10 | Whether Skills Wiki `enterprise` routes support team seats | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
