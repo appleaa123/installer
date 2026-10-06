@@ -246,6 +246,9 @@ pre-approved fixed templates, not model-written.
 - n8n MCP node details (only if n8n backend is ever offered).
 
 ## 7. Skills Wiki-side work identified (optional, Allen's side)
+- (Found while writing the spec) `POST /api/combos/activate` accepts only a
+  dashboard session / anon cookie, not the API key → phase-2 combo
+  activation is a `human_action` until an API-key path exists.
 - Add `evals/tasks.jsonl` + `rubric.json` to `maintenance_triage` and
   `real_estate_tenancy_assistant`.
 - Add a `<workflow>` block to the realtor combo (+ allowlist) if

@@ -187,6 +187,13 @@ agent to:
 3. Loop: `installer next` → act on the step → `installer submit …` until
    `installer report` says the install is finished or blocked.
 
+**Solution reference.** `<ref>` resolves to a recipe stored as a Skills
+Wiki file resource: `skillswiki:<pack>/<skill>/<path>` (fetched with
+`get_skill_resource(pack, skill_name, path)`, D6), or a plain HTTPS URL to
+a recipe file. A solution with no recipe uses `skillswiki:none` and builds
+everything interactively. The `INSTALL.md` served at the solution URL
+embeds this reference.
+
 `INSTALL.md` also fixes the **operator rules** the agent must follow:
 1. Never invent an answer on the human's behalf; ask.
 2. Always tell the human *why* a step is needed (from the step's `why`).
@@ -201,7 +208,7 @@ agent to:
 |---|---|---|---|
 | 0 | PREFLIGHT | Detect OS, host agent, versions, always-on capability, disk encryption; run `probe` | `auto`, `verify` |
 | 1 | MODE | Q1–Q3 → mode + roles | `ask` |
-| 2 | BRAIN | Skills Wiki key → register Skills Wiki MCP in the host agent → verify → activate combo → pin pack versions | `human_action` (key entry via browser page), `agent_action`, `verify` |
+| 2 | BRAIN | Skills Wiki key → register Skills Wiki MCP in the host agent → verify → **human activates the combo in the Skills Wiki dashboard** → verify via `get_active_combo` → pin pack versions | `human_action` (key entry via browser page; combo activation), `agent_action`, `verify` |
 | 3 | DATA | Locate system of record; connect; map data contract | `ask`, `human_action`, `agent_action`, `verify` |
 | 4 | CHANNELS | Internal channel (required), external channels (optional) | `ask`, `human_action`, `verify` |
 | 5 | WORKFLOWS | Recipe suggestions or plain-language descriptions → workflow v1 | `ask`, `auto` |
@@ -344,7 +351,7 @@ schema:
   flag: ["--json-schema", "{schema_json}"]
   result_path: ".structured_output"
 resume: { flag: ["-r", "{session_id}"] }
-tools_off: ["--strict-mcp-config", "--disallowedTools", "Bash", "Write", "Edit"]
+tools_off: ["--restricted", "--strict-mcp-config", "--mcp-config", "{judge_mcp_config}"]
 mcp_register_hint: "claude mcp add --transport http {name} {url} --header 'Authorization: Bearer {key_ref}'"
 tos_review: { status: "ok", note: "first-party CLI used headless by the client on their own account" }
 ```
@@ -590,9 +597,15 @@ The runner builds the judge prompt:
 4. Context tools, if any, with **runner-bound parameters**: the model may
    choose *which* listed tool to call, never the identifying arguments.
 
-Invocation via the runtime profile with tools disabled except the listed
-context tools (`tools_off` + allowlist). Context-tool calls and results are
-recorded (§10.6).
+Invocation via the runtime profile with tools disabled except an explicit
+allowlist (`tools_off` + allowlist). **Judge allowlist = the step's declared
+`context_tools` + Skills Wiki read tools needed to load the skill**
+(`get_active_combo`, `get_<pack>_skill`, `get_skill_resource`). Skills Wiki
+write tools (`learning_record`, eval submission) and every local write tool
+are always excluded from judge calls, so injected input cannot write a
+poisoned learning. File and shell tools are disabled (Claude Code:
+`--restricted` plus `--strict-mcp-config` with a judge-only MCP config).
+Context-tool calls and results are recorded (§10.6).
 
 Validation (D16): the runner validates output against the schema
 regardless of runtime support. Failure → one retry including the
@@ -757,6 +770,9 @@ Decisions:
 - Any later edit or rejection of that action type reverts it to L2
   automatically.
 - Never applicable to L3.
+- Approvals given in **sandbox / dry-run** mode do not count toward a
+  streak: they confirm an output looks right, not that the action type is
+  safe to automate.
 
 ### 11.7 Urgent events (D26)
 - Recipes/connectors declare which events are urgent (e.g. via a judge
@@ -861,7 +877,8 @@ video is processed by a frame-extraction `tool` step.
 | Capability | Where | Use |
 |---|---|---|
 | Per-client hosted MCP URL + API key | `dashboard/app/api/onboard/route.ts` (`gatewayUrl`) | Phase 2 registration |
-| Active combo harness | `get_active_combo` (`main.py:244`, `core/harness_compile.py`) | Brain for conversations and judges |
+| Active combo harness | `get_active_combo` (`main.py:244`, `core/harness_compile.py`) | Brain for conversations and judges; also the phase-2 verify that the right combo is active |
+| Combo activation | `POST /api/combos/activate` — authenticates via dashboard session or anonymous cookie (`lib/current-client.ts`), **not** the API key | Cannot be automated by the installer today → phase-2 `human_action` |
 | Skills + references | `get_<pack>_skill`, `get_skill_resource` (`main.py:134`) | Judge skills; **recipes as file resources** (D6) |
 | Hosted evals | `eval_start/outputs/submit/status` (`main.py:682–737`) | Install-time and `doctor` evals where a pack has `evals/tasks.jsonl` + `rubric.json` (self-graded) |
 | Learnings | `learning_record`, `learning_list` (`main.py:472`) | §10.10 |
@@ -1066,6 +1083,8 @@ Same engine, same phases, same contracts.
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
 | O13 | Review: L3 execution split (§11.2) and `/unpause` rename (§6.6) are spec interpretations | User review |
+| O14 | Missed schedules: behaviour when the host was asleep/off at a scheduled time (skip vs run late, per workflow `catch_up` policy); OS schedulers differ (cron skips, launchd may coalesce) | §10.3 |
+| O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
 ---
 
