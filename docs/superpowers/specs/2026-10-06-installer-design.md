@@ -202,9 +202,16 @@ through chat). `doctor` re-checks daily; the report shows a readiness score.
 reported afterwards by the host-back-online notice (D38) and in the next
 twice-daily report (D40).
 
-**Open (O16): disk encryption vs unattended recovery.** An encrypted
-physical host that restarts unexpectedly waits at the unlock screen
-(FileVault, LUKS), so the engine cannot start until a person unlocks it.
+**Disk encryption and restarts (D43).** Disk encryption stays required
+(§14.2). Physical hosts are advised to use a UPS so short power cuts do
+not cause restarts. The engine **never stores the disk-unlock password or
+recovery key**. Planned restarts that need an unlock (macOS
+`fdesetup authrestart`) run only when a human starts them and types the
+password at that moment, inside the quiet window. After an unplanned
+restart, the host waits for a person to unlock it; the engine then sends
+the host-back-online notice (§10.3). Windows BitLocker with TPM unlocks at
+boot by design and satisfies the encryption check; no TPM or network
+auto-unlock is configured on Linux by default.
 
 ---
 
@@ -998,7 +1005,7 @@ secrets, raw inbound messages, audit data.
 | Poisoned brain | **Skill text can never grant capabilities** — permissions come only from local config, tags and the floor; new pack versions run in **sandbox shadow** until evals pass, then the decision maker approves the switch; learnings redacted |
 | Insider | Roles via `invite`; least privilege; floor; every decision attributed in audit |
 | Secrets | Keychain only; never in chat/logs/state/bundles; least-privilege scopes; expiry warnings; `installer disconnect` revokes + deletes |
-| Host | Dedicated OS user; files confined to `engine_home`; gateway localhost-only; tunnels expose webhook paths only; webhook signatures verified; preflight checks disk encryption |
+| Host | Disk encryption required; unlock secrets never stored (D43); dedicated OS user; files confined to `engine_home`; gateway localhost-only; tunnels expose webhook paths only; webhook signatures verified; preflight checks disk encryption |
 | Model error | Schema validation; escalation causes (§10.9); dry runs; replay gates; drift alerts |
 
 ### 14.3 Pack version pinning and shadow upgrade
@@ -1154,7 +1161,6 @@ Same engine, same phases, same contracts.
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
 | O14 | Verify per-OS scheduler behaviour after sleep (cron skips, launchd may coalesce missed fires into one late fire) so the D38 tolerance check catches it | §10.3 |
-| O16 | Disk encryption vs unattended recovery on a physical team host (§5.1) | Host readiness defaults |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
 ---
@@ -1165,7 +1171,7 @@ Same engine, same phases, same contracts.
 |---|---|
 | §1–3 | D1–D3, D5, D27 |
 | §4 | D1, D13, D30 |
-| §5 | D9, D12, D41, D42 |
+| §5 | D9, D12, D41–D43 |
 | §6 | D3, D4, D17, D20–D22, D36, D37 |
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34 |
@@ -1174,6 +1180,6 @@ Same engine, same phases, same contracts.
 | §11 | D23–D26, D35 |
 | §12 | D30 |
 | §13 | D1, D6, D8, D19 |
-| §14 | D24, D34 |
+| §14 | D24, D34, D43 |
 | §15 | D31–D33 |
 | §16 | D34 |

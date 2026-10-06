@@ -8,7 +8,7 @@ property management for investor-owners. Must stay industry-agnostic.
 - Started: 2026-10-06
 - Process: superpowers brainstorming, **architectural path** (sectioned
   design → written spec → implementation plan). No code yet.
-- Status: D41–D42 added 2026-10-07. Open: encryption vs unattended recovery (§5.2). Then writing-plans.
+- Status: D35–D43 applied 2026-10-07; no open design conflicts. Next: writing-plans after user go-ahead.
 
 ---
 
@@ -168,6 +168,7 @@ Autonomy ladder (applies to any industry):
 | D40 | **Receipts become a twice-daily report** at **09:00 and 17:00 in each recipient's time zone** (replaces one receipt per run, D39 otherwise unchanged: channel chosen by the human, fallback channel, L1). 09:00 covers 17:00→09:00, 17:00 covers 09:00→17:00: every scheduled run in the window with status, actions taken, pending approvals, missed runs. Immediate messages stay immediate: urgent alerts (D26), approval requests (D23), host-back-online notice (D38). The report is itself a scheduled job under D38 (if missed, it is not sent late; the host-back-online notice covers the gap). O14 approach accepted (tolerance check; per-OS verification still to run). | 2026-10-07 |
 | D41 | **Outside watchdog deferred.** No alerts during downtime for now; the twice-daily report (D40) plus the host-back-online notice (D38) are sufficient. Watchdog options (Healthchecks.io via a `watchdog.ping` connector; Google Apps Script / Power Automate; Skills Wiki-hosted — not recommended) kept for later. | 2026-10-07 |
 | D42 | **Layer 1 host readiness is part of the installer** (Team host / Hybrid host only; Personal-mode laptops are informed, not changed): preflight checks + offered fixes (human confirms; admin rights entered by the human), re-checked daily by `doctor`, shown as a readiness score in the report. Checks: no sleep; auto power-on after power loss; engine starts at boot as a system service and restarts on crash; OS updates/restarts outside a quiet window derived from schedules + 09:00/17:00 reports; time sync; wired network advice; disk space; UPS / cloud-server advice. Open conflict with disk encryption (see §5.2). | 2026-10-07 |
+| D43 | **Encryption kept + UPS (resolves §5.2 / O16), checked against D34.** Disk encryption stays required on the host (D34 unchanged). Physical team hosts are advised to use a UPS so short power cuts don't restart them. **The engine never stores the disk-unlock password or recovery key** (storing it would defeat encryption at rest; consistent with D8/R4). Planned restarts that need an unlock (e.g. macOS `fdesetup authrestart`) happen only when a human starts them and types the password at that moment, scheduled in the quiet window. After an unplanned restart the host waits for a human to unlock it; the engine then sends the host-back-online notice (D38). Windows BitLocker with TPM unlocks at boot by design and satisfies D34. No TPM/network auto-unlock is configured on Linux by default. | 2026-10-07 |
 
 ---
 
@@ -218,7 +219,7 @@ still needs a human, via an urgent fast-path approval; tenant safety
 instructions (e.g. "shut the water valve, leave if you smell gas") are
 pre-approved fixed templates, not model-written.
 
-### 5.2 Disk encryption vs unattended recovery (OPEN)
+### 5.2 Disk encryption vs unattended recovery — RESOLVED by D43
 D34 preflight checks disk encryption. But an encrypted host that restarts
 unexpectedly (power loss) waits at the unlock screen before the engine can
 start: macOS FileVault requires a password at startup (`fdesetup
