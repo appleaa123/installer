@@ -129,6 +129,27 @@ describe("verifyStep and resume", () => {
   });
 });
 
+describe("retry command in step views", () => {
+  it("names installer verify for a failed agent_action step", async () => {
+    const { deps, state } = await atBrainStep();
+    const failed = await verifyStep(deps, state, "brain.register");
+    const { result } = await advance(deps, failed.state);
+    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "installer verify brain.register" } });
+  });
+
+  it("keeps installer resume for a failed verify-type step", async () => {
+    const home = await makeTempHome();
+    const solution = parseSolution({
+      id: "retry",
+      version: "1",
+      steps: [{ step_id: "v", phase: "PREFLIGHT", type: "verify", title: "Check", why: "Needed.", blocking: true, verify: { check: "file_exists", args: { path: "config/none.txt" } } }],
+    });
+    const { deps } = memoryDeps(home, solution);
+    const { result } = await start(deps, null, "file:/r.json");
+    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "installer resume" } });
+  });
+});
+
 describe("resume of a failed verify step", () => {
   const retrySolution = () =>
     parseSolution({

@@ -74,13 +74,18 @@ export function currentStep(solution: Solution, state: InstallState): StepDef | 
   return null;
 }
 
+/** The command that retries a failed step: verify-type steps rerun through resume, the rest through verify. */
+export function retryCommand(step: StepDef): string {
+  return step.type === "verify" ? RESUME_HINT : `installer verify ${step.step_id}`;
+}
+
 function viewOf(step: StepDef, record: StepRecord | undefined): StepView {
   return {
     step,
     status: record?.status ?? "pending",
     attempts: record?.attempts ?? 0,
     ...(record?.hint ? { hint: record.hint } : {}),
-    resume: RESUME_HINT,
+    resume: record?.status === "failed" ? retryCommand(step) : RESUME_HINT,
   };
 }
 
