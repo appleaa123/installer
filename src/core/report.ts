@@ -1,4 +1,4 @@
-import { RESUME_HINT, currentStep } from "./engine.js";
+import { MAX_VERIFY_ATTEMPTS, RESUME_HINT, currentStep, recordOf } from "./engine.js";
 import type { InstallState, Phase, Solution, StepDef, StepRecord } from "./types.js";
 
 export type Overall = "ready" | "ready_with_limits" | "blocked" | "in_progress";
@@ -30,6 +30,11 @@ const HEADLINE: Readonly<Record<Overall, string>> = {
 const item = (step: StepDef, detail: string): ReportItem => ({ step_id: step.step_id, title: step.title, detail });
 const unresolved = (record: StepRecord | undefined): boolean => record?.status === "blocked" || record?.status === "skipped";
 
+function failedDetail(step: StepDef, record: StepRecord): string {
+  const command = step.type === "verify" ? RESUME_HINT : `installer verify ${step.step_id}`;
+  return `${record.hint ?? "Check failed"} (failed ${record.attempts ?? 0} of ${MAX_VERIFY_ATTEMPTS} tries) → then run '${command}'`;
+}
+
 export function buildReport(solution: Solution, state: InstallState): Report {
   const rows = solution.steps.map((step) => ({ step, record: state.steps[step.step_id] }));
   const working = rows.filter(({ record }) => record?.status === "done").map(({ step }) => item(step, "done"));
@@ -39,9 +44,11 @@ export function buildReport(solution: Solution, state: InstallState): Report {
   const hardBlocked = rows.filter(({ step, record }) => step.blocking && record?.status === "blocked");
   const current = currentStep(solution, state);
   const waitingOnHuman = current && (current.type === "ask" || current.type === "human_action") && !hardBlocked.some(({ step }) => step.step_id === current.step_id);
+  const currentRecord = current ? recordOf(state, current.step_id) : undefined;
+  const failedCurrent = current && currentRecord?.status === "failed" ? item(current, failedDetail(current, currentRecord)) : null;
   const needs_you = [
     ...hardBlocked.map(({ step, record }) => item(step, `${record?.hint ?? "Blocked"} → then run '${RESUME_HINT}'`)),
-    ...(waitingOnHuman ? [item(current, current.instructions?.join(" ") ?? current.why)] : []),
+    ...(failedCurrent ? [failedCurrent] : waitingOnHuman ? [item(current, current.instructions?.join(" ") ?? current.why)] : []),
   ];
   const overall: Overall = hardBlocked.length > 0 ? "blocked" : current ? "in_progress" : limited.length > 0 ? "ready_with_limits" : "ready";
   return { overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: solution.steps.length, working, limited, needs_you };

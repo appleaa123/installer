@@ -1,0 +1,24 @@
+{
+  "id": "fixture-retry",
+  "version": "1.0.0",
+  "steps": [
+    {
+      "step_id": "preflight.late-marker",
+      "phase": "PREFLIGHT",
+      "type": "verify",
+      "title": "Check the late marker",
+      "why": "The marker appears only after the operator acts.",
+      "blocking": true,
+      "verify": { "check": "file_exists", "args": { "path": "config/late-marker.txt", "hint": "config/late-marker.txt not found yet" } }
+    },
+    {
+      "step_id": "preflight.write-after",
+      "phase": "PREFLIGHT",
+      "type": "auto",
+      "title": "Write a follow-up file",
+      "why": "Runs once the marker check has passed.",
+      "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/after.txt", "content": "ok\n" } }
+    }
+  ]
+}

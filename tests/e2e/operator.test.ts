@@ -5,7 +5,7 @@ import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
-import { FIXTURE_SCRIPT, GIVE_UP_SCRIPT, operate } from "../operator/scripted-operator.js";
+import { RETRY_REF, RETRY_SCRIPT, FIXTURE_SCRIPT, GIVE_UP_SCRIPT, operate } from "../operator/scripted-operator.js";
 
 describe("scripted operator", () => {
   it("installs the fixture end to end and reports ready", async () => {
@@ -38,5 +38,18 @@ describe("scripted operator", () => {
     const rerun = await operate({ home, solutionRef: FIXTURE_REF, script: FIXTURE_SCRIPT });
     expect(rerun.final.status).toBe("complete");
     await expect(readFile(statePath(home), "utf8")).resolves.toBe(before);
+  });
+
+  it("retries a failed verify step through resume once the operator performs the fix", async () => {
+    const home = await makeTempHome();
+    const run = await operate({ home, solutionRef: RETRY_REF, script: RETRY_SCRIPT });
+    expect(run.final.status).toBe("complete");
+    expect(runCli(["report", "--json"], { home }).json).toMatchObject({ overall: "ready", done: 2, total: 2 });
+  });
+
+  it("ends blocked after three failures when the operator cannot perform the fix", async () => {
+    const home = await makeTempHome();
+    const run = await operate({ home, solutionRef: RETRY_REF, script: { answers: {}, perform: {} } });
+    expect(run.final.status).toBe("blocked");
   });
 });

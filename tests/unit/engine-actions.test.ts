@@ -128,3 +128,52 @@ describe("verifyStep and resume", () => {
     await expect(submit(deps, state, "h", { kind: "done" })).resolves.toMatchObject({ result: { status: "complete" } });
   });
 });
+
+describe("resume of a failed verify step", () => {
+  const retrySolution = () =>
+    parseSolution({
+      id: "retry",
+      version: "1",
+      steps: [
+        {
+          step_id: "v",
+          phase: "PREFLIGHT",
+          type: "verify",
+          title: "Check the marker",
+          why: "Needed.",
+          blocking: true,
+          verify: { check: "file_exists", args: { path: "config/late-marker.txt", hint: "Marker not there yet" } },
+        },
+      ],
+    });
+
+  it("re-runs a failed verify step with attempts preserved", async () => {
+    const home = await makeTempHome();
+    const { deps } = memoryDeps(home, retrySolution());
+    const { state } = await start(deps, null, "file:/r.json");
+    expect(state.steps.v).toMatchObject({ status: "failed", attempts: 1 });
+    const resumed = await resume(deps, state);
+    expect(resumed.state.steps.v).toMatchObject({ status: "failed", attempts: 2 });
+  });
+
+  it("fail, resume, fail, resume, third failure blocks", async () => {
+    const home = await makeTempHome();
+    const { deps } = memoryDeps(home, retrySolution());
+    const { state } = await start(deps, null, "file:/r.json");
+    const second = await resume(deps, state);
+    expect(second.result).toMatchObject({ status: "step" });
+    const third = await resume(deps, second.state);
+    expect(third.state.steps.v).toMatchObject({ status: "blocked", attempts: 3 });
+    expect(third.result).toMatchObject({ status: "blocked" });
+  });
+
+  it("passes after resume once the marker exists", async () => {
+    const home = await makeTempHome();
+    const { deps } = memoryDeps(home, retrySolution());
+    const { state } = await start(deps, null, "file:/r.json");
+    await touch(home, "config/late-marker.txt");
+    const resumed = await resume(deps, state);
+    expect(resumed.result).toEqual({ status: "complete" });
+    expect(resumed.state.steps.v).toMatchObject({ status: "done" });
+  });
+});

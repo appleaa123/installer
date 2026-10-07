@@ -196,12 +196,15 @@ export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: 
   return { state: final, result: verified.result, next };
 }
 
-/** Gives every blocked step a fresh set of attempts, then continues. */
+/** Reopens blocked steps with fresh attempts and failed steps with their attempts kept, then continues. */
 export async function resume(deps: EngineDeps, state: InstallState): Promise<Advanced> {
   let current = state;
   for (const step of deps.solution.steps) {
-    if (recordOf(current, step.step_id)?.status === "blocked") {
+    const record = recordOf(current, step.step_id);
+    if (record?.status === "blocked") {
       current = await transition(deps, current, step, { status: "pending", at: deps.now(), attempts: 0 }, "human");
+    } else if (record?.status === "failed") {
+      current = await transition(deps, current, step, { status: "pending", at: deps.now(), attempts: record.attempts ?? 0 }, "human");
     }
   }
   return advance(deps, current);
