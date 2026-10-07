@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { StateCorruptError, loadState, saveState, statePath } from "../../src/core/state.js";
 import type { InstallState } from "../../src/core/types.js";
+import { deadPid } from "../helpers/dead-pid.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const SAMPLE: InstallState = {
@@ -51,8 +52,7 @@ describe("state store", () => {
 
   it("removes temp files left by dead processes but keeps those of live ones", async () => {
     const home = await makeTempHome();
-    const dead = 999999;
-    expect(() => process.kill(dead, 0)).toThrow(/ESRCH|kill/);
+    const dead = deadPid();
     await mkdir(dirname(statePath(home)), { recursive: true });
     const deadTemp = `${statePath(home)}.${dead}.tmp`;
     const liveTemp = `${statePath(home)}.${process.ppid}.tmp`;
@@ -67,7 +67,8 @@ describe("state store", () => {
   it("removes a backup temp file left by a dead process on the next save", async () => {
     const home = await makeTempHome();
     await saveState(home, SAMPLE);
-    const staleBackupTemp = `${statePath(home)}.bak.999999.tmp`;
+    const dead = deadPid();
+    const staleBackupTemp = `${statePath(home)}.bak.${dead}.tmp`;
     await writeFile(staleBackupTemp, "{ half", "utf8");
     await saveState(home, SAMPLE);
     expect(await readdir(dirname(statePath(home)))).toEqual(["install-state.json", "install-state.json.bak"]);
