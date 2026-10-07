@@ -1,6 +1,7 @@
 import { access, chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { AUDIT_FILE } from "../../src/core/audit.js";
 import { statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_REF } from "../helpers/memory-deps.js";
@@ -87,5 +88,18 @@ describe("installer CLI", () => {
     runCli(["submit", "mode.report-time", "--value", '"09:00"'], { home });
     const failed = runCli(["verify", "brain.register"], { home });
     expect(failed.json).toMatchObject({ status: "failed", retry: true, next: { status: "step" } });
+  });
+
+  it("exits 3 and leaves the audit file untouched when its last line is damaged", async () => {
+    const home = await makeTempHome();
+    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const file = join(home, AUDIT_FILE);
+    const rows = (await readFile(file, "utf8")).split("\n").filter(Boolean);
+    await writeFile(file, `${rows.slice(0, -1).join("\n")}\n${rows.at(-1)?.slice(0, 20)}\n`, "utf8");
+    const before = await readFile(file, "utf8");
+    const result = runCli(["submit", "mode.shared-work", "--value", '"yes"'], { home });
+    expect(result.code).toBe(3);
+    expect(result.json).toMatchObject({ code: 3, error: expect.stringContaining("damaged last line") });
+    await expect(readFile(file, "utf8")).resolves.toBe(before);
   });
 });

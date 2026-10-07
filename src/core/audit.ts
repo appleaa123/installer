@@ -25,6 +25,13 @@ export interface AuditLine {
   readonly hash: string;
 }
 
+export class AuditCorruptError extends Error {
+  constructor(file: string) {
+    super(`${file} has a damaged last line; it was not changed. Restore it from a copy, or start in a new home.`);
+    this.name = "AuditCorruptError";
+  }
+}
+
 export type AuditCheck = { readonly ok: true; readonly lines: number } | { readonly ok: false; readonly line: number; readonly reason: string };
 
 export function canonicalJson(value: unknown): string {
@@ -51,10 +58,27 @@ async function readRows(home: string): Promise<string[]> {
   }
 }
 
+const HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+function parseLastRow(row: string, file: string): AuditLine {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row);
+  } catch {
+    throw new AuditCorruptError(file);
+  }
+  const { seq, hash } = (parsed ?? {}) as Partial<Record<"seq" | "hash", unknown>>;
+  if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1 || typeof hash !== "string" || !HASH_PATTERN.test(hash)) {
+    throw new AuditCorruptError(file);
+  }
+  return parsed as AuditLine;
+}
+
 export async function appendAudit(home: string, entry: AuditEntry): Promise<AuditLine> {
+  const file = join(home, AUDIT_FILE);
   const rows = await readRows(home);
   const lastRow = rows.at(-1);
-  const last = lastRow === undefined ? null : (JSON.parse(lastRow) as AuditLine);
+  const last = lastRow === undefined ? null : parseLastRow(lastRow, file);
   const body = {
     seq: (last?.seq ?? 0) + 1,
     ts: entry.ts,
@@ -65,7 +89,6 @@ export async function appendAudit(home: string, entry: AuditEntry): Promise<Audi
     prev_hash: last?.hash ?? GENESIS_HASH,
   };
   const line: AuditLine = { ...body, hash: hashBody(body) };
-  const file = join(home, AUDIT_FILE);
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   await appendFile(file, `${JSON.stringify(line)}\n`, { encoding: "utf8", mode: 0o600 });
   return line;

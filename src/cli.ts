@@ -3,7 +3,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { appendAudit } from "./core/audit.js";
+import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type SubmitPayload } from "./core/engine.js";
 import { InputError } from "./core/inputs.js";
 import { buildReport, renderReport } from "./core/report.js";
@@ -123,7 +123,7 @@ async function run(argv: readonly string[]): Promise<number> {
 }
 
 function exitCodeFor(error: unknown): number {
-  if (error instanceof StateCorruptError) return EXIT.STATE_CORRUPT;
+  if (error instanceof StateCorruptError || error instanceof AuditCorruptError) return EXIT.STATE_CORRUPT;
   if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError) return EXIT.USAGE;
   return EXIT.INTERNAL;
 }

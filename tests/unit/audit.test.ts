@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AUDIT_FILE, GENESIS_HASH, appendAudit, canonicalJson, verifyAudit, type AuditEntry } from "../../src/core/audit.js";
+import { AUDIT_FILE, AuditCorruptError, GENESIS_HASH, appendAudit, canonicalJson, verifyAudit, type AuditEntry } from "../../src/core/audit.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const entry = (event: string, payload: unknown = { n: 1 }): AuditEntry => ({
@@ -84,5 +84,22 @@ describe("audit trail", () => {
   it("treats a missing audit file as an empty, valid chain", async () => {
     const home = await makeTempHome();
     await expect(verifyAudit(home)).resolves.toEqual({ ok: true, lines: 0 });
+  });
+});
+
+describe("appendAudit with a damaged last line", () => {
+  const goodHash = "a".repeat(64);
+  it.each([
+    ["a string seq", JSON.stringify({ seq: "3", hash: goodHash })],
+    ["a missing hash", JSON.stringify({ seq: 3 })],
+    ["a truncated line", '{"seq":3,"ha'],
+  ])("rejects %s and leaves the file unchanged", async (_name, last) => {
+    const home = await makeTempHome();
+    await appendAudit(home, entry("one"));
+    const [first] = await lines(home);
+    await rewrite(home, [first as string, last]);
+    const before = await readFile(join(home, AUDIT_FILE), "utf8");
+    await expect(appendAudit(home, entry("two"))).rejects.toThrow(AuditCorruptError);
+    await expect(readFile(join(home, AUDIT_FILE), "utf8")).resolves.toBe(before);
   });
 });
