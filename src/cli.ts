@@ -91,14 +91,14 @@ async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
   const solution = await loadSolution(ref);
-  await mkdir(home, { recursive: true, mode: HOME_MODE });
-  await chmod(home, HOME_MODE);
+  const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
+  if (created !== undefined) await chmod(home, HOME_MODE);
   return (await start(depsFor(home, solution), await loadState(home), ref)).result;
 }
 
 async function run(argv: readonly string[]): Promise<number> {
   const { flags, positionals } = parse(argv);
-  const home = resolve(flags.home ?? process.env.INSTALLER_HOME ?? join(homedir(), ".installer"));
+  const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
   const [command, arg] = positionals;
   if (command === "start") {
     emit(process.stdout, await startCommand(home, flags));

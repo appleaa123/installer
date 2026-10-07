@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { statePath } from "../../src/core/state.js";
@@ -18,6 +18,30 @@ describe("installer CLI", () => {
     const home = join(await makeTempHome(), "engine");
     runCli(["start", "--solution", FIXTURE_REF], { home });
     expect((await stat(home)).mode & 0o777).toBe(0o700);
+  });
+
+  it.skipIf(process.platform === "win32")("keeps the mode of a pre-existing home", async () => {
+    const home = await makeTempHome();
+    await chmod(home, 0o755);
+    runCli(["start", "--solution", FIXTURE_REF], { home });
+    expect((await stat(home)).mode & 0o777).toBe(0o755);
+  });
+
+  it.each([
+    ["INSTALLER_HOME is empty", { INSTALLER_HOME: "" }],
+    ["--home is empty", { home: "" }],
+  ])("falls back to ~/.installer when %s", async (_name, extra) => {
+    const fakeHome = await makeTempHome();
+    const cwd = await makeTempHome();
+    const { home, ...envOnly } = extra as { home?: string; INSTALLER_HOME?: string };
+    const result = runCli(["start", "--solution", FIXTURE_REF], {
+      cwd,
+      ...(home === undefined ? {} : { home }),
+      env: { HOME: fakeHome, INSTALLER_HOME: "", ...envOnly },
+    });
+    expect(result.code).toBe(0);
+    await expect(access(statePath(join(fakeHome, ".installer")))).resolves.toBeUndefined();
+    await expect(readdir(cwd)).resolves.toEqual([]);
   });
 
   it.each([["next"], ["resume"], ["report"], ["verify", "x"], ["submit", "x", "--done"]])(
