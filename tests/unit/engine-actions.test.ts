@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EngineError, advance, resume, start, submit, verifyStep } from "../../src/core/engine.js";
+import { EngineError, advance, initialState, resume, start, submit, verifyStep } from "../../src/core/engine.js";
 import { InputError } from "../../src/core/inputs.js";
 import { parseSolution } from "../../src/core/solution.js";
 import { FIXTURE_REF, basicSolution, memoryDeps } from "../helpers/memory-deps.js";
@@ -126,6 +126,26 @@ describe("verifyStep and resume", () => {
     const { deps } = memoryDeps(home, solution);
     const { state } = await start(deps, null, "file:/d.json");
     await expect(submit(deps, state, "h", { kind: "done" })).resolves.toMatchObject({ result: { status: "complete" } });
+  });
+});
+
+describe("unknown step ids", () => {
+  it("are rejected before any pending engine step runs", async () => {
+    const home = await makeTempHome();
+    const solution = parseSolution({
+      id: "pending-auto",
+      version: "1",
+      steps: [
+        { step_id: "a", phase: "PREFLIGHT", type: "auto", title: "Auto", why: "Needed.", blocking: true, auto: { action: "noop" } },
+        { step_id: "h", phase: "PREFLIGHT", type: "human_action", title: "Human", why: "Needed.", blocking: true },
+      ],
+    });
+    const { deps, saved, events } = memoryDeps(home, solution);
+    const state = initialState("file:/p.json", solution, "2026-01-01T00:00:00.000Z");
+    await expect(submit(deps, state, "no.such.step", { kind: "done" })).rejects.toThrow(/Unknown step/);
+    await expect(verifyStep(deps, state, "no.such.step")).rejects.toThrow(/Unknown step/);
+    expect(saved).toHaveLength(0);
+    expect(events).toHaveLength(0);
   });
 });
 

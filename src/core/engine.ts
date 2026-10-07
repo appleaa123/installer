@@ -155,9 +155,14 @@ export interface Verified {
   readonly next: NextResult;
 }
 
-function requireCurrent(deps: EngineDeps, state: InstallState, stepId: string): StepDef {
+function requireKnown(deps: EngineDeps, stepId: string): StepDef {
   const step = deps.solution.steps.find((candidate) => candidate.step_id === stepId);
   if (!step) throw new EngineError(`Unknown step '${stepId}'`);
+  return step;
+}
+
+function requireCurrent(deps: EngineDeps, state: InstallState, stepId: string): StepDef {
+  const step = requireKnown(deps, stepId);
   const current = currentStep(deps.solution, state);
   if (!current || current.step_id !== stepId) {
     const where = current ? `; current step is '${current.step_id}'` : "; the install has no pending step";
@@ -185,6 +190,7 @@ function submittedRecord(deps: EngineDeps, step: StepDef, payload: SubmitPayload
 }
 
 export async function submit(deps: EngineDeps, state: InstallState, stepId: string, payload: SubmitPayload): Promise<Advanced> {
+  requireKnown(deps, stepId);
   const settled = (await advance(deps, state)).state;
   const step = requireCurrent(deps, settled, stepId);
   const record = submittedRecord(deps, step, payload);
@@ -192,6 +198,7 @@ export async function submit(deps: EngineDeps, state: InstallState, stepId: stri
 }
 
 export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: string): Promise<Verified> {
+  requireKnown(deps, stepId);
   const settled = (await advance(deps, state)).state;
   const step = requireCurrent(deps, settled, stepId);
   if (!step.verify) throw new EngineError(`Step '${stepId}' has no check; use 'installer submit'`);
