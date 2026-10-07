@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AuditHead } from "./types.js";
 
@@ -90,7 +90,13 @@ export async function appendAudit(home: string, entry: AuditEntry): Promise<Audi
   };
   const line: AuditLine = { ...body, hash: hashBody(body) };
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  await appendFile(file, `${JSON.stringify(line)}\n`, { encoding: "utf8", mode: 0o600 });
+  const handle = await open(file, "a", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(line)}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
   return line;
 }
 

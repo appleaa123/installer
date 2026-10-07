@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { StateCorruptError, loadState, saveState, statePath } from "../../src/core/state.js";
@@ -35,6 +35,44 @@ describe("state store", () => {
     await saveState(home, SAMPLE);
     const files = await readdir(dirname(statePath(home)));
     expect(files).toEqual(["install-state.json"]);
+  });
+
+  it("keeps the previous state as a backup after a second save", async () => {
+    const home = await makeTempHome();
+    await saveState(home, SAMPLE);
+    const second: InstallState = { ...SAMPLE, audit_head: { seq: 4, hash: "b".repeat(64) } };
+    await saveState(home, second);
+    const dir = dirname(statePath(home));
+    expect(await readdir(dir)).toEqual(["install-state.json", "install-state.json.bak"]);
+    expect(JSON.parse(await readFile(`${statePath(home)}.bak`, "utf8"))).toEqual(SAMPLE);
+    await expect(loadState(home)).resolves.toEqual(second);
+    if (process.platform !== "win32") expect((await stat(`${statePath(home)}.bak`)).mode & 0o777).toBe(0o600);
+  });
+
+  it("removes temp files left by dead processes but keeps those of live ones", async () => {
+    const home = await makeTempHome();
+    const dead = 999999;
+    expect(() => process.kill(dead, 0)).toThrow(/ESRCH|kill/);
+    await mkdir(dirname(statePath(home)), { recursive: true });
+    const deadTemp = `${statePath(home)}.${dead}.tmp`;
+    const liveTemp = `${statePath(home)}.${process.ppid}.tmp`;
+    await writeFile(deadTemp, "{}", "utf8");
+    await writeFile(liveTemp, "{}", "utf8");
+    await saveState(home, SAMPLE);
+    const files = await readdir(dirname(statePath(home)));
+    expect(files).not.toContain(`install-state.json.${dead}.tmp`);
+    expect(files).toContain(`install-state.json.${process.ppid}.tmp`);
+  });
+
+  it("names the backup when the state file is corrupt and changes neither file", async () => {
+    const home = await makeTempHome();
+    await saveState(home, SAMPLE);
+    await saveState(home, SAMPLE);
+    await writeFile(statePath(home), "{ half", "utf8");
+    const backupBefore = await readFile(`${statePath(home)}.bak`, "utf8");
+    await expect(loadState(home)).rejects.toThrow(`A backup of the previous state is at ${statePath(home)}.bak; copy it over the state file to continue.`);
+    await expect(readFile(statePath(home), "utf8")).resolves.toBe("{ half");
+    await expect(readFile(`${statePath(home)}.bak`, "utf8")).resolves.toBe(backupBefore);
   });
 
   it("rejects a half-written file without touching it", async () => {

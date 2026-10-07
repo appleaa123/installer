@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { crashPoint } from "./crash.js";
 import { STEP_STATUSES, type InstallState } from "./types.js";
@@ -14,6 +14,18 @@ export class StateCorruptError extends Error {
 
 export function statePath(home: string): string {
   return join(home, STATE_FILE);
+}
+
+const backupPath = (home: string): string => `${statePath(home)}.bak`;
+const IGNORED_DIR_SYNC_CODES = ["EISDIR", "EPERM", "EINVAL", "EBADF"];
+
+async function backupNote(home: string): Promise<string> {
+  try {
+    await readFile(backupPath(home));
+    return ` A backup of the previous state is at ${backupPath(home)}; copy it over the state file to continue.`;
+  } catch {
+    return "";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,20 +61,74 @@ export async function loadState(home: string): Promise<InstallState | null> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new StateCorruptError(`${statePath(home)} is not valid JSON; it was not changed. Restore it or start in a new home.`);
+    throw new StateCorruptError(`${statePath(home)} is not valid JSON; it was not changed. Restore it or start in a new home.${await backupNote(home)}`);
   }
   if (!isInstallState(parsed)) {
-    throw new StateCorruptError(`${statePath(home)} has an unexpected shape; it was not changed.`);
+    throw new StateCorruptError(`${statePath(home)} has an unexpected shape; it was not changed.${await backupNote(home)}`);
   }
   return parsed;
 }
 
-/** Atomic write: temp file in the same directory, then rename over the target. */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function removeStaleTemps(dir: string): Promise<void> {
+  const pattern = /^install-state\.json\.(\d+)\.tmp$/;
+  for (const name of await readdir(dir)) {
+    const pid = Number(pattern.exec(name)?.[1]);
+    if (pid && pid !== process.pid && !isAlive(pid)) await rm(join(dir, name), { force: true });
+  }
+}
+
+async function writeSynced(path: string, text: string): Promise<void> {
+  const handle = await open(path, "w", 0o600);
+  try {
+    await handle.writeFile(text, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function backupCurrent(target: string): Promise<void> {
+  try {
+    await copyFile(target, `${target}.bak`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await chmod(`${target}.bak`, 0o600);
+}
+
+async function syncDirectory(dir: string): Promise<void> {
+  try {
+    const handle = await open(dir, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (!IGNORED_DIR_SYNC_CODES.includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+}
+
+/** Atomic, durable write: synced temp file, backup of the current file, rename, directory sync. */
 export async function saveState(home: string, state: InstallState): Promise<void> {
   const target = statePath(home);
-  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  const dir = dirname(target);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await removeStaleTemps(dir);
   const temp = `${target}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await writeSynced(temp, `${JSON.stringify(state, null, 2)}\n`);
+  await backupCurrent(target);
   crashPoint("state:before-rename");
   await rename(temp, target);
+  await syncDirectory(dir);
 }
