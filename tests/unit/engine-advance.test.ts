@@ -34,7 +34,15 @@ describe("start", () => {
     const home = await makeTempHome();
     const { deps } = memoryDeps(home, basicSolution());
     const { state } = await start(deps, null, FIXTURE_REF);
-    await expect(start(deps, state, "file:/other/solution.json")).rejects.toThrow(EngineError);
+    const other = memoryDeps(home, { ...basicSolution(), id: "another-solution" });
+    await expect(start(other.deps, state, FIXTURE_REF)).rejects.toThrow(EngineError);
+  });
+
+  it("accepts the same solution reached through a different ref", async () => {
+    const home = await makeTempHome();
+    const { deps } = memoryDeps(home, basicSolution());
+    const { state } = await start(deps, null, FIXTURE_REF);
+    await expect(start(deps, state, "file:/other/solution.json")).resolves.toMatchObject({ result: { status: "step" } });
   });
 });
 

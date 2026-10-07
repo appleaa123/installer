@@ -132,8 +132,8 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
 
 export async function start(deps: EngineDeps, existing: InstallState | null, ref: string): Promise<Advanced> {
   if (existing) {
-    const same = existing.solution.ref === ref && existing.solution.id === deps.solution.id && existing.solution.version === deps.solution.version;
-    if (!same) throw new EngineError(`This home already has an install of '${existing.solution.id}' from ${existing.solution.ref}; use a different --home`);
+    const same = existing.solution.id === deps.solution.id && existing.solution.version === deps.solution.version;
+    if (!same) throw new EngineError(`This home already has an install of '${existing.solution.id}@${existing.solution.version}'; use a different --home`);
     return advance(deps, existing);
   }
   const head = await deps.audit({ actor: "human", event: "install.started", ref, payload: { id: deps.solution.id, version: deps.solution.version } });

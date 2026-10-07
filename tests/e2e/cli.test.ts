@@ -1,10 +1,10 @@
-import { access, chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
-import { FIXTURE_REF } from "../helpers/memory-deps.js";
+import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 describe("installer CLI", () => {
@@ -101,5 +101,49 @@ describe("installer CLI", () => {
     expect(result.code).toBe(3);
     expect(result.json).toMatchObject({ code: 3, error: expect.stringContaining("damaged last line") });
     await expect(readFile(file, "utf8")).resolves.toBe(before);
+  });
+
+  describe("pinned solution", () => {
+    async function copyOfFixture(transform: (text: string) => string = (text) => text): Promise<string> {
+      const path = join(await makeTempHome(), "solution.json");
+      await writeFile(path, transform(await readFile(FIXTURE_PATH, "utf8")), "utf8");
+      return `file:${path}`;
+    }
+
+    it("keeps working after the source solution file is moved", async () => {
+      const home = await makeTempHome();
+      const ref = await copyOfFixture();
+      const path = ref.slice("file:".length);
+      expect(runCli(["start", "--solution", ref], { home }).code).toBe(0);
+      await rename(path, `${path}.moved`);
+      expect(runCli(["next"], { home }).code).toBe(0);
+      expect(runCli(["report"], { home }).stdout).toContain("IN PROGRESS");
+    });
+
+    it("accepts a second start from a copy of the same file and changes nothing", async () => {
+      const home = await makeTempHome();
+      runCli(["start", "--solution", FIXTURE_REF], { home });
+      const before = await readFile(statePath(home), "utf8");
+      expect(runCli(["start", "--solution", await copyOfFixture()], { home }).code).toBe(0);
+      await expect(readFile(statePath(home), "utf8")).resolves.toBe(before);
+    });
+
+    it("refuses a second start whose content differs, exit 2", async () => {
+      const home = await makeTempHome();
+      runCli(["start", "--solution", FIXTURE_REF], { home });
+      const changed = await copyOfFixture((text) => text.replace("Is there shared work?", "Is there shared effort?"));
+      const result = runCli(["start", "--solution", changed], { home });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: expect.stringContaining("different solution content") });
+    });
+
+    it("names the missing pinned file when it is gone", async () => {
+      const home = await makeTempHome();
+      runCli(["start", "--solution", FIXTURE_REF], { home });
+      await rm(join(home, "solution", "solution.json"));
+      const result = runCli(["next"], { home });
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("solution.json");
+    });
   });
 });

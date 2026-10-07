@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { chmod, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,7 +8,8 @@ import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type SubmitPayload } from "./core/engine.js";
 import { InputError } from "./core/inputs.js";
 import { buildReport, renderReport } from "./core/report.js";
-import { SolutionError, loadSolution } from "./core/solution.js";
+import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
+import { SolutionError, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import type { InstallState, Solution } from "./core/types.js";
 
@@ -64,9 +66,9 @@ function depsFor(home: string, solution: Solution): EngineDeps {
 async function loadInstall(home: string): Promise<{ state: InstallState; deps: EngineDeps }> {
   const state = await loadState(home);
   if (!state) throw new NoInstallError();
-  const solution = await loadSolution(state.solution.ref);
+  const { solution } = await loadPinnedSolution(home);
   if (solution.id !== state.solution.id || solution.version !== state.solution.version) {
-    throw new EngineError(`Solution at ${state.solution.ref} is now ${solution.id}@${solution.version}; this install uses ${state.solution.id}@${state.solution.version}`);
+    throw new EngineError(`The pinned solution is ${solution.id}@${solution.version}; this install uses ${state.solution.id}@${state.solution.version}`);
   }
   return { state, deps: depsFor(home, solution) };
 }
@@ -87,13 +89,25 @@ function requireArg(arg: string | undefined, command: string): string {
   return arg;
 }
 
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+async function requireSameContent(home: string, existing: InstallState, text: string): Promise<void> {
+  const pinned = await loadPinnedSolution(home);
+  if (sha256(pinned.text) !== sha256(text)) {
+    throw new EngineError(`This home already has an install of '${existing.solution.id}@${existing.solution.version}' with different solution content; use a different --home`);
+  }
+}
+
 async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
-  const solution = await loadSolution(ref);
+  const { solution, text } = await loadSolutionSource(ref);
   const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
   if (created !== undefined) await chmod(home, HOME_MODE);
-  return (await start(depsFor(home, solution), await loadState(home), ref)).result;
+  const existing = await loadState(home);
+  if (existing) await requireSameContent(home, existing, text);
+  else await writePinnedSolution(home, text);
+  return (await start(depsFor(home, solution), existing, ref)).result;
 }
 
 async function run(argv: readonly string[]): Promise<number> {

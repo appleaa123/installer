@@ -107,20 +107,28 @@ export function parseSolution(raw: unknown): Solution {
   return { id, version, steps };
 }
 
-export async function loadSolution(ref: string): Promise<Solution> {
+export function parseSolutionText(text: string, where: string): Solution {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new SolutionError(`Solution file '${where}' is not valid JSON`);
+  }
+  return parseSolution(json);
+}
+
+export async function loadSolutionSource(ref: string): Promise<{ solution: Solution; text: string }> {
   if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': only file:<path> is supported in this version`);
   const path = ref.slice("file:".length);
-  let raw: string;
+  let text: string;
   try {
-    raw = await readFile(path, "utf8");
+    text = await readFile(path, "utf8");
   } catch {
     throw new SolutionError(`Cannot read solution file '${path}'`);
   }
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    throw new SolutionError(`Solution file '${path}' is not valid JSON`);
-  }
-  return parseSolution(json);
+  return { solution: parseSolutionText(text, path), text };
+}
+
+export async function loadSolution(ref: string): Promise<Solution> {
+  return (await loadSolutionSource(ref)).solution;
 }
