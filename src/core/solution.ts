@@ -46,7 +46,7 @@ function checkTypeRules(step: StepDef, where: string): void {
   if (step.type === "agent_action" && (!step.intent || !step.verify)) throw new SolutionError(`${where}: agent_action steps need an intent and a check`);
 }
 
-function optionalFields(value: Raw, where: string): Record<string, unknown> {
+function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">> {
   const result: Record<string, unknown> = {};
   if (Array.isArray(value.instructions)) {
     result.instructions = value.instructions.map((line) => text(line, `${where}.instructions`));
@@ -69,14 +69,14 @@ function optionalFields(value: Raw, where: string): Record<string, unknown> {
   if (verify) {
     result.verify = { check: verify.name, args: verify.args };
   }
-  return result;
+  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">>;
 }
 
 function parseStep(value: unknown, index: number): StepDef {
   const where = `steps[${index}]`;
   if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
   if (typeof value.blocking !== "boolean") throw new SolutionError(`${where}.blocking must be true or false`);
-  const step = {
+  const step: StepDef = {
     step_id: text(value.step_id, `${where}.step_id`),
     phase: oneOf<Phase>(value.phase, PHASES, `${where}.phase`),
     type: oneOf<StepType>(value.type, STEP_TYPES, `${where}.type`),
@@ -84,7 +84,7 @@ function parseStep(value: unknown, index: number): StepDef {
     why: text(value.why, `${where}.why`),
     blocking: value.blocking,
     ...optionalFields(value, where),
-  } as StepDef;
+  };
   checkTypeRules(step, where);
   return step;
 }

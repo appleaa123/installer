@@ -52,13 +52,13 @@ export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);
 export const KNOWN_CHECKS: readonly string[] = Object.keys(CHECKS);
 
 export async function runAction(home: string, action: Action): Promise<void> {
+  if (!Object.hasOwn(ACTIONS, action.action)) throw new InputError(`Unknown action '${action.action}'`);
   const run = ACTIONS[action.action];
-  if (!run) throw new InputError(`Unknown action '${action.action}'`);
   await run(home, action.args ?? {});
 }
 
 export async function runCheck(home: string, check: Check): Promise<CheckResult> {
+  if (!Object.hasOwn(CHECKS, check.check)) throw new InputError(`Unknown check '${check.check}'`);
   const run = CHECKS[check.check];
-  if (!run) throw new InputError(`Unknown check '${check.check}'`);
   return run(home, check.args ?? {});
 }

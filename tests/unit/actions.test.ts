@@ -35,6 +35,16 @@ describe("runAction", () => {
     const home = await makeTempHome();
     await expect(runAction(home, { action: "format_disk" })).rejects.toThrow(InputError);
   });
+
+  it("rejects prototype member lookups like constructor", async () => {
+    const home = await makeTempHome();
+    await expect(runAction(home, { action: "constructor" })).rejects.toThrow(InputError);
+  });
+
+  it("rejects prototype member lookups like toString", async () => {
+    const home = await makeTempHome();
+    await expect(runAction(home, { action: "toString" })).rejects.toThrow(InputError);
+  });
 });
 
 describe("runCheck", () => {
@@ -44,5 +54,15 @@ describe("runCheck", () => {
     await expect(runCheck(home, check)).resolves.toEqual({ ok: false, hint: "a.txt missing" });
     await runAction(home, { action: "write_file", args: { path: "config/a.txt", content: "" } });
     await expect(runCheck(home, check)).resolves.toEqual({ ok: true });
+  });
+
+  it("rejects prototype member lookups like constructor", async () => {
+    const home = await makeTempHome();
+    await expect(runCheck(home, { check: "constructor" })).rejects.toThrow(InputError);
+  });
+
+  it("rejects prototype member lookups like toString", async () => {
+    const home = await makeTempHome();
+    await expect(runCheck(home, { check: "toString" })).rejects.toThrow(InputError);
   });
 });
