@@ -1,7 +1,7 @@
 import { chmod, copyFile, mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { crashPoint } from "./crash.js";
-import { removeStaleTemps, syncDirectory, writeSynced } from "./durable.js";
+import { removeStaleTemps, syncDirectory, syncFile, writeSynced } from "./durable.js";
 import { STEP_STATUSES, type InstallState } from "./types.js";
 
 export const STATE_FILE = join("state", "install-state.json");
@@ -79,6 +79,7 @@ async function backupCurrent(target: string): Promise<void> {
     throw error;
   }
   await chmod(temp, 0o600);
+  await syncFile(temp);
   await rename(temp, `${target}.bak`);
 }
 
