@@ -31,6 +31,17 @@ describe("runAction", () => {
     await expect(runAction(home, { action: "write_file", args: { path: "../x.txt", content: "" } })).rejects.toThrow(InputError);
   });
 
+  it("rejects a content argument that is not a string", async () => {
+    const home = await makeTempHome();
+    await expect(runAction(home, { action: "write_file", args: { path: "config/a.txt", content: 42 } })).rejects.toThrow("Argument 'content' must be a string");
+  });
+
+  it("writes an empty file when content is missing", async () => {
+    const home = await makeTempHome();
+    await runAction(home, { action: "write_file", args: { path: "config/a.txt" } });
+    await expect(readFile(join(home, "config", "a.txt"), "utf8")).resolves.toBe("");
+  });
+
   it("rejects unknown actions", async () => {
     const home = await makeTempHome();
     await expect(runAction(home, { action: "format_disk" })).rejects.toThrow(InputError);

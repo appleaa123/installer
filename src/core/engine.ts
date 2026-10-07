@@ -1,6 +1,6 @@
 import { runAction, runCheck } from "./actions.js";
 import { crashPoint } from "./crash.js";
-import { validateInput } from "./inputs.js";
+import { AGENT_FORBIDDEN_KINDS, validateInput } from "./inputs.js";
 import type { AuditHead, InstallState, Solution, StepDef, StepRecord, StepStatus } from "./types.js";
 
 export const MAX_VERIFY_ATTEMPTS = 3;
@@ -178,7 +178,7 @@ function submittedRecord(deps: EngineDeps, step: StepDef, payload: SubmitPayload
     return { status: "done", at: deps.now(), by: "human", value: validateInput(step.input, payload.value) };
   }
   if (step.type === "human_action") {
-    if (step.input && (step.input.kind === "secret" || step.input.kind === "oauth")) {
+    if (step.input && AGENT_FORBIDDEN_KINDS.includes(step.input.kind)) {
       throw new EngineError(`Step '${step.step_id}' is completed by the local browser page, never through submit`);
     }
     if (step.verify) throw new EngineError(`Step '${step.step_id}' is confirmed by a check: run 'installer verify ${step.step_id}'`);

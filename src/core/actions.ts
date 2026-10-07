@@ -30,8 +30,9 @@ const ACTIONS: Readonly<Record<string, (home: string, args: Args) => Promise<voi
   noop: async () => undefined,
   write_file: async (home, args) => {
     const target = resolveInHome(home, stringArg(args, "path"));
+    const content = args.content === undefined ? "" : stringArg(args, "content");
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await writeFile(target, typeof args.content === "string" ? args.content : "", { encoding: "utf8", mode: 0o600 });
+    await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
   },
 };
 

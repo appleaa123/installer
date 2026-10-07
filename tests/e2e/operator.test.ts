@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { verifyAudit } from "../../src/core/audit.js";
+import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
 import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_REF } from "../helpers/memory-deps.js";
@@ -31,6 +32,7 @@ describe("scripted operator", () => {
     const home = await makeTempHome();
     await operate({ home, solutionRef: FIXTURE_REF, script: FIXTURE_SCRIPT });
     const before = await readFile(statePath(home), "utf8");
+    const auditBefore = await readFile(join(home, AUDIT_FILE));
     for (const args of [["start", "--solution", FIXTURE_REF], ["next"], ["resume"], ["report"], ["start", "--solution", FIXTURE_REF]]) {
       expect(runCli(args, { home }).code).toBe(0);
     }
@@ -38,6 +40,7 @@ describe("scripted operator", () => {
     const rerun = await operate({ home, solutionRef: FIXTURE_REF, script: FIXTURE_SCRIPT });
     expect(rerun.final.status).toBe("complete");
     await expect(readFile(statePath(home), "utf8")).resolves.toBe(before);
+    expect((await readFile(join(home, AUDIT_FILE))).equals(auditBefore)).toBe(true);
   });
 
   it("retries a failed verify step through resume once the operator performs the fix", async () => {
