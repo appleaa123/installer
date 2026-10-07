@@ -1,6 +1,7 @@
-import { chmod, copyFile, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { crashPoint } from "./crash.js";
+import { removeStaleTemps, syncDirectory, writeSynced } from "./durable.js";
 import { STEP_STATUSES, type InstallState } from "./types.js";
 
 export const STATE_FILE = join("state", "install-state.json");
@@ -16,8 +17,8 @@ export function statePath(home: string): string {
   return join(home, STATE_FILE);
 }
 
+const STATE_BASE = "install-state.json";
 const backupPath = (home: string): string => `${statePath(home)}.bak`;
-const IGNORED_DIR_SYNC_CODES = ["EISDIR", "EPERM", "EINVAL", "EBADF"];
 
 async function backupNote(home: string): Promise<string> {
   try {
@@ -69,33 +70,6 @@ export async function loadState(home: string): Promise<InstallState | null> {
   return parsed;
 }
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-async function removeStaleTemps(dir: string): Promise<void> {
-  const pattern = /^install-state\.json\.(\d+)\.tmp$/;
-  for (const name of await readdir(dir)) {
-    const pid = Number(pattern.exec(name)?.[1]);
-    if (pid && pid !== process.pid && !isAlive(pid)) await rm(join(dir, name), { force: true });
-  }
-}
-
-async function writeSynced(path: string, text: string): Promise<void> {
-  const handle = await open(path, "w", 0o600);
-  try {
-    await handle.writeFile(text, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
 async function backupCurrent(target: string): Promise<void> {
   try {
     await copyFile(target, `${target}.bak`);
@@ -106,25 +80,12 @@ async function backupCurrent(target: string): Promise<void> {
   await chmod(`${target}.bak`, 0o600);
 }
 
-async function syncDirectory(dir: string): Promise<void> {
-  try {
-    const handle = await open(dir, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  } catch (error) {
-    if (!IGNORED_DIR_SYNC_CODES.includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
-  }
-}
-
 /** Atomic, durable write: synced temp file, backup of the current file, rename, directory sync. */
 export async function saveState(home: string, state: InstallState): Promise<void> {
   const target = statePath(home);
   const dir = dirname(target);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  await removeStaleTemps(dir);
+  await removeStaleTemps(dir, STATE_BASE);
   const temp = `${target}.${process.pid}.tmp`;
   await writeSynced(temp, `${JSON.stringify(state, null, 2)}\n`);
   await backupCurrent(target);
