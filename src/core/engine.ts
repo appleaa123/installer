@@ -1,5 +1,6 @@
 import { runAction, runCheck } from "./actions.js";
 import { crashPoint } from "./crash.js";
+import { validateInput } from "./inputs.js";
 import type { AuditHead, InstallState, Solution, StepDef, StepRecord, StepStatus } from "./types.js";
 
 export const MAX_VERIFY_ATTEMPTS = 3;
@@ -139,4 +140,69 @@ export async function start(deps: EngineDeps, existing: InstallState | null, ref
   const fresh: InstallState = { ...initialState(ref, deps.solution, deps.now()), audit_head: head };
   await deps.save(fresh);
   return advance(deps, fresh);
+}
+
+export type SubmitPayload = { readonly kind: "value"; readonly value: unknown } | { readonly kind: "done" };
+
+export interface Verified {
+  readonly state: InstallState;
+  readonly result: VerifyResult;
+  readonly next: NextResult;
+}
+
+function requireCurrent(deps: EngineDeps, state: InstallState, stepId: string): StepDef {
+  const step = deps.solution.steps.find((candidate) => candidate.step_id === stepId);
+  if (!step) throw new EngineError(`Unknown step '${stepId}'`);
+  const current = currentStep(deps.solution, state);
+  if (!current || current.step_id !== stepId) {
+    const where = current ? `; current step is '${current.step_id}'` : "; the install has no pending step";
+    throw new EngineError(`Step '${stepId}' is not the current step${where}`);
+  }
+  if (recordOf(state, stepId)?.status === "blocked") throw new EngineError(`Step '${stepId}' is blocked; run '${RESUME_HINT}' first`);
+  return step;
+}
+
+function submittedRecord(deps: EngineDeps, step: StepDef, payload: SubmitPayload): StepRecord {
+  if (step.type === "ask") {
+    if (payload.kind !== "value") throw new EngineError(`Step '${step.step_id}' needs an answer: use --value`);
+    return { status: "done", at: deps.now(), by: "human", value: validateInput(step.input, payload.value) };
+  }
+  if (step.type === "human_action") {
+    if (step.input && (step.input.kind === "secret" || step.input.kind === "oauth")) {
+      throw new EngineError(`Step '${step.step_id}' is completed by the local browser page, never through submit`);
+    }
+    if (step.verify) throw new EngineError(`Step '${step.step_id}' is confirmed by a check: run 'installer verify ${step.step_id}'`);
+    if (payload.kind !== "done") throw new EngineError(`Step '${step.step_id}' takes no value: use --done`);
+    return { status: "done", at: deps.now(), by: "human" };
+  }
+  const hint = step.type === "agent_action" ? `: perform the intent, then run 'installer verify ${step.step_id}'` : "";
+  throw new EngineError(`Step '${step.step_id}' (${step.type}) cannot be submitted${hint}`);
+}
+
+export async function submit(deps: EngineDeps, state: InstallState, stepId: string, payload: SubmitPayload): Promise<Advanced> {
+  const settled = (await advance(deps, state)).state;
+  const step = requireCurrent(deps, settled, stepId);
+  const record = submittedRecord(deps, step, payload);
+  return advance(deps, await transition(deps, settled, step, record, "human"));
+}
+
+export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: string): Promise<Verified> {
+  const settled = (await advance(deps, state)).state;
+  const step = requireCurrent(deps, settled, stepId);
+  if (!step.verify) throw new EngineError(`Step '${stepId}' has no check; use 'installer submit'`);
+  const actor: Actor = step.type === "agent_action" ? "agent" : step.type === "human_action" ? "human" : "engine";
+  const verified = await runVerify(deps, settled, step, actor);
+  const { state: final, result: next } = await advance(deps, verified.state);
+  return { state: final, result: verified.result, next };
+}
+
+/** Gives every blocked step a fresh set of attempts, then continues. */
+export async function resume(deps: EngineDeps, state: InstallState): Promise<Advanced> {
+  let current = state;
+  for (const step of deps.solution.steps) {
+    if (recordOf(current, step.step_id)?.status === "blocked") {
+      current = await transition(deps, current, step, { status: "pending", at: deps.now(), attempts: 0 }, "human");
+    }
+  }
+  return advance(deps, current);
 }
