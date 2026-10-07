@@ -34,7 +34,7 @@ export async function writeSynced(path: string, text: string): Promise<void> {
 
 /** Sync an existing file to disk. */
 export async function syncFile(path: string): Promise<void> {
-  const handle = await open(path, "r");
+  const handle = await open(path, "r+");
   try {
     await handle.sync();
   } finally {
