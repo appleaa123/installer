@@ -71,13 +71,15 @@ export async function loadState(home: string): Promise<InstallState | null> {
 }
 
 async function backupCurrent(target: string): Promise<void> {
+  const temp = `${target}.bak.${process.pid}.tmp`;
   try {
-    await copyFile(target, `${target}.bak`);
+    await copyFile(target, temp);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     throw error;
   }
-  await chmod(`${target}.bak`, 0o600);
+  await chmod(temp, 0o600);
+  await rename(temp, `${target}.bak`);
 }
 
 /** Atomic, durable write: synced temp file, backup of the current file, rename, directory sync. */
@@ -86,6 +88,7 @@ export async function saveState(home: string, state: InstallState): Promise<void
   const dir = dirname(target);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await removeStaleTemps(dir, STATE_BASE);
+  await removeStaleTemps(dir, `${STATE_BASE}.bak`);
   const temp = `${target}.${process.pid}.tmp`;
   await writeSynced(temp, `${JSON.stringify(state, null, 2)}\n`);
   await backupCurrent(target);

@@ -64,6 +64,15 @@ describe("state store", () => {
     expect(files).toContain(`install-state.json.${process.ppid}.tmp`);
   });
 
+  it("removes a backup temp file left by a dead process on the next save", async () => {
+    const home = await makeTempHome();
+    await saveState(home, SAMPLE);
+    const staleBackupTemp = `${statePath(home)}.bak.999999.tmp`;
+    await writeFile(staleBackupTemp, "{ half", "utf8");
+    await saveState(home, SAMPLE);
+    expect(await readdir(dirname(statePath(home)))).toEqual(["install-state.json", "install-state.json.bak"]);
+  });
+
   it("names the backup when the state file is corrupt and changes neither file", async () => {
     const home = await makeTempHome();
     await saveState(home, SAMPLE);
