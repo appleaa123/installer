@@ -23,3 +23,16 @@ Language: TypeScript on Node ≥ 22 (D44).
 
 O8 (product name), O11 (unattended hosted evals) and O15 (combo activation
 by API key) are handled when the plan that touches them is written.
+
+## Carried forward from Plan 1
+
+Plan 2 must cover these when it writes `INSTALL.md` and the solution refs:
+
+- `installer next` prints a wrapped result, `{ "status": "step" | "blocked" | "complete", "view": { "step", "status", "attempts", "hint", "resume" } }`.
+  The spec §6.3 field names live inside `view.step`. Update the §6.3 example to match.
+- A step whose check failed is retried with `installer resume` when it is a `verify` step, and with
+  `installer verify <step_id>` for any other step type. Each retry counts toward the three-failure limit.
+- `installer resume` also reopens optional steps that were given up, so the report goes back to `in_progress`.
+- A `--value` that starts with `-` must be written as `--value=<json>` (for example `--value=-5`).
+- Plan 1 pins the solution by copying it into `<engine_home>/solution/solution.json` and comparing content
+  hashes on `start`. Plan 2 adds `skillswiki:` refs and records the §6.4 `recipe_version` sha in the state.
