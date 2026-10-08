@@ -26,22 +26,9 @@ Each task says why it is needed and what to do, step by step.
 2. Run Tests 0 to 5 in one terminal, in order, and paste the output to Claude (as with the Plan 1 live test).
 3. Test 3b needs internet and shows the real HTTP status for a missing file; Claude could not see it from its sandbox.
 
-### 3. Narrow the Google token to Google Sheets only
-
-**Why:** your refresh token has full Google Drive access (`https://www.googleapis.com/auth/drive`). Development only needs Google Sheets, and you asked that no other Google service be used. A narrower token limits the damage if it ever leaks.
-
-1. Open https://developers.google.com/oauthplayground
-2. Click the gear icon (top right), tick **Use your own OAuth credentials**, and paste the same client ID and client secret that are in `~/.config/installer-dev/.env`.
-3. In the left list, scroll to **Google Sheets API v4** and tick only `https://www.googleapis.com/auth/spreadsheets`. Untick anything else.
-4. Click **Authorize APIs**, sign in with the **test** Google account, and allow access.
-5. Click **Exchange authorization code for tokens**. Copy the **Refresh token**.
-6. Open `~/.config/installer-dev/.env` and replace the value after `GOOGLE_REFRESH_TOKEN=` with the new token. Save.
-7. Optional, to remove the old Drive access: go to https://myaccount.google.com/permissions with the test account, find your OAuth app, and click **Remove access**. Then repeat steps 1–6, since removing access also cancels the new token.
-8. Tell Claude "check Google" so it can confirm the new token reads the test sheet.
-
 ## Optional
 
-### 4. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 3. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 
@@ -52,3 +39,4 @@ Each task says why it is needed and what to do, step by step.
 
 - 2026-10-08: Plan 1 live test (14 of 14 passed).
 - 2026-10-08: Dev keys file filled in and verified (Skills Wiki, Google Sheets, Telegram, Zoho email).
+- 2026-10-08: Google token scope: Google grants Drive along with Sheets; you chose to keep it. Claude calls only the Google Sheets API (`sheets.googleapis.com`); any other Google service needs your confirmation first.
