@@ -47,7 +47,20 @@ function checkTypeRules(step: StepDef, where: string): void {
   if (step.type === "agent_action" && (!step.intent || !step.verify)) throw new SolutionError(`${where}: agent_action steps need an intent and a check`);
 }
 
-function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">> {
+const PROFILE_ID = /^[a-z0-9-]+$/;
+
+/** Per-runtime lines for an agent_action, keyed by runtime profile id (D7 hint files). */
+function parseHints(value: unknown, where: string): Readonly<Record<string, readonly string[]>> {
+  if (!isRecord(value)) throw new SolutionError(`${where} must map runtime profile ids to lists of lines`);
+  return Object.fromEntries(
+    Object.entries(value).map(([id, lines]) => {
+      if (!PROFILE_ID.test(id) || !Array.isArray(lines) || lines.length === 0) throw new SolutionError(`${where}.${id} must be a non-empty list of lines`);
+      return [id, lines.map((line) => text(line, `${where}.${id}`))];
+    }),
+  );
+}
+
+function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">> {
   const result: Record<string, unknown> = {};
   if (Array.isArray(value.instructions)) {
     result.instructions = value.instructions.map((line) => text(line, `${where}.instructions`));
@@ -70,7 +83,10 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   if (verify) {
     result.verify = { check: verify.name, args: verify.args };
   }
-  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">>;
+  if (value.hints !== undefined) {
+    result.hints = parseHints(value.hints, `${where}.hints`);
+  }
+  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">>;
 }
 
 function parseStep(value: unknown, index: number): StepDef {

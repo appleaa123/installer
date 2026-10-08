@@ -35,6 +35,7 @@ export interface StepView {
   readonly status: StepStatus;
   readonly attempts: number;
   readonly hint?: string;
+  readonly hints?: readonly string[];
   readonly resume: string;
 }
 
@@ -80,13 +81,16 @@ export function retryCommand(step: StepDef): string {
   return step.type === "verify" ? RESUME_HINT : `installer verify ${step.step_id}`;
 }
 
-function viewOf(step: StepDef, record: StepRecord | undefined): StepView {
+function viewOf(step: StepDef, record: StepRecord | undefined, profile?: string | null): StepView {
+  const hints = profile ? step.hints?.[profile] : undefined;
+  const retrying = record?.status === "failed" || (record?.status === "pending" && (record.attempts ?? 0) > 0);
   return {
     step,
     status: record?.status ?? "pending",
     attempts: record?.attempts ?? 0,
     ...(record?.hint ? { hint: record.hint } : {}),
-    resume: record?.status === "failed" ? retryCommand(step) : RESUME_HINT,
+    ...(hints ? { hints } : {}),
+    resume: retrying ? retryCommand(step) : RESUME_HINT,
   };
 }
 
@@ -121,7 +125,7 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
     const step = currentStep(deps.solution, current);
     if (!step) return { state: current, result: { status: "complete" } };
     const record = recordOf(current, step.step_id);
-    if (record?.status === "blocked") return { state: current, result: { status: "blocked", view: viewOf(step, record) } };
+    if (record?.status === "blocked") return { state: current, result: { status: "blocked", view: viewOf(step, record, current.runtime?.profile) } };
     if (step.type === "auto" && step.auto) {
       const patch = await runAction(deps.home, step.auto, current);
       crashPoint("engine:after-action");
@@ -132,7 +136,7 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
       current = (await runVerify(deps, current, step, "engine")).state;
       continue;
     }
-    return { state: current, result: { status: "step", view: viewOf(step, record) } };
+    return { state: current, result: { status: "step", view: viewOf(step, record, current.runtime?.profile) } };
   }
 }
 
