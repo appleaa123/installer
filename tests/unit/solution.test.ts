@@ -49,7 +49,7 @@ describe("loadSolution", () => {
   });
 
   it("rejects unsupported references", async () => {
-    await expect(loadSolution("https://example.com/solution.json")).rejects.toThrow(/only file:/);
+    await expect(loadSolution("ftp://example.com/solution.json")).rejects.toThrow(/use file:<path> or https:/);
   });
 
   it("reports unreadable and invalid files", async () => {

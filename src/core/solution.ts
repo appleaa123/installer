@@ -117,15 +117,47 @@ export function parseSolutionText(text: string, where: string): Solution {
   return parseSolution(json);
 }
 
-export async function loadSolutionSource(ref: string): Promise<{ solution: Solution; text: string }> {
-  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': only file:<path> is supported in this version`);
-  const path = ref.slice("file:".length);
-  let text: string;
+export const MAX_SOLUTION_BYTES = 1_000_000;
+const FETCH_TIMEOUT_MS = 30_000;
+
+export type FetchText = (url: string) => Promise<string>;
+
+/** HTTPS only, follows redirects but never to another scheme, size-capped (Review Focus 3). */
+export async function fetchHttps(url: string): Promise<string> {
+  let response: Response;
   try {
-    text = await readFile(path, "utf8");
+    response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (error) {
+    throw new SolutionError(`Cannot fetch solution URL '${url}' (${(error as Error).message})`);
+  }
+  if (!response.url.startsWith("https:")) throw new SolutionError(`Solution URL '${url}' redirected away from https`);
+  if (!response.ok) throw new SolutionError(`Solution URL '${url}' answered HTTP ${response.status}`);
+  const text = await response.text();
+  if (Buffer.byteLength(text, "utf8") > MAX_SOLUTION_BYTES) {
+    throw new SolutionError(`Solution at '${url}' is larger than ${MAX_SOLUTION_BYTES} bytes`);
+  }
+  return text;
+}
+
+async function readLocal(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
   } catch {
     throw new SolutionError(`Cannot read solution file '${path}'`);
   }
+}
+
+export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps): Promise<{ solution: Solution; text: string }> {
+  if (ref.startsWith("skillswiki:")) {
+    throw new SolutionError("'skillswiki:' references need the Skills Wiki key step, which arrives in a later version; use a file: or https: reference");
+  }
+  if (ref.startsWith("https:")) {
+    const text = await fetchText(ref);
+    return { solution: parseSolutionText(text, ref), text };
+  }
+  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': use file:<path> or https://…`);
+  const path = ref.slice("file:".length);
+  const text = await readLocal(path);
   return { solution: parseSolutionText(text, path), text };
 }
 

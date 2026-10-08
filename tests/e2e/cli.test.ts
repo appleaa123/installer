@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
-import { statePath } from "../../src/core/state.js";
+import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -91,6 +92,20 @@ describe("installer CLI", () => {
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
     expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json`, code: 2 });
+  });
+
+  it("records the solution's content sha as recipe_version", async () => {
+    const home = await makeTempHome();
+    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const sha = createHash("sha256").update(await readFile(FIXTURE_PATH, "utf8")).digest("hex");
+    expect((await loadState(home))?.solution.recipe_version).toBe(sha);
+  });
+
+  it.each(["http://example.test/s.json", "skillswiki:pack/skill/recipe.json"])("refuses %s with exit 2 and creates nothing", async (ref) => {
+    const home = join(await makeTempHome(), "engine");
+    const result = runCli(["start", "--solution", ref], { home });
+    expect(result.code).toBe(2);
+    await expect(access(home)).rejects.toThrow();
   });
 
   it("report prints text by default and JSON with --json", async () => {

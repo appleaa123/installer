@@ -127,7 +127,7 @@ async function startCommand(home: string, flags: Flags): Promise<unknown> {
   const existing = await loadState(home);
   if (existing) await requireSameContent(home, existing, text);
   else await writePinnedSolution(home, text);
-  return (await start(depsFor(home, solution), existing, ref)).result;
+  return (await start(depsFor(home, solution), existing, ref, sha256(text))).result;
 }
 
 async function run(argv: readonly string[]): Promise<number> {

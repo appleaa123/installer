@@ -76,3 +76,11 @@ describe("advance", () => {
     expect(Date.parse(checked)).toBeLessThan(Date.parse(written));
   });
 });
+
+describe("recipe_version", () => {
+  it("is stored in the state on a fresh start", async () => {
+    const { deps } = memoryDeps(await makeTempHome(), basicSolution());
+    const { state } = await start(deps, null, FIXTURE_REF, "sha-of-text");
+    expect(state.solution.recipe_version).toBe("sha-of-text");
+  });
+});
