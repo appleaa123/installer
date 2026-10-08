@@ -1,0 +1,137 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { ActionFailure } from "./failure.js";
+import { InputError } from "./inputs.js";
+
+/**
+ * Connector packages (spec §8.1–8.2, D65): v1 connectors are data files shipped inside the installer package,
+ * `connectors/<id>/<version>/connector.json`, each pinned below to the sha256 of its exact bytes. A file that
+ * differs from its pin is never used. Remote download and signed updates arrive with pack pinning (Plan 9).
+ */
+export const CONNECTORS_DIR = fileURLToPath(new URL("../../connectors/", import.meta.url));
+
+/** The curated catalog (§8.2): id → version → sha256 of the definition file. */
+export type ConnectorPins = Readonly<Record<string, Readonly<Record<string, string>>>>;
+export const CONNECTOR_PINS: ConnectorPins = {
+  "google-sheets": { "1": "26b334d5e25e1379e295dc17dc943a86b476c8bf3d6e8c8ad251fe70fb230c10" },
+};
+
+/** Built-in adapters a definition may name; a connector is data, the code that speaks its API is the engine's. */
+export const ADAPTERS = ["google_sheets"] as const;
+export type Adapter = (typeof ADAPTERS)[number];
+
+export interface ConnectorAuth {
+  readonly kind: "oauth2";
+  readonly provider: string;
+  /** The keychain item that holds this connector's sign-in (`installer secret <secret_id>`). */
+  readonly secret_id: string;
+  readonly scopes: readonly string[];
+  readonly authorize_url: string;
+  readonly token_url: string;
+}
+
+export interface ConnectorDef {
+  readonly id: string;
+  readonly version: string;
+  readonly name: string;
+  readonly interface: readonly ["records_source"];
+  readonly adapter: Adapter;
+  readonly api: { readonly base_url: string };
+  readonly auth: ConnectorAuth;
+  readonly risk: { readonly reads_personal_data: boolean; readonly outbound_external: boolean; readonly official_api: boolean };
+  /** The checksum the file matched when it was loaded. */
+  readonly sha256: string;
+}
+
+const ID = /^[a-z0-9-]+$/;
+const VERSION = /^[0-9]+$/;
+const SERVER_ENV = "INSTALLER_CONNECTOR_SERVER";
+const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+$/;
+type Raw = Record<string, unknown>;
+type Env = Readonly<Record<string, string | undefined>>;
+const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+function httpsUrl(value: unknown, where: string, fail: (message: string) => never): string {
+  if (typeof value !== "string" || !value.startsWith("https://")) return fail(`${where} must be an https URL`);
+  return value;
+}
+
+function parseAuth(value: unknown, fail: (message: string) => never): ConnectorAuth {
+  if (!isRecord(value) || value.kind !== "oauth2") return fail("auth.kind must be oauth2");
+  const { provider, secret_id: secretId, scopes } = value;
+  if (typeof provider !== "string" || typeof secretId !== "string" || !ID.test(secretId)) return fail("auth needs a provider and a secret_id of lowercase letters, digits and dashes");
+  if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every((scope) => typeof scope === "string")) return fail("auth.scopes must list at least one scope");
+  return {
+    kind: "oauth2", provider, secret_id: secretId, scopes: scopes as string[],
+    authorize_url: httpsUrl(value.authorize_url, "auth.authorize_url", fail), token_url: httpsUrl(value.token_url, "auth.token_url", fail),
+  };
+}
+
+function parseConnector(text: string, id: string, version: string, checksum: string): ConnectorDef {
+  const fail = (message: string): never => {
+    throw new ActionFailure(`The connector package ${id}@${version} is not usable: ${message}`);
+  };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return fail("not valid JSON");
+  }
+  if (!isRecord(raw)) return fail("not a JSON object");
+  if (raw.id !== id || raw.version !== version) fail(`it declares id '${String(raw.id)}' version '${String(raw.version)}'`);
+  if (!(ADAPTERS as readonly unknown[]).includes(raw.adapter)) fail(`adapter must be one of ${ADAPTERS.join(", ")}`);
+  if (JSON.stringify(raw.interface) !== JSON.stringify(["records_source"])) fail('interface must be ["records_source"]');
+  const api = isRecord(raw.api) ? raw.api : {};
+  const risk = isRecord(raw.risk) ? raw.risk : {};
+  const flags = ["reads_personal_data", "outbound_external", "official_api"] as const;
+  if (!flags.every((flag) => typeof risk[flag] === "boolean")) fail(`risk must say true or false for ${flags.join(", ")}`);
+  return {
+    id, version, name: typeof raw.name === "string" ? raw.name : id, interface: ["records_source"], adapter: raw.adapter as Adapter,
+    api: { base_url: httpsUrl(api.base_url, "api.base_url", fail) }, auth: parseAuth(raw.auth, fail),
+    risk: { reads_personal_data: risk.reads_personal_data as boolean, outbound_external: risk.outbound_external as boolean, official_api: risk.official_api as boolean },
+    sha256: checksum,
+  };
+}
+
+function catalogList(pins: ConnectorPins): string {
+  return Object.entries(pins).flatMap(([id, versions]) => Object.keys(versions).map((version) => `${id}@${version}`)).join(", ");
+}
+
+/** Reads `<root>/<id>/<version>/connector.json` and uses it only when its sha256 equals the pin (D34, §14.2). */
+export async function loadConnector(id: string, version: string, root: string = CONNECTORS_DIR, pins: ConnectorPins = CONNECTOR_PINS): Promise<ConnectorDef> {
+  if (!ID.test(id)) throw new InputError(`Connector id '${id}' must be lowercase letters, digits and dashes`);
+  if (!VERSION.test(version)) throw new InputError(`Connector version '${version}' must be a whole number`);
+  const pinned = Object.hasOwn(pins, id) && Object.hasOwn(pins[id] ?? {}, version) ? pins[id]?.[version] : undefined;
+  if (!pinned) throw new InputError(`Connector ${id}@${version} is not in this installer's catalog; it has: ${catalogList(pins)}`);
+  const path = join(root, id, version, "connector.json");
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    throw new ActionFailure(`The connector package ${id}@${version} is missing from this installation (${path}); reinstall the installer`);
+  }
+  const found = sha256(text);
+  if (found !== pinned) throw new ActionFailure(`The connector package ${id}@${version} does not match its pinned checksum (expected sha256:${pinned}, found sha256:${found}); it was not used. Reinstall the installer`);
+  return parseConnector(text, id, version, found);
+}
+
+/** The newest pinned connector that signs in with this keychain item over OAuth, or null when none does. */
+export async function oauthConnectorFor(secretId: string): Promise<ConnectorDef | null> {
+  for (const [id, versions] of Object.entries(CONNECTOR_PINS)) {
+    const newest = Object.keys(versions).sort((a, b) => Number(b) - Number(a))[0];
+    const def = newest === undefined ? null : await loadConnector(id, newest);
+    if (def?.auth.secret_id === secretId) return def;
+  }
+  return null;
+}
+
+/** Tests point every connector URL at one loopback fake server; nothing else can redirect them. */
+export function connectorUrl(url: string, env: Env = process.env): string {
+  const server = env[SERVER_ENV];
+  if (!server) return url;
+  if (!LOOPBACK.test(server)) throw new InputError(`${SERVER_ENV} must be http://127.0.0.1:<port> (a test server on this machine), got '${server}'`);
+  return `${server}${new URL(url).pathname}`;
+}
