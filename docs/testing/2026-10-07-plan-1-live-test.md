@@ -20,20 +20,20 @@ Fill this in as you go.
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup and install | | |
-| 1 | Full install to READY | | |
-| 2 | Repeating commands changes nothing | | |
-| 3 | Answers, wrong answers and retries | | |
-| 4 | Optional step given up, then reopened | | |
-| 5 | Secrets are refused | | |
-| 6 | Crash in the middle of a step | | |
-| 7 | Corrupt state file and backup restore | | |
-| 8 | Damaged audit file | | |
-| 9 | Audit chain verification | | |
-| 10 | Moved or changed solution file | | |
-| 11 | Empty home path | | |
-| 12 | Usage errors | | |
-| 13 | Clean up | | |
+| 0 | Setup and install | Pass | Run 2026-10-08 on commit `e5da2e2` (guide-only change after `00363ee`) |
+| 1 | Full install to READY | Pass | All outputs matched |
+| 2 | Repeating commands changes nothing | Pass | State byte-identical; audit ends at 9 lines |
+| 3 | Answers, wrong answers and retries | Pass | All 3c rows matched; heredoc paste issue noted |
+| 4 | Optional step given up, then reopened | Pass | All outputs matched |
+| 5 | Secrets are refused | Pass | Exit 2; value stored nowhere |
+| 6 | Crash in the middle of a step | Pass | Both crashes recovered; temp file cleaned up |
+| 7 | Corrupt state file and backup restore | Pass | Exit 3, backup restore worked |
+| 8 | Damaged audit file | Pass | Exit 3, file untouched, restore worked |
+| 9 | Audit chain verification | Pass | All 4 chains ok; tamper detected at line 2 |
+| 10 | Moved or changed solution file | Pass | Runs from its own copy; changed content refused |
+| 11 | Empty home path | Pass | Fell back to `$HOME/.installer`; cwd stayed empty |
+| 12 | Usage errors | Pass | `--force` message comes from Node's parser (see notes) |
+| 13 | Clean up | Pass | Test folder removed; no tarball in the repo; `~/.installer` never created |
 
 ---
 
@@ -65,11 +65,11 @@ If you open a new terminal later, run the `export` lines again (including the `P
 **Expected:** Node is v22 or later. `npm pack` prints `installer-0.1.0.tgz`. `which installer` prints `<your home>/installer-live-test/npm/bin/installer`.
 
 **Record:**
-- Node version:
-- npm version:
-- Commit shown by `git log`:
-- `which installer` printed:
-- Pass / Fail:
+- Node version: v22.14.0
+- npm version: 11.12.1
+- Commit shown by `git log`: `e5da2e2 (HEAD -> feat/engine-core) docs(test): add Plan 1 live test guide`
+- `which installer` printed: `/Users/allenliu/installer-live-test/npm/bin/installer`
+- Pass / Fail: Pass. `npm pack` produced `installer-0.1.0.tgz` (14 files, 11.6 kB).
 
 ---
 
@@ -110,10 +110,10 @@ ls $T/h1/state $T/h1/config $T/h1/solution
 - `state` holds `install-state.json` and `install-state.json.bak`; `config` holds 4 files; `solution` holds `solution.json`.
 
 **Record:**
-- First report:
-- Final report:
-- Folder permissions:
-- Pass / Fail:
+- First report: `⏳ IN PROGRESS  (4 of 7 steps done) · fixture-basic@1.0.0`, one `⛔ Needs you` line for `brain.register` (failed 1 of 3 tries), as expected
+- Final report: `✅ READY  (7 of 7 steps done) · fixture-basic@1.0.0`; `--json` gave `"overall":"ready"`, `"done":7,"total":7`
+- Folder permissions: `audit`, `config`, `solution`, `state` all `drwx------`; `state` has `install-state.json` and `.bak`, `config` has 4 files, `solution` has `solution.json`
+- Pass / Fail: Pass
 
 ---
 
@@ -132,8 +132,8 @@ wc -l < $T/h1/audit/audit.jsonl
 **Expected:** all three commands print `{"status":"complete"}`. `cmp` prints `SAME-STATE`. Both line counts are `9`.
 
 **Record:**
-- Audit lines before / after:
-- Pass / Fail:
+- Audit lines before / after: the paste showed only the final count, `9`. No audit line was added: the state stores the audit head and stayed byte-identical (`SAME-STATE`)
+- Pass / Fail: Pass. All three commands printed `{"status":"complete"}`
 
 ---
 
@@ -221,10 +221,11 @@ installer --home $T/h2 report
 The final `report` starts with `✅ READY  (5 of 5 steps done) · live-retry@1.0.0`.
 
 **Record:**
-- 3a attempts seen (1, 2, 3, then 1):
-- 3b result:
-- 3c rows that differed:
-- Pass / Fail:
+- 3a attempts seen (1, 2, 3, then 1): 1, 2, 3 (`"status":"blocked"`), then 1. Both reports said `failed 1 of 3 tries`; `next` showed the same failed step at `"attempts":1` without retrying
+- 3b result: check passed, next step `mode.name`
+- Note: pasting the `cat <<'EOF'` block into zsh left the shell at a `heredoc>` prompt (the closing `EOF` line did not match after pasting). Ctrl+C cancels it safely; `retry.json` was then written to `$T` directly
+- 3c rows that differed: none. Exit codes 2, 2, 2, 2, 0, 0, 2, 0; final report `✅ READY  (5 of 5 steps done) · live-retry@1.0.0`
+- Pass / Fail: Pass
 
 ---
 
@@ -256,9 +257,9 @@ installer --home $T/h3 report
 - `resume` reopens the optional step, and the second report starts with `⏳ IN PROGRESS  (6 of 7 steps done)` and lists the step under `⛔ Needs you`. This is intended: resume is how you retry an optional step.
 
 **Record:**
-- Report after giving up:
-- Report after resume:
-- Pass / Fail:
+- Report after giving up: `⚠️ READY WITH LIMITS  (6 of 7 steps done) · fixture-basic@1.0.0`, optional channel under `⚠️ Limited`
+- Report after resume: `⏳ IN PROGRESS  (6 of 7 steps done)`, `⛔ Needs you 1. Connect an optional extra channel — Create the file config/extra-channel.txt`; `resume` reset the step to `"status":"pending","attempts":0`
+- Pass / Fail: Pass
 
 ---
 
@@ -278,9 +279,9 @@ grep -c abc123 $T/h4/state/install-state.json $T/h4/audit/audit.jsonl
 **Expected:** `submit` prints `{"error":"'secret' values are never accepted through submit; they are collected by the local browser page","code":2}` and exits `2`. `grep` shows `0` for both files: the value was never stored.
 
 **Record:**
-- Error shown:
-- grep counts:
-- Pass / Fail:
+- Error shown: `{"error":"'secret' values are never accepted through submit; they are collected by the local browser page","code":2}`, exit `2`
+- grep counts: `install-state.json:0`, `audit.jsonl:0`
+- Pass / Fail: Pass (`secret.json` was written to `$T` directly to avoid the heredoc paste issue)
 
 ---
 
@@ -312,10 +313,10 @@ ls $T/h5/state
 - The last `ls` shows only `install-state.json` and `install-state.json.bak`: the leftover temp file was cleaned up.
 
 **Record:**
-- Exit codes:
-- `ls` after the second crash:
-- `ls` at the end:
-- Pass / Fail:
+- Exit codes: `137` and `137` (zsh printed `zsh: killed ...` both times); `resume` after the first crash showed `mode.shared-work`
+- `ls` after the second crash: `install-state.json  install-state.json.86475.tmp  install-state.json.bak`; `next` still showed `mode.shared-work`, repeat `submit` showed `mode.report-time`
+- `ls` at the end: `install-state.json  install-state.json.bak`
+- Pass / Fail: Pass
 
 ---
 
@@ -339,10 +340,10 @@ installer --home $T/h1 report
 - `next` redoes that last step and prints `{"status":"complete"}`. The last `report` shows `✅ READY  (7 of 7 steps done)`.
 
 **Record:**
-- Error and exit code:
-- Report after restore:
-- Report after `next`:
-- Pass / Fail:
+- Error and exit code: `{"error":"<home>/state/install-state.json is not valid JSON; it was not changed. Restore it or start in a new home. A backup of the previous state is at <home>/state/install-state.json.bak; copy it over the state file to continue.","code":3}`, exit `3`
+- Report after restore: `⏳ IN PROGRESS  (6 of 7 steps done)`; `Write final marker` (an auto step) not yet listed
+- Report after `next`: `next` printed `{"status":"complete"}`, report `✅ READY  (7 of 7 steps done)`
+- Pass / Fail: Pass
 
 ---
 
@@ -371,9 +372,9 @@ installer --home $T/h6 submit mode.shared-work --value '"yes"'
 - After restoring the good copy, `submit` succeeds and shows `mode.report-time`.
 
 **Record:**
-- Error and exit code:
-- md5 before / after:
-- Pass / Fail:
+- Error and exit code: `{"error":"<home>/audit/audit.jsonl has a damaged last line; it was not changed. Restore it from a copy, or start in a new home.","code":3}`, exit `3`
+- md5 before / after: `7c6e071103188d04ac0fda60e8c95448` / `7c6e071103188d04ac0fda60e8c95448` (identical). `report` showed `⏳ IN PROGRESS  (2 of 7 steps done)`; after restoring the copy, `submit` showed `mode.report-time`
+- Pass / Fail: Pass
 
 ---
 
@@ -397,9 +398,9 @@ To see tamper detection, change one character inside any line of `$T/h2/audit/au
 (for example a letter in a `ts` value) and run the command again. **Expected:** `{"ok":false,"line":<n>,"reason":"hash mismatch"}`.
 
 **Record:**
-- Results per home:
-- Result after tampering:
-- Pass / Fail:
+- Results per home: `h1` `{"ok":true,"lines":10}` (9 from Test 2 plus the redo in Test 7), `h2` `{"ok":true,"lines":14}`, `h3` `{"ok":true,"lines":11}`, `h5` `{"ok":true,"lines":5}`
+- Result after tampering: `{"ok":false,"line":2,"reason":"hash mismatch"}`. Tampered with `sed -i '' '2s/"ts":"2026/"ts":"2025/' $T/h2/audit/audit.jsonl` instead of an editor (original kept at `$T/h2-audit-backup.jsonl`)
+- Pass / Fail: Pass
 
 ---
 
@@ -423,9 +424,9 @@ echo $?
 - `start` with changed content exits `2` with `This home already has an install of 'fixture-basic@1.0.0' with different solution content; use a different --home`.
 
 **Record:**
-- Report after the move:
-- Changed-content error:
-- Pass / Fail:
+- Report after the move: `⏳ IN PROGRESS  (2 of 7 steps done) · fixture-basic@1.0.0`; `start` with the identical copy showed `mode.shared-work`
+- Changed-content error: `{"error":"This home already has an install of 'fixture-basic@1.0.0' with different solution content; use a different --home","code":2}`, exit `2`
+- Pass / Fail: Pass
 
 ---
 
@@ -448,9 +449,9 @@ cd $T
 `ls $T/fakehome/.installer` shows `audit config solution state`. The last command finds the same install and shows `mode.shared-work`.
 
 **Record:**
-- Contents of `emptycwd`:
-- Contents of `fakehome/.installer`:
-- Pass / Fail:
+- Contents of `emptycwd`: empty (`ls -A` printed nothing)
+- Contents of `fakehome/.installer`: `audit  config  solution  state`; `INSTALLER_HOME=""` found the same install at `mode.shared-work`
+- Pass / Fail: Pass
 
 ---
 
@@ -470,8 +471,8 @@ ls $T/h10
 - `ls $T/h10` fails with `No such file or directory`: a failed command creates nothing.
 
 **Record:**
-- Outputs that differed:
-- Pass / Fail:
+- Outputs that differed: none; all three exited `2` and `ls $T/h10` failed with `No such file or directory`. The full `--force` message is Node's `parseArgs` text: `Unknown option '--force'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--force"`. The hint about `--` does not apply to this CLI and may confuse users (minor, cosmetic)
+- Pass / Fail: Pass
 
 ---
 
