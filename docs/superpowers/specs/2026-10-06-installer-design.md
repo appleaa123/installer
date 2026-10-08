@@ -133,7 +133,7 @@ or any other business uses the same engine with a different recipe.
   config/
     instance.yaml                  # mode, roles, channels, policies, pins
     mapping/<entity>.yaml          # data contract → client columns
-    profiles/<runtime>.yaml        # runtime profiles (D32)
+    profiles/<runtime>.json        # runtime profiles (D32; bundled with the package, Plan 2)
   connectors/<id>/<version>/       # pinned, checksummed packages
   workflows/<id>/
     workflow.yaml                  # current version (typed steps)
@@ -141,6 +141,9 @@ or any other business uses the same engine with a different recipe.
     versions/<n>/                  # previous versions + replay results
   state/
     install-state.json             # install state machine (§6.4)
+    install-state.json.bak         # previous state (Plan 1)
+  solution/solution.json           # pinned solution (Plan 1)
+  runtime/probe/                   # working folder for headless probe calls (Plan 2)
     ops.sqlite                     # approvals, runs, idempotency, sessions,
                                    # autonomy stats, pending events
   runs/<workflow>/<run_id>/        # per-run artifacts (§10.6)
@@ -230,7 +233,10 @@ agent to:
 Wiki file resource: `skillswiki:<pack>/<skill>/<path>` (fetched with
 `get_skill_resource(pack, skill_name, path)`, D6), or a plain HTTPS URL to
 a recipe file. A solution with no recipe uses `skillswiki:none` and builds
-everything interactively. The `INSTALL.md` served at the solution URL
+everything interactively. `file:<path>` refs are accepted for local
+solutions and tests. A `skillswiki:` ref needs the Skills Wiki key before
+`start`, so `INSTALL.md` runs `installer secret skillswiki` first (Plan 3,
+D46). The `INSTALL.md` served at the solution URL
 embeds this reference.
 
 `INSTALL.md` also fixes the **operator rules** the agent must follow:
@@ -260,22 +266,33 @@ connectors those suggestions need (phases 3–4).
 
 ### 6.3 Step protocol (D21)
 
-`installer next` prints exactly one step as JSON:
+`installer next` prints exactly one step as JSON, wrapped with its
+status (Plan 1):
 
 ```json
 {
-  "step_id": "conn.gmail.auth",
-  "phase": "DATA",
-  "type": "human_action",
-  "title": "Connect the team email inbox",
-  "why": "Workflow 'morning-inbox-scan' reads new customer emails each morning.",
-  "instructions": ["A page will open in your browser", "Sign in with the team inbox", "Approve read-only access"],
-  "input": { "kind": "oauth", "provider": "google" },
-  "blocking": true,
-  "est_minutes": 3,
-  "resume": "installer resume"
+  "status": "step",
+  "view": {
+    "step": {
+      "step_id": "conn.gmail.auth",
+      "phase": "DATA",
+      "type": "human_action",
+      "title": "Connect the team email inbox",
+      "why": "Workflow 'morning-inbox-scan' reads new customer emails each morning.",
+      "instructions": ["A page will open in your browser", "Sign in with the team inbox", "Approve read-only access"],
+      "input": { "kind": "oauth", "provider": "google" },
+      "blocking": true,
+      "est_minutes": 3
+    },
+    "status": "pending",
+    "attempts": 0,
+    "resume": "installer resume"
+  }
 }
 ```
+
+`view.hints` lists the probed runtime's lines from the step's `hints`
+(D7).
 
 | `type` | Performed by | Completion |
 |---|---|---|
@@ -300,16 +317,20 @@ hint in the report.
 ```json
 {
   "schema": 1,
-  "solution": { "ref": "<url-or-slug>", "recipe_version": "<sha>" },
+  "solution": { "ref": "<url-or-slug>", "id": "<solution id>", "version": "1.0.0", "recipe_version": "<sha>" },
   "started_at": "2026-10-06T14:00:00-04:00",
   "mode": "team_host",
+  "roles": { "decision_maker": "Office manager" },
+  "runtime": { "profile": "claude-code", "support_level": 2, "…": "capability map, §7.3" },
   "steps": {
     "conn.gmail.auth": { "status": "done", "at": "…", "by": "human" },
-    "chan.whatsapp.verify": { "status": "blocked", "reason": "Meta verification pending", "since": "…" }
-  },
-  "phase": "CHANNELS"
+    "chan.whatsapp.verify": { "status": "blocked", "at": "…", "attempts": 3, "hint": "Meta verification pending", "reason": "check failed 3 times" }
+  }
 }
 ```
+
+The current phase is not stored; the report works it out from the steps.
+`recipe_version` is the content sha256 of the solution text (Plan 2).
 
 - Step status: `pending | done | blocked | skipped | failed`.
 - Every step is idempotent; `installer resume` re-derives the next step
@@ -322,11 +343,11 @@ hint in the report.
 humans; also posted to the internal channel once connected):
 
 ```
-⚠️ READY WITH LIMITS                                   (6 of 8 phases done)
+⚠️ READY WITH LIMITS                                   (6 of 8 steps done)
 ✅ Working   Skills Wiki brain · customer sheet · Telegram team channel
              morning-inbox-scan (dry run confirmed, first live run Tue 08:00)
-⚠️ Limited   Agent: Pi 0.73 — Level 3 of 4 (tools via CLI, no MCP)
-             External WhatsApp: Meta verification pending (1–3 days)
+🤖 Agent      pi 0.73 — level 1 of 3 (no session resume, MCP not checked yet)
+⚠️ Limited   External WhatsApp: Meta verification pending (1–3 days)
 ⛔ Needs you 1. Approve Meta business verification → run "installer resume"
              2. Choose who approves legal/financial items (only owner so far)
 📊 Evals     <pack> 18/20 · <pack> 27/30
@@ -378,41 +399,46 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 
 Profiles are data files, not code. Adding an agent means adding a profile.
 
-```yaml
-id: claude-code
-min_version: "2.1.0"
-detect: { cmd: "claude --version", match: "Claude Code" }
-headless:
-  cmd: ["claude", "-p", "{prompt}", "--output-format", "json"]
-  result_path: ".result"
-  session_path: ".session_id"
-schema:
-  flag: ["--json-schema", "{schema_json}"]
-  result_path: ".structured_output"
-resume: { flag: ["-r", "{session_id}"] }
-tools_off: ["--restricted", "--strict-mcp-config", "--mcp-config", "{judge_mcp_config}"]
-mcp_register_hint: "claude mcp add --transport http {name} {url} --header 'Authorization: Bearer {key_ref}'"
-tos_review: { status: "ok", note: "first-party CLI used headless by the client on their own account" }
+```json
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "min_version": "2.1.0",
+  "detect": { "cmd": ["claude", "--version"], "match": "Claude Code" },
+  "headless": {
+    "cmd": ["claude", "-p", "{prompt}", "--output-format", "json", "--tools", "", "--strict-mcp-config"],
+    "result_path": "result",
+    "session_path": "session_id",
+    "error_path": "is_error"
+  },
+  "schema": { "flag": ["--json-schema", "{schema_json}"], "result_path": "structured_output" },
+  "resume": { "flag": ["-r", "{session_id}"] },
+  "tos_review": { "status": "ok", "note": "First-party CLI used headless by the client on their own account." }
+}
 ```
 
-The Claude Code profile values above were verified live on 2026-10-06
-(v2.1.292): `-p`, `--output-format json` (returns `session_id`),
-`--json-schema` (returns `structured_output`), `-r <session_id>` resume,
-`--disallowedTools`, `--strict-mcp-config`. The `mcp_register_hint`
-syntax is an assumption to verify.
+The Claude Code profile values above were verified live on 2026-10-08
+(v2.1.294): `-p --output-format json` (text at `.result`, session at
+`.session_id`, error flag `.is_error`), `--json-schema` (object at
+`.structured_output`), `-r <session_id>` resume, and tools off with
+`--tools "" --strict-mcp-config` (`--restricted` only removes code-running
+tools, so it is not used). Plan 3 adds `mcp_register.cmd`, an argv
+template the **engine** runs with the key from the keychain, so the key
+never enters the agent's context (D46). Its syntax is verified (O6):
+`claude mcp add [-s scope] --transport http <name> <url> --header "Authorization: Bearer <key>"`.
 
 ### 7.3 Probe (`installer probe`, phase 0)
 
 | Check | Method | Pass condition |
 |---|---|---|
-| C2 shell | Agent runs `installer echo <nonce>` | Output contains nonce |
+| C2 shell | The agent runs `installer probe` from its shell and reads the JSON back | JSON read back |
 | C4 headless | Profile headless command with a fixed two-label classification | Valid output |
 | C4 schema | Same with schema flag (if any) | Runner validation passes |
 | C5 resume | Store a nonce word, resume, ask it back | Same word returned, same session |
-| C6 MCP | Agent registers Skills Wiki MCP, then calls a ping tool | Ping succeeds |
+| C6 MCP (Plan 3) | Engine registers Skills Wiki MCP, then the agent calls a ping tool | Ping succeeds |
 
-Output: capability map + **support level** (number of C4–C6 available
-natively) + tier (§7.5), written to `instance.yaml` and the report.
+Output: capability map in the install state (`runtime`) and the report;
+**support level** = number of C4, C5, C6 that pass (0–3); tier (§7.5).
 
 ### 7.4 Fallbacks
 

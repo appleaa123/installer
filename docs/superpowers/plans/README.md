@@ -11,10 +11,10 @@ Language: TypeScript on Node ≥ 22 (D44).
 | # | Plan | Deliverable | Depends on | Spec sections | Open items it resolves | Status |
 |---|---|---|---|---|---|---|
 | 1 | **Engine core** | `installer start / next / submit / verify / resume / report` driven by a scripted operator against a fixture solution; atomic resumable state; hash-chained audit; kill-between-steps and idempotency tests | — | §6.3–6.6, §11.8 (audit chain), §15.1 (engine tests), §15.2 (scripted operator) | — | [Implemented](2026-10-06-01-engine-core.md) on `feat/engine-core` |
-| 2 | **Runtime conformance + brain phase** | Runtime profiles, `installer probe` (C1–C6), Claude Code profile certified, `INSTALL.md` bootstrap, `agent_action` intents, Skills Wiki MCP registration + verify, manual combo activation step, `skillswiki:` solution refs, MODE phase (deployment mode + roles) | 1 | §5, §6.1–6.2, §7, §13 | O1 (Codex live test), O6 (`mcp add` syntax), O10 | Not started |
-| 3 | **Secrets + connector framework** | Local browser page for `secret`/`oauth`, OS keychain storage, connector definition loader, pinned + checksummed connector packages, `installer disconnect` | 1, 2 | §8, §14.2 (secrets, supply chain) | O3 (headless OAuth redirect) | Not started |
+| 2 | **Runtime conformance** | Runtime profiles as JSON, `installer probe` (C2, C4, C4 schema, C5) with a capability map in the state and report, `https:` solution refs with `recipe_version`, MODE phase (mode + decision maker), per-runtime hints on `agent_action`, `INSTALL.md`, starter solution (D46) | 1 | §5, §6.1–6.3, §7 | — | [Implemented](2026-10-08-02-runtime-conformance.md) on `feat/runtime-conformance` |
+| 3 | **Secrets + BRAIN phase** | Local browser page for `secret`/`oauth`, OS keychain storage, Skills Wiki key, engine-run MCP registration (O6 syntax verified), C6 probe, `skillswiki:` refs, combo `human_action` verified via `get_active_combo`, `installer disconnect` for the Skills Wiki key (D46) | 1, 2 | §6.2 BRAIN, §7.3 C6, §8.3, §13, §14.2 | O3 (headless OAuth redirect), O10, O15 | Not started |
 | 4 | **Local MCP server + approvals** | Local MCP server, `installer tool` CLI fallback, approval items, action-hash tokens, level derivation, compiled floor, decisions (approve / edit / reject / expire), roles | 1–3 | §7.4, §11.1–11.6, §11.9 | — | Not started |
-| 5 | **Data layer** | Data contract, phase-3 mapping, `records.*` tools, field tags, spreadsheet connector (Google / Microsoft), default sheet creation, import with change preview, optimistic concurrency | 3, 4 | §9 | — | Not started |
+| 5 | **Connectors + data layer** | Connector definition loader, pinned + checksummed connector packages, `installer disconnect <connector>`, data contract, phase-3 mapping, `records.*` tools, field tags, spreadsheet connector (Google / Microsoft), default sheet creation, import with change preview, optimistic concurrency | 3, 4 | §8.1–8.2, §9, §14.2 (supply chain) | — | Not started |
 | 6 | **Gateway + channels** | Always-on gateway, channel connector interface, Telegram + email connectors, inbound envelope, injection marking, sender identity via `invite`, reply codes, opt-out, consent policy | 3, 4, 5 | §12, §11.9 | O4 (tunnels, webhook channels later) | Not started |
 | 7 | **Workflow runner** | Workflow files, `tool` / `judge` / `approve` steps, judge invocation via profile or direct-model fallback, OS-scheduler triggers, event triggers, run log, idempotency keys, missed-run rule, host-back-online notice, twice-daily report, escalation | 2, 4, 5, 6 | §10.1–10.7, §10.9, §10.3 (D38–D40) | O14 (per-OS scheduler behaviour) | Not started |
 | 8 | **Workflow lifecycle** | Phases 5–7 (workflows, dry run, activate), sandbox mode + recording sink, agentic mode, hardening proposals + replay gate, earned autonomy, urgent events, learning loop | 7 | §10.8, §10.10, §11.6–11.7, §15.5 | O12 (thresholds, first pass) | Not started |
@@ -26,7 +26,7 @@ by API key) are handled when the plan that touches them is written.
 
 ## Carried forward from Plan 1
 
-Plan 2 must cover these when it writes `INSTALL.md` and the solution refs:
+Plan 2 covers the items below that concern runtime, refs and views; the BRAIN items move to Plan 3 (D46):
 
 - `installer next` prints a wrapped result, `{ "status": "step" | "blocked" | "complete", "view": { "step", "status", "attempts", "hint", "resume" } }`.
   The spec §6.3 field names live inside `view.step`. Update the §6.3 example to match.
