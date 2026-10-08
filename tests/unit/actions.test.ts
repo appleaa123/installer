@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveInHome, runAction, runCheck } from "../../src/core/actions.js";
@@ -75,5 +75,39 @@ describe("runCheck", () => {
   it("rejects prototype member lookups like toString", async () => {
     const home = await makeTempHome();
     await expect(runCheck(home, { check: "toString" })).rejects.toThrow(InputError);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("symbolic links (D34)", () => {
+  it("refuses to write through a linked folder that points outside the home", async () => {
+    const home = await makeTempHome();
+    const outside = await makeTempHome();
+    await symlink(outside, join(home, "config"));
+    await expect(runAction(home, { action: "write_file", args: { path: "config/a.txt", content: "x" } })).rejects.toThrow(/symbolic link/);
+    await expect(readdir(outside)).resolves.toEqual([]);
+  });
+
+  it("refuses to write to a linked file whose target does not exist yet", async () => {
+    const home = await makeTempHome();
+    const outside = await makeTempHome();
+    await mkdir(join(home, "config"));
+    await symlink(join(outside, "target.txt"), join(home, "config", "a.txt"));
+    await expect(runAction(home, { action: "write_file", args: { path: "config/a.txt", content: "x" } })).rejects.toThrow(/symbolic link/);
+    await expect(access(join(outside, "target.txt"))).rejects.toThrow();
+  });
+
+  it("refuses to check a file through a link instead of reporting on the outside file", async () => {
+    const home = await makeTempHome();
+    const outside = await makeTempHome();
+    await symlink(outside, join(home, "config"));
+    await expect(runCheck(home, { check: "file_exists", args: { path: "config" } })).rejects.toThrow(/symbolic link/);
+  });
+
+  it("still works when the home itself is reached through a link", async () => {
+    const real = await makeTempHome();
+    const link = join(await makeTempHome(), "home-link");
+    await symlink(real, link);
+    await runAction(link, { action: "write_file", args: { path: "config/a.txt", content: "x" } });
+    await expect(readFile(join(real, "config", "a.txt"), "utf8")).resolves.toBe("x");
   });
 });
