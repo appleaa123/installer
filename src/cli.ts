@@ -18,10 +18,11 @@ import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
+import { serveStdio } from "./core/mcp-server.js";
 import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
 import { DEFAULT_TOOLS } from "./core/tool-set.js";
-import { invokeTool, toolContext } from "./core/tools.js";
+import { describeTools, invokeTool, toolContext } from "./core/tools.js";
 import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
@@ -29,7 +30,7 @@ const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
 const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals";
 
-class NoInstallError extends Error {
+class NoInstallError extends InputError {
   constructor() {
     super("No install found in this home; run 'installer start --solution <ref>' first");
     this.name = "NoInstallError";
@@ -223,6 +224,16 @@ async function toolCommand(home: string, name: string | undefined, json: string 
   return invokeTool(await toolContext(home, "cli", DEFAULT_TOOLS), name, args);
 }
 
+/** Run by the agent's MCP client (D56): JSON-RPC on stdin/stdout and nothing else on stdout; each call reads the install afresh. */
+async function mcpServeCommand(home: string): Promise<number> {
+  const call = async (name: string, args: unknown) => {
+    if (!(await loadState(home))) throw new NoInstallError();
+    return invokeTool(await toolContext(home, "mcp", DEFAULT_TOOLS), name, args);
+  };
+  await serveStdio({ list: () => describeTools(DEFAULT_TOOLS), call }, process.stdin, process.stdout);
+  return EXIT.OK;
+}
+
 type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
 type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined, extra: string | undefined) => Promise<unknown>;
 
@@ -258,6 +269,7 @@ async function run(argv: readonly string[]): Promise<number> {
   const [command = "", arg, extra] = positionals;
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
   if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
+  if (command === "mcp-serve") return mcpServeCommand(home);
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;
