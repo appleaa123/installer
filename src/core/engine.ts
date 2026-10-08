@@ -1,7 +1,8 @@
-import { runAction, runCheck } from "./actions.js";
+import { runAction, runCheck, type CheckResult } from "./actions.js";
 import { crashPoint } from "./crash.js";
+import { ActionFailure } from "./failure.js";
 import { AGENT_FORBIDDEN_KINDS, validateInput } from "./inputs.js";
-import type { AuditHead, InstallState, Solution, StepDef, StepRecord, StepStatus } from "./types.js";
+import type { Action, AuditHead, InstallState, Solution, StatePatch, StepDef, StepRecord, StepStatus, StepType } from "./types.js";
 
 export const MAX_VERIFY_ATTEMPTS = 3;
 export const RESUME_HINT = "installer resume";
@@ -55,6 +56,8 @@ export type VerifyResult =
   | { readonly status: "blocked"; readonly hint: string; readonly retry: false };
 
 const SETTLED: readonly StepStatus[] = ["done", "skipped"];
+/** Engine-owned steps are rerun by `installer resume`; a person or agent reruns the rest with `installer verify`. */
+const RETRIED_BY_RESUME: readonly StepType[] = ["verify", "auto"];
 
 export function recordOf(state: InstallState, stepId: string): StepRecord | undefined {
   return state.steps[stepId];
@@ -76,9 +79,9 @@ export function currentStep(solution: Solution, state: InstallState): StepDef | 
   return null;
 }
 
-/** The command that retries a failed step: verify-type steps rerun through resume, the rest through verify. */
+/** The command that retries a failed step: engine-owned steps rerun through resume, the rest through verify. */
 export function retryCommand(step: StepDef): string {
-  return step.type === "verify" ? RESUME_HINT : `installer verify ${step.step_id}`;
+  return RETRIED_BY_RESUME.includes(step.type) ? RESUME_HINT : `installer verify ${step.step_id}`;
 }
 
 function viewOf(step: StepDef, record: StepRecord | undefined, profile?: string | null): StepView {
@@ -102,20 +105,43 @@ export async function transition(deps: EngineDeps, state: InstallState, step: St
   return next;
 }
 
-export async function runVerify(deps: EngineDeps, state: InstallState, step: StepDef, actor: Actor): Promise<{ state: InstallState; result: VerifyResult }> {
-  if (!step.verify) throw new EngineError(`Step '${step.step_id}' has nothing to verify`);
-  const check = await runCheck(deps.home, step.verify);
-  if (check.ok) {
-    return { state: await transition(deps, state, step, { status: "done", at: deps.now(), by: actor }, actor), result: { status: "passed" } };
-  }
+/** One more failure of a step: `failed` with the hint, `blocked` on the third (D53: actions mirror checks). */
+async function failStep(deps: EngineDeps, state: InstallState, step: StepDef, hint: string, actor: Actor, what: "check" | "action"): Promise<{ state: InstallState; result: VerifyResult }> {
   const attempts = (recordOf(state, step.step_id)?.attempts ?? 0) + 1;
-  const hint = check.hint ?? "Check failed";
   if (attempts >= MAX_VERIFY_ATTEMPTS) {
-    const record: StepRecord = { status: "blocked", at: deps.now(), attempts, hint, reason: `check failed ${attempts} times` };
+    const record: StepRecord = { status: "blocked", at: deps.now(), attempts, hint, reason: `${what} failed ${attempts} times` };
     return { state: await transition(deps, state, step, record, actor), result: { status: "blocked", hint, retry: false } };
   }
   const record: StepRecord = { status: "failed", at: deps.now(), attempts, hint };
   return { state: await transition(deps, state, step, record, actor), result: { status: "failed", hint, retry: true } };
+}
+
+/** A check that could not run (network, keychain) counts as a failed check with its message as the hint. */
+function asCheckResult(error: unknown): CheckResult {
+  if (error instanceof ActionFailure) return { ok: false, hint: error.message };
+  throw error;
+}
+
+export async function runVerify(deps: EngineDeps, state: InstallState, step: StepDef, actor: Actor): Promise<{ state: InstallState; result: VerifyResult }> {
+  if (!step.verify) throw new EngineError(`Step '${step.step_id}' has nothing to verify`);
+  const check = await runCheck(deps.home, step.verify, state).catch(asCheckResult);
+  if (check.ok) {
+    return { state: await transition(deps, state, step, { status: "done", at: deps.now(), by: actor }, actor), result: { status: "passed" } };
+  }
+  return failStep(deps, state, step, check.hint ?? "Check failed", actor, "check");
+}
+
+/** Runs an auto step; an ActionFailure becomes a failed (then blocked) step, anything else still throws. */
+async function runAuto(deps: EngineDeps, state: InstallState, step: StepDef, action: Action): Promise<InstallState> {
+  let patch: StatePatch;
+  try {
+    patch = await runAction(deps.home, action, state);
+  } catch (error) {
+    if (!(error instanceof ActionFailure)) throw error;
+    return (await failStep(deps, state, step, error.message, "engine", "action")).state;
+  }
+  crashPoint("engine:after-action");
+  return transition(deps, { ...state, ...patch }, step, { status: "done", at: deps.now(), by: "engine" }, "engine");
 }
 
 /** Runs engine-owned steps until a human/agent step, a blocking problem, or completion. */
@@ -126,13 +152,12 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
     if (!step) return { state: current, result: { status: "complete" } };
     const record = recordOf(current, step.step_id);
     if (record?.status === "blocked") return { state: current, result: { status: "blocked", view: viewOf(step, record, current.runtime?.profile) } };
-    if (step.type === "auto" && step.auto) {
-      const patch = await runAction(deps.home, step.auto, current);
-      crashPoint("engine:after-action");
-      current = await transition(deps, { ...current, ...patch }, step, { status: "done", at: deps.now(), by: "engine" }, "engine");
+    const untried = record === undefined || record.status === "pending";
+    if (step.type === "auto" && step.auto && untried) {
+      current = await runAuto(deps, current, step, step.auto);
       continue;
     }
-    if (step.type === "verify" && (record === undefined || record.status === "pending")) {
+    if (step.type === "verify" && untried) {
       current = (await runVerify(deps, current, step, "engine")).state;
       continue;
     }

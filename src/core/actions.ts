@@ -1,5 +1,6 @@
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
+import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById } from "./profile.js";
@@ -55,8 +56,12 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   write_file: async (home, args) => {
     const target = await confinedPath(home, stringArg(args, "path"));
     const content = args.content === undefined ? "" : stringArg(args, "content");
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
+    try {
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+      await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
+    } catch (error) {
+      throw new ActionFailure(`Cannot write ${stringArg(args, "path")} (${(error as NodeJS.ErrnoException).code ?? "unknown error"})`);
+    }
     return {};
   },
   probe_runtime: async (home, args) => {
@@ -68,7 +73,9 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   derive_mode: async (_home, args, state) => deriveModeAction(args, state),
 };
 
-const CHECKS: Readonly<Record<string, (home: string, args: Args) => Promise<CheckResult>>> = {
+type CheckRun = (home: string, args: Args, state: InstallState | undefined) => Promise<CheckResult>;
+
+const CHECKS: Readonly<Record<string, CheckRun>> = {
   file_exists: async (home, args) => {
     const path = stringArg(args, "path");
     try {
@@ -90,8 +97,8 @@ export async function runAction(home: string, action: Action, state?: InstallSta
   return run(home, action.args ?? {}, state);
 }
 
-export async function runCheck(home: string, check: Check): Promise<CheckResult> {
+export async function runCheck(home: string, check: Check, state?: InstallState): Promise<CheckResult> {
   if (!Object.hasOwn(CHECKS, check.check)) throw new InputError(`Unknown check '${check.check}'`);
   const run = CHECKS[check.check];
-  return run(home, check.args ?? {});
+  return run(home, check.args ?? {}, state);
 }

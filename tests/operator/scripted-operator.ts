@@ -86,7 +86,7 @@ export async function operate(options: { home: string; solutionRef: string; scri
       const perform = options.script.giveUp?.includes(id) ? undefined : options.script.perform[id];
       if (perform) await perform(options.home);
       current = perform || type === "agent_action" || options.script.giveUp?.includes(id) ? step(["verify", id]) : step(["submit", id, "--done"]);
-    } else if (type === "verify" && current.view.status === "failed") {
+    } else if ((type === "verify" || type === "auto") && current.view.status === "failed") {
       await options.script.perform[id]?.(options.home);
       current = step(["resume"]);
     } else {
