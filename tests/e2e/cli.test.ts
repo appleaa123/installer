@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
+import { getSecret } from "../../src/core/keychain.js";
 import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
+import { formHeaders, request, waitForExit } from "../helpers/http.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -169,6 +171,40 @@ describe("installer CLI", () => {
     });
   });
 
+  describe("installer secret (D47)", () => {
+    const pids: number[] = [];
+
+    afterEach(() => {
+      for (const pid of pids.splice(0)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone, which is what the tests expect
+        }
+      }
+    });
+
+    it("prints a waiting url and exits; the page stores one key in the keychain, then exits too", async () => {
+      const dir = await makeTempHome();
+      const result = runCli(["secret", "skillswiki"], { env: { INSTALLER_KEYCHAIN_DIR: dir } });
+      expect(result.code).toBe(0);
+      const { status, url, pid } = result.json as { status: string; url: string; pid: number };
+      pids.push(pid);
+      expect(status).toBe("waiting");
+      expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/s\/[0-9a-f]{64}$/);
+      expect((await request(url)).status).toBe(200);
+      const reply = await request(url, { method: "POST", headers: formHeaders(new URL(url).origin), body: "value=sw_live_123" });
+      expect(reply.text).toContain("Done, you can close this tab.");
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: dir })).resolves.toBe("sw_live_123");
+      await waitForExit(pid);
+    });
+
+    it("refuses an id that is not a secret id, exit 2, and starts no page", () => {
+      const result = runCli(["secret", "Skills Wiki"], {});
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: "Secret id 'Skills Wiki' must be lowercase letters, digits and dashes" });
+    });
+  });
   it("report prints text by default and JSON with --json", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });

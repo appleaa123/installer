@@ -8,7 +8,9 @@ import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
+import { requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
+import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { SolutionError, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -19,7 +21,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret";
 
 class NoInstallError extends Error {
   constructor() {
@@ -145,33 +147,63 @@ async function probeCommand(flags: Flags): Promise<CapabilityMap> {
   }
 }
 
+/** `installer secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
+async function secretCommand(id: string): Promise<unknown> {
+  const { url, pid } = await launchSecretPage(requireSecretId(id));
+  const hint = headlessHint(url);
+  if (!hint) openBrowser(url);
+  return { status: "waiting", url, pid, ...(hint ? { hint } : {}) };
+}
+
+/** The detached page process: serves the form, writes the keychain once, then exits. Never touches the engine home. */
+async function secretServeCommand(id: string): Promise<number> {
+  const page = await startSecretPage({ id: requireSecretId(id), store: (value) => setSecret(id, value) });
+  if (process.send) {
+    process.send({ url: page.url });
+    process.disconnect();
+  } else {
+    emit(process.stdout, { url: page.url });
+  }
+  await page.done;
+  return EXIT.OK;
+}
+
+type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
+type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined) => Promise<unknown>;
+
+/** Commands that need no install state. */
+const STANDALONE: Readonly<Record<string, Standalone>> = {
+  start: (home, flags) => startCommand(home, flags),
+  probe: (_home, flags) => probeCommand(flags),
+  secret: (_home, _flags, arg) => secretCommand(requireArg(arg, "secret")),
+};
+
+/** Commands that run on the install in the home. */
+const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
+  next: async ({ state, deps }) => (await advance(deps, state)).result,
+  submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
+  verify: async ({ state, deps }, _flags, arg) => {
+    const verified = await verifyStep(deps, state, requireArg(arg, "verify"));
+    return { ...verified.result, next: verified.next };
+  },
+  resume: async ({ state, deps }) => (await resume(deps, state)).result,
+  report: async ({ state, deps }, flags) => {
+    const report = buildReport(deps.solution, state);
+    return flags.json ? report : renderReport(report);
+  },
+};
+
 async function run(argv: readonly string[]): Promise<number> {
   const { flags, positionals } = parse(argv);
   const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
-  const [command, arg] = positionals;
-  if (command === "start") {
-    emit(process.stdout, await startCommand(home, flags));
+  const [command = "", arg] = positionals;
+  if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
+  if (Object.hasOwn(STANDALONE, command)) {
+    emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;
   }
-  if (command === "probe") {
-    emit(process.stdout, await probeCommand(flags));
-    return EXIT.OK;
-  }
-  if (!command || !["next", "submit", "verify", "resume", "report"].includes(command)) {
-    throw new InputError(`Unknown command '${command ?? ""}'. Commands: ${COMMANDS}`);
-  }
-  const { state, deps } = await loadInstall(home);
-  if (command === "next") emit(process.stdout, (await advance(deps, state)).result);
-  if (command === "submit") emit(process.stdout, (await submit(deps, state, requireArg(arg, command), submitPayload(flags))).result);
-  if (command === "verify") {
-    const verified = await verifyStep(deps, state, requireArg(arg, command));
-    emit(process.stdout, { ...verified.result, next: verified.next });
-  }
-  if (command === "resume") emit(process.stdout, (await resume(deps, state)).result);
-  if (command === "report") {
-    const report = buildReport(deps.solution, state);
-    emit(process.stdout, flags.json ? report : renderReport(report));
-  }
+  if (!Object.hasOwn(ON_INSTALL, command)) throw new InputError(`Unknown command '${command}'. Commands: ${COMMANDS}`);
+  emit(process.stdout, await ON_INSTALL[command](await loadInstall(home), flags, arg));
   return EXIT.OK;
 }
 

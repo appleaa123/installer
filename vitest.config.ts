@@ -14,6 +14,8 @@ export default defineConfig({
       // Tests never touch the real OS keychain: a throwaway file keychain per run (D51).
       INSTALLER_KEYCHAIN: "file",
       INSTALLER_KEYCHAIN_DIR: mkdtempSync(join(tmpdir(), "installer-keychain-")),
+      // `installer secret` must never open a browser tab during a test run.
+      INSTALLER_BROWSER: "none",
     },
   },
 });
