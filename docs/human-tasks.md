@@ -35,9 +35,18 @@ Each task says why it is needed and what to do, step by step.
 3. Paste each test's output to Claude. If an output differs from the guide, Claude will fix the code or the guide.
 4. The guide's last test removes the Skills Wiki registration and the keychain item it created.
 
+### 4. Run the Plan 4 live test (approvals, your real Claude Code)
+
+**Why:** the automated tests use a fake agent and make the person's decisions in-process. This checks that your real Claude Code reaches the installer's own tools, that it cannot approve its own request, and that your approval in your own terminal lets exactly that action run once. The guide's expected outputs are predictions: they have not been run yet.
+
+1. Open `docs/testing/2026-10-08-plan-4-live-test.md` and follow it in one terminal, in order. No Skills Wiki key is needed.
+2. Type every `installer approvals …` command yourself; never let the agent run them for you.
+3. Paste each test's output to Claude. Test 5 matters most: if Claude Code manages to approve its own request, stop and tell Claude.
+4. The guide's last test removes the `installer` registration it created.
+
 ## Optional
 
-### 4. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 5. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 
