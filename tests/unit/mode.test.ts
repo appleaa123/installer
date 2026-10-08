@@ -29,6 +29,18 @@ describe("deriveMode (spec §5)", () => {
   });
 });
 
+describe("probe_runtime arguments (D34)", () => {
+  const probe = (profile: unknown) => ({ step_id: "p", phase: "PREFLIGHT", type: "auto", title: "Probe", why: "Probe.", blocking: true, auto: { action: "probe_runtime", args: { profile } } });
+
+  it.each(["/tmp/evil.json", "../profiles/x.json", "Claude", 5])("refuses the profile %s", (profile) => {
+    expect(() => parseSolution({ id: "p", version: "1", steps: [probe(profile)] })).toThrow(/must be a runtime profile id/);
+  });
+
+  it("accepts a profile id", () => {
+    expect(parseSolution({ id: "p", version: "1", steps: [probe("claude-code")] }).steps[0]?.auto?.args).toEqual({ profile: "claude-code" });
+  });
+});
+
 describe("derive_mode in an install", () => {
   it("stores the mode and the decision maker after the three answers", async () => {
     const solution = parseSolution({ id: "m", version: "1", steps: [...QUESTIONS, derive(ARGS)] });

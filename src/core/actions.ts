@@ -2,7 +2,7 @@ import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
 import { InputError } from "./inputs.js";
 import { deriveModeAction } from "./mode.js";
-import { listBundledProfiles, loadProfile } from "./profile.js";
+import { listBundledProfiles, loadProfileById } from "./profile.js";
 import { runProbe } from "./probe.js";
 import type { Action, Check, InstallState, StatePatch } from "./types.js";
 
@@ -62,7 +62,7 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   probe_runtime: async (home, args) => {
     const cwd = await confinedPath(home, PROBE_DIR);
     await mkdir(cwd, { recursive: true, mode: 0o700 });
-    const profiles = typeof args.profile === "string" ? [await loadProfile(args.profile)] : await listBundledProfiles();
+    const profiles = typeof args.profile === "string" ? [await loadProfileById(args.profile)] : await listBundledProfiles();
     return { runtime: await runProbe({ profiles, cwd }) };
   },
   derive_mode: async (_home, args, state) => deriveModeAction(args, state),

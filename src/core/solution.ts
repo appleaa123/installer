@@ -120,6 +120,16 @@ function checkModeReferences(steps: readonly StepDef[]): void {
   });
 }
 
+/** probe_runtime may only name a runtime profile id, never a file (D34: solution text never grants capabilities). */
+function checkProbeArgs(steps: readonly StepDef[]): void {
+  for (const step of steps) {
+    const profile = step.auto?.action === "probe_runtime" ? step.auto.args?.profile : undefined;
+    if (profile !== undefined && (typeof profile !== "string" || !PROFILE_ID.test(profile))) {
+      throw new SolutionError(`Step '${step.step_id}': probe_runtime args.profile must be a runtime profile id such as 'claude-code', not a path`);
+    }
+  }
+}
+
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -136,6 +146,7 @@ export function parseSolution(raw: unknown): Solution {
     return index;
   }, 0);
   checkModeReferences(steps);
+  checkProbeArgs(steps);
   return { id, version, steps };
 }
 

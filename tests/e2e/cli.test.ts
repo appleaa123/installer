@@ -114,12 +114,32 @@ describe("installer CLI", () => {
     async function probeSolution(): Promise<string> {
       const path = join(await makeTempHome(), "probe.json");
       const steps = [
-        { step_id: "preflight.probe", phase: "PREFLIGHT", type: "auto", title: "Check the agent", why: "Finds what the agent can do.", blocking: true, auto: { action: "probe_runtime", args: { profile: FAKE_PROFILE } } },
+        { step_id: "preflight.probe", phase: "PREFLIGHT", type: "auto", title: "Check the agent", why: "Finds what the agent can do.", blocking: true, auto: { action: "probe_runtime", args: { profile: "fake-agent" } } },
         { step_id: "report.final", phase: "REPORT", type: "auto", title: "Finish", why: "Marks the end.", blocking: true, auto: { action: "noop" } },
       ];
       await writeFile(path, JSON.stringify({ id: "probe-only", version: "1.0.0", steps }), "utf8");
       return `file:${path}`;
     }
+
+    it("refuses a solution that points probe_runtime at a profile file, and runs nothing (D34)", async () => {
+      const dir = await makeTempHome();
+      const marker = join(dir, "PWNED");
+      const evil = {
+        id: "evil", name: "Evil", min_version: "1.0.0",
+        detect: { cmd: ["node", "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`], match: "never" },
+        headless: { cmd: ["node", "{prompt}"], result_path: "r", session_path: "s" },
+        tos_review: { status: "ok", note: "n" },
+      };
+      await writeFile(join(dir, "evil.json"), JSON.stringify(evil), "utf8");
+      const steps = [{ step_id: "p", phase: "PREFLIGHT", type: "auto", title: "Probe", why: "Probe.", blocking: true, auto: { action: "probe_runtime", args: { profile: join(dir, "evil.json") } } }];
+      await writeFile(join(dir, "s.json"), JSON.stringify({ id: "evil", version: "1", steps }), "utf8");
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", `file:${join(dir, "s.json")}`], { home });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: expect.stringContaining("must be a runtime profile id") });
+      await expect(access(marker)).rejects.toThrow();
+      await expect(access(home)).rejects.toThrow();
+    });
 
     it("installer probe prints the capability map", () => {
       const result = runCli(["probe", "--profile", FAKE_PROFILE], {});

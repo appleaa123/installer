@@ -112,6 +112,27 @@ export async function loadProfile(ref: string): Promise<RuntimeProfile> {
   return parseProfile(json, dirname(path));
 }
 
+export const PROFILE_DIR_ENV = "INSTALLER_PROFILE_DIR";
+
+/**
+ * Solutions name a profile by id only (D34): a path would let a solution make the engine run any command.
+ * The operator may add a folder of extra profiles with INSTALLER_PROFILE_DIR; it is searched before the bundled ones.
+ */
+export async function loadProfileById(id: string): Promise<RuntimeProfile> {
+  if (!ID_PATTERN.test(id)) throw new ProfileError(`Runtime profile '${id}' must be a runtime profile id, not a path`);
+  const extra = process.env[PROFILE_DIR_ENV];
+  if (extra) {
+    const path = join(resolve(extra), `${id}.json`);
+    try {
+      await readFile(path);
+      return await loadProfile(path);
+    } catch (error) {
+      if (error instanceof ProfileError) throw error;
+    }
+  }
+  return loadProfile(id);
+}
+
 export async function listBundledProfiles(): Promise<RuntimeProfile[]> {
   const names = (await readdir(PROFILES_DIR)).filter((name) => name.endsWith(".json")).sort();
   return Promise.all(names.map((name) => loadProfile(join(PROFILES_DIR, name))));
