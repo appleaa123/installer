@@ -45,24 +45,38 @@ export const GIVE_UP_SCRIPT: OperatorScript = { ...FIXTURE_SCRIPT, giveUp: ["cha
 
 export const STARTER_REF = `file:${resolve("tests/fixtures/solution-starter.json")}`;
 
-export const STARTER_SCRIPT: OperatorScript = {
-  answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
-  perform: {},
-};
+/** The person's two BRAIN actions: the key is stored by the test in the file keychain, the combo is already active on the fake server. */
+export function starterScript(storeKey: () => Promise<void>): OperatorScript {
+  return {
+    answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
+    perform: { "brain.key": storeKey, "brain.combo": async () => undefined },
+  };
+}
+
+export interface OperatorOptions {
+  readonly home: string;
+  readonly solutionRef: string;
+  readonly script: OperatorScript;
+  readonly crash?: CrashPlan;
+  /** Extra `start` arguments, such as `--url` (Plan 3). */
+  readonly startArgs?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
 
 /** A fake agent: follows the step protocol exactly as INSTALL.md tells a real agent to. */
-export async function operate(options: { home: string; solutionRef: string; script: OperatorScript; crash?: CrashPlan }): Promise<OperatorRun> {
+export async function operate(options: OperatorOptions): Promise<OperatorRun> {
   const calls: CliResult[] = [];
   let crashed = 0;
+  const startArgs = ["start", "--solution", options.solutionRef, ...(options.startArgs ?? [])];
   const call = (args: readonly string[]): CliResult => {
-    const env = options.crash && calls.length === options.crash.atCall ? { INSTALLER_CRASH_AT: options.crash.point } : undefined;
-    const result = runCli(args, { home: options.home, ...(env ? { env } : {}) });
+    const crash: Record<string, string> = options.crash && calls.length === options.crash.atCall ? { INSTALLER_CRASH_AT: options.crash.point } : {};
+    const result = runCli(args, { home: options.home, env: { ...options.env, ...crash } });
     calls.push(result);
     return result;
   };
   const recover = (): CliResult => {
     const resumed = call(["resume"]);
-    return resumed.code === 2 && resumed.stderr.includes("No install found") ? call(["start", "--solution", options.solutionRef]) : resumed;
+    return resumed.code === 2 && resumed.stderr.includes("No install found") ? call(startArgs) : resumed;
   };
   const step = (args: readonly string[]): StepJson => {
     let result = call(args);
@@ -75,7 +89,7 @@ export async function operate(options: { home: string; solutionRef: string; scri
     return json.next ?? json;
   };
 
-  let current = step(["start", "--solution", options.solutionRef]);
+  let current = step(startArgs);
   while (calls.length < MAX_CALLS) {
     if (current.status === "complete" || current.status === "blocked" || !current.view) return { final: current, calls, crashed };
     const { step_id: id, type } = current.view.step;

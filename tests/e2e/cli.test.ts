@@ -296,6 +296,19 @@ describe("installer CLI", () => {
       expect(result.stderr).toBe("");
     });
   });
+  describe("installer disconnect", () => {
+    it("deletes the key even when this home has no install, and reports it", async () => {
+      const env = await keychainEnv("k-1");
+      expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: false, secret_deleted: true });
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
+    });
+
+    it("only knows skillswiki in this version, exit 2", async () => {
+      const result = runCli(["disconnect", "gmail"], { home: await makeTempHome() });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: "Only 'skillswiki' can be disconnected in this version" });
+    });
+  });
   it("report prints text by default and JSON with --json", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });

@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
+import { disconnect } from "./core/disconnect.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
@@ -22,7 +23,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect";
 
 class NoInstallError extends Error {
   constructor() {
@@ -207,6 +208,7 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
   start: (home, flags) => startCommand(home, flags),
   probe: (_home, flags) => probeCommand(flags),
   secret: (_home, _flags, arg) => secretCommand(requireArg(arg, "secret")),
+  disconnect: (home, _flags, arg) => disconnect(home, requireArg(arg, "disconnect"), () => new Date().toISOString()),
 };
 
 /** Commands that run on the install in the home. */
