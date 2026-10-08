@@ -206,9 +206,12 @@ async function readLocal(path: string): Promise<string> {
   }
 }
 
-export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps): Promise<{ solution: Solution; text: string }> {
+/** `fetchSkillswiki` is the key-bearing fetcher the CLI builds once the key and URL are known (D46). */
+export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps, fetchSkillswiki?: FetchText): Promise<{ solution: Solution; text: string }> {
   if (ref.startsWith("skillswiki:")) {
-    throw new SolutionError("'skillswiki:' references need the Skills Wiki key step, which arrives in a later version; use a file: or https: reference");
+    if (!fetchSkillswiki) throw new SolutionError("'skillswiki:' references need the Skills Wiki key and URL: run 'installer secret skillswiki', then start with --url <MCP URL>");
+    const text = await fetchSkillswiki(ref);
+    return { solution: parseSolutionText(text, ref), text };
   }
   if (ref.startsWith("https:")) {
     const text = await fetchText(ref);

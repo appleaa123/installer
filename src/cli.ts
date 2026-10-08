@@ -5,14 +5,15 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
-import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type SubmitPayload } from "./core/engine.js";
+import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
-import { requireSecretId, setSecret } from "./core/keychain.js";
+import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
-import { SolutionError, loadSolutionSource } from "./core/solution.js";
+import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
+import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
@@ -37,13 +38,14 @@ interface Flags {
   readonly done?: boolean;
   readonly json?: boolean;
   readonly profile?: string;
+  readonly url?: string;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
   stream.write(`${typeof value === "string" ? value : JSON.stringify(value)}\n`);
 }
 
-const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" } } as const;
+const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" }, url: { type: "string" } } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
 /** Node's own unknown-option message suggests '--', which does not apply here. */
@@ -123,17 +125,38 @@ async function requirePrivateHome(home: string): Promise<void> {
   }
 }
 
+/** A `skillswiki:` ref needs the stored key and the URL before anything is fetched or created (D46). */
+async function solutionSource(ref: string, flags: Flags): Promise<{ solution: Solution; text: string }> {
+  if (!ref.startsWith("skillswiki:")) return loadSolutionSource(ref);
+  const key = await getSecret(SKILLSWIKI_SECRET_ID);
+  if (!key) throw new InputError(KEY_MISSING_HINT);
+  const url = requireSkillswikiUrl(flags.url);
+  return loadSolutionSource(ref, fetchHttps, (target) => fetchSkillswikiSolution({ url, key }, target));
+}
+
+function requireSameUrl(existing: InstallState, url: string | undefined): void {
+  if (url !== undefined && existing.skillswiki?.url !== url) {
+    throw new EngineError(`This home already has an install started ${existing.skillswiki ? `with the Skills Wiki URL '${existing.skillswiki.url}'` : "without a Skills Wiki URL"}; use a different --home`);
+  }
+}
+
 async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
-  const { solution, text } = await loadSolutionSource(ref);
+  const { solution, text } = await solutionSource(ref, flags);
+  const url = flags.url === undefined && !usesSkillswiki(solution) ? undefined : requireSkillswikiUrl(flags.url);
   const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
   if (created !== undefined) await chmod(home, HOME_MODE);
   else await requirePrivateHome(home);
   const existing = await loadState(home);
-  if (existing) await requireSameContent(home, existing, text);
-  else await writePinnedSolution(home, text);
-  return (await start(depsFor(home, solution), existing, ref, sha256(text))).result;
+  if (existing) {
+    await requireSameContent(home, existing, text);
+    requireSameUrl(existing, url);
+  } else {
+    await writePinnedSolution(home, text);
+  }
+  const extras: StartExtras = { work_dir: process.cwd(), ...(url ? { skillswiki: { url } } : {}) };
+  return (await start(depsFor(home, solution), existing, ref, sha256(text), extras)).result;
 }
 
 /** Runs the probe in a throwaway folder; it reads no install and writes no state. */

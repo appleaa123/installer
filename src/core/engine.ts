@@ -63,9 +63,12 @@ export function recordOf(state: InstallState, stepId: string): StepRecord | unde
   return state.steps[stepId];
 }
 
-export function initialState(ref: string, solution: Solution, now: string, recipeVersion?: string): InstallState {
+/** Facts known only at `start` time that later steps read back (D54: the agent's folder, D51: the Skills Wiki URL). */
+export type StartExtras = Partial<Pick<InstallState, "work_dir" | "skillswiki">>;
+
+export function initialState(ref: string, solution: Solution, now: string, recipeVersion?: string, extras: StartExtras = {}): InstallState {
   const pinned = { ref, id: solution.id, version: solution.version, ...(recipeVersion ? { recipe_version: recipeVersion } : {}) };
-  return { schema: 1, solution: pinned, started_at: now, steps: {} };
+  return { schema: 1, solution: pinned, started_at: now, steps: {}, ...extras };
 }
 
 /** First step that is not settled; non-blocking blocked steps are passed over. */
@@ -165,14 +168,14 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
   }
 }
 
-export async function start(deps: EngineDeps, existing: InstallState | null, ref: string, recipeVersion?: string): Promise<Advanced> {
+export async function start(deps: EngineDeps, existing: InstallState | null, ref: string, recipeVersion?: string, extras?: StartExtras): Promise<Advanced> {
   if (existing) {
     const same = existing.solution.id === deps.solution.id && existing.solution.version === deps.solution.version;
     if (!same) throw new EngineError(`This home already has an install of '${existing.solution.id}@${existing.solution.version}'; use a different --home`);
     return advance(deps, existing);
   }
   const head = await deps.audit({ actor: "human", event: "install.started", ref, payload: { id: deps.solution.id, version: deps.solution.version } });
-  const fresh: InstallState = { ...initialState(ref, deps.solution, deps.now(), recipeVersion), audit_head: head };
+  const fresh: InstallState = { ...initialState(ref, deps.solution, deps.now(), recipeVersion, extras), audit_head: head };
   await deps.save(fresh);
   return advance(deps, fresh);
 }

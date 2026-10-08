@@ -84,3 +84,14 @@ describe("recipe_version", () => {
     expect(state.solution.recipe_version).toBe("sha-of-text");
   });
 });
+
+describe("start extras", () => {
+  it("records the working folder and the Skills Wiki url on a fresh start only", async () => {
+    const { deps } = memoryDeps(await makeTempHome(), basicSolution());
+    const extras = { work_dir: "/work/team", skillswiki: { url: "https://wiki.test/mcp" } };
+    const { state } = await start(deps, null, FIXTURE_REF, "sha", extras);
+    expect(state).toMatchObject(extras);
+    const again = await start(deps, state, FIXTURE_REF, "sha", { work_dir: "/elsewhere" });
+    expect(again.state.work_dir).toBe("/work/team");
+  });
+});

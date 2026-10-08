@@ -43,9 +43,11 @@ function isStepRecord(value: unknown): boolean {
 }
 
 function hasValidExtras(value: Record<string, unknown>): boolean {
-  const { mode, roles, runtime } = value;
+  const { mode, roles, runtime, skillswiki, work_dir: workDir } = value;
   if (mode !== undefined && !(MODES as readonly unknown[]).includes(mode)) return false;
   if (roles !== undefined && !(isRecord(roles) && typeof roles.decision_maker === "string")) return false;
+  if (skillswiki !== undefined && !(isRecord(skillswiki) && typeof skillswiki.url === "string")) return false;
+  if (workDir !== undefined && typeof workDir !== "string") return false;
   return runtime === undefined || (isRecord(runtime) && typeof runtime.support_level === "number");
 }
 

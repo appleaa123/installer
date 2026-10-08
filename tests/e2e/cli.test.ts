@@ -1,16 +1,28 @@
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
-import { getSecret } from "../../src/core/keychain.js";
+import { getSecret, setSecret } from "../../src/core/keychain.js";
+import { KEY_REJECTED_HINT } from "../../src/core/mcp.js";
+import { KEY_MISSING_HINT } from "../../src/core/skillswiki.js";
 import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
+import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
 import { formHeaders, request, waitForExit } from "../helpers/http.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const LIVE_RETRY_PATH = resolve("tests/fixtures/live-retry.json");
+const RECIPE_PATH = resolve("tests/fixtures/skillswiki/demo/install/recipe.json");
+const SKILLSWIKI_REF = "skillswiki:demo/install/recipe.json";
+
+/** A private keychain folder for one test, holding the Skills Wiki key when given. */
+async function keychainEnv(key?: string): Promise<Record<string, string>> {
+  const dir = await makeTempHome();
+  if (key) await setSecret("skillswiki", key, { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: dir });
+  return { INSTALLER_KEYCHAIN_DIR: dir };
+}
 
 describe("installer CLI", () => {
   it("start prints the first actionable step", async () => {
@@ -93,7 +105,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
@@ -103,11 +115,76 @@ describe("installer CLI", () => {
     expect((await loadState(home))?.solution.recipe_version).toBe(sha);
   });
 
-  it.each(["http://example.test/s.json", "skillswiki:pack/skill/recipe.json"])("refuses %s with exit 2 and creates nothing", async (ref) => {
+  it("refuses http://example.test/s.json with exit 2 and creates nothing", async () => {
     const home = join(await makeTempHome(), "engine");
-    const result = runCli(["start", "--solution", ref], { home });
+    const result = runCli(["start", "--solution", "http://example.test/s.json"], { home });
     expect(result.code).toBe(2);
     await expect(access(home)).rejects.toThrow();
+  });
+
+  describe("skillswiki: references (D46)", () => {
+    const servers: FakeMcp[] = [];
+
+    afterEach(() => {
+      servers.splice(0).forEach((fake) => fake.stop());
+    });
+
+    async function fakeWiki(env: Record<string, string> = {}): Promise<FakeMcp> {
+      const fake = await startFakeMcp(env);
+      servers.push(fake);
+      return fake;
+    }
+
+    it("refuses to start without the key, names the secret command and creates nothing (Review Focus 4)", async () => {
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", "https://wiki.test/mcp"], { home, env: await keychainEnv() });
+      expect(result.code).toBe(2);
+      expect(result.json).toEqual({ error: KEY_MISSING_HINT, code: 2 });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it.each([
+      ["no --url", []],
+      ["a plain http url", ["--url", "http://wiki.test/mcp"]],
+    ])("refuses to start with %s once the key exists, exit 2, creates nothing (Review Focus 4)", async (_name, urlArgs) => {
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, ...urlArgs], { home, env: await keychainEnv("k-1") });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: expect.stringContaining("--url") });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it("fetches the recipe, pins it and records the url, the working folder and the content sha", async () => {
+      const fake = await fakeWiki();
+      const [home, cwd] = [await makeTempHome(), await makeTempHome()];
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", fake.url], { home, cwd, env: await keychainEnv(fake.key) });
+      expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "mode.name" } } });
+      const recipe = await readFile(RECIPE_PATH, "utf8");
+      expect(await loadState(home)).toMatchObject({
+        solution: { ref: SKILLSWIKI_REF, id: "fixture-skillswiki", recipe_version: createHash("sha256").update(recipe).digest("hex") },
+        skillswiki: { url: fake.url },
+        work_dir: await realpath(cwd),
+      });
+      await expect(readFile(join(home, "solution", "solution.json"), "utf8")).resolves.toBe(recipe);
+    });
+
+    it("names a rejected key and creates nothing (Review Focus 3)", async () => {
+      const fake = await fakeWiki();
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", fake.url], { home, env: await keychainEnv("not-the-key") });
+      expect(result.code).toBe(2);
+      expect(result.json).toEqual({ error: KEY_REJECTED_HINT, code: 2 });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it("refuses a second start with a different url", async () => {
+      const home = await makeTempHome();
+      expect(runCli(["start", "--solution", FIXTURE_REF, "--url", "https://one.test/mcp"], { home }).code).toBe(0);
+      expect(runCli(["start", "--solution", FIXTURE_REF], { home }).code).toBe(0);
+      const other = runCli(["start", "--solution", FIXTURE_REF, "--url", "https://two.test/mcp"], { home });
+      expect(other.code).toBe(2);
+      expect(other.json).toMatchObject({ error: expect.stringContaining("already has an install started with the Skills Wiki URL 'https://one.test/mcp'") });
+    });
   });
 
   describe("runtime probe", () => {

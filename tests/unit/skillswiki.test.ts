@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ActionFailure } from "../../src/core/failure.js";
 import { InputError } from "../../src/core/inputs.js";
 import { setSecret } from "../../src/core/keychain.js";
-import { KEY_MISSING_HINT, URL_MISSING_HINT, activeComboSlug, fetchSkillswikiSolution, parseSkillswikiRef, skillswikiTarget, stripSkillWrapper } from "../../src/core/skillswiki.js";
+import { KEY_MISSING_HINT, URL_MISSING_HINT, activeComboSlug, fetchSkillswikiSolution, parseSkillswikiRef, requireSkillswikiUrl, skillswikiTarget, stripSkillWrapper, usesSkillswiki } from "../../src/core/skillswiki.js";
+import type { Solution, StepDef } from "../../src/core/types.js";
 import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -67,6 +68,25 @@ describe("active combo (D37)", () => {
   });
 });
 
+describe("start --url", () => {
+  const step = (extra: Partial<StepDef>): StepDef => ({ step_id: "s", phase: "BRAIN", type: "auto", title: "S", why: "Needed.", blocking: true, ...extra });
+  const solution = (...steps: StepDef[]): Solution => ({ id: "s", version: "1", steps });
+
+  it("is needed by solutions that register, probe or check Skills Wiki", () => {
+    expect(usesSkillswiki(solution(step({ auto: { action: "register_mcp" } })))).toBe(true);
+    expect(usesSkillswiki(solution(step({ auto: { action: "probe_mcp" } })))).toBe(true);
+    expect(usesSkillswiki(solution(step({ type: "human_action", verify: { check: "combo_active" } })))).toBe(true);
+    expect(usesSkillswiki(solution(step({ auto: { action: "noop" } })))).toBe(false);
+  });
+
+  it.each(["https://wiki.test/mcp", "http://127.0.0.1:4321/mcp"])("accepts %s", (url) => {
+    expect(requireSkillswikiUrl(url)).toBe(url);
+  });
+
+  it.each([undefined, "", "http://wiki.test/mcp", "ftp://wiki.test", "wiki.test/mcp"])("refuses %j", (url) => {
+    expect(() => requireSkillswikiUrl(url)).toThrow(InputError);
+  });
+});
 describe("skillswikiTarget", () => {
   it("needs the url and the stored key", async () => {
     const env = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };

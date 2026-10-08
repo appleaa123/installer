@@ -2,12 +2,17 @@ import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { callTool, type McpTarget } from "./mcp.js";
+import type { Solution } from "./types.js";
 
 /** The one keychain item and the MCP server name this version knows (D52). */
 export const SKILLSWIKI_SECRET_ID = "skillswiki";
 export const SKILLSWIKI_MCP_NAME = "skillswiki";
 export const KEY_MISSING_HINT = "Skills Wiki key missing: run 'installer secret skillswiki' first";
 export const URL_MISSING_HINT = "This install has no Skills Wiki URL: start again with --url <the MCP URL from your Skills Wiki dashboard>";
+/** Actions and checks that call Skills Wiki; a solution with any of them needs `start --url`. */
+export const SKILLSWIKI_ACTIONS: readonly string[] = ["register_mcp", "probe_mcp"];
+export const SKILLSWIKI_CHECKS: readonly string[] = ["combo_active"];
+const ALLOWED_URL = /^(https:\/\/|http:\/\/127\.0\.0\.1(:\d+)?\/)/;
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
@@ -49,6 +54,16 @@ export async function activeComboSlug(target: McpTarget): Promise<string | null>
   return typeof slug === "string" && slug !== "" && isRecord(outcome.value.combo) ? slug : null;
 }
 
+export function usesSkillswiki(solution: Solution): boolean {
+  return solution.steps.some((step) => SKILLSWIKI_ACTIONS.includes(step.auto?.action ?? "") || SKILLSWIKI_CHECKS.includes(step.verify?.check ?? ""));
+}
+
+/** The key only ever travels over https, or to this machine's own loopback (the test server). */
+export function requireSkillswikiUrl(url: string | undefined): string {
+  if (!url) throw new InputError("This solution uses Skills Wiki: run start again with --url <the MCP URL from your Skills Wiki dashboard>");
+  if (!ALLOWED_URL.test(url)) throw new InputError(`--url must be an https URL, got '${url}'`);
+  return url;
+}
 /** URL from the install state, key from the keychain; both are needed before Skills Wiki is called. */
 export async function skillswikiTarget(url: string | undefined, env?: Env): Promise<McpTarget> {
   if (!url) throw new ActionFailure(URL_MISSING_HINT);
