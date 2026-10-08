@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-06
 - **Status:** Reviewed 2026-10-06 (D35–D45 applied)
-- **Source of decisions:** [`DECISIONS.md`](../../../DECISIONS.md) (D1–D34). Every
+- **Source of decisions:** [`DECISIONS.md`](../../../DECISIONS.md) (D1–D45). Every
   normative rule in this spec cites the decision it comes from.
 - **Working name:** `installer` (the CLI). Final name is an open item (§19).
 
@@ -1134,8 +1134,8 @@ Same engine, same phases, same contracts.
 ---
 
 ## 18. Implementation notes (for planning, non-normative)
-- Implementation language not yet decided; TypeScript is a natural fit
-  (MCP SDK, reuse of `skills-wiki-agent` LLM clients).
+- Implementation language: TypeScript on Node ≥ 22 (D44): MCP SDK, reuse
+  of `skills-wiki-agent` LLM clients.
 - Suggested build order for planning: engine core (state machine, step
   protocol, state, report) → scripted-operator CI → Claude Code profile +
   probe → local MCP server with records/approvals/audit → one data

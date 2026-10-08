@@ -1,0 +1,14 @@
+{
+  "id": "live-retry",
+  "version": "1.0.0",
+  "steps": [
+    { "step_id": "pre.check", "phase": "PREFLIGHT", "type": "verify", "title": "Check the marker file", "why": "Shows how a failed check is retried.", "blocking": true,
+      "verify": { "check": "file_exists", "args": { "path": "config/late-marker.txt", "hint": "config/late-marker.txt not found" } } },
+    { "step_id": "mode.name", "phase": "MODE", "type": "ask", "title": "Team name", "why": "Used in reports.", "blocking": true, "input": { "kind": "text" } },
+    { "step_id": "mode.size", "phase": "MODE", "type": "ask", "title": "Team size", "why": "Sizes the setup.", "blocking": true, "input": { "kind": "number" } },
+    { "step_id": "channels.manual", "phase": "CHANNELS", "type": "human_action", "title": "Confirm a manual step", "why": "Shows a step the human confirms.", "blocking": true,
+      "instructions": ["Do the manual task", "Then confirm it is done"] },
+    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Write final marker", "why": "Marks the install as finished.", "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } } }
+  ]
+}

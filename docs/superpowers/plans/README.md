@@ -10,7 +10,7 @@ Language: TypeScript on Node ≥ 22 (D44).
 
 | # | Plan | Deliverable | Depends on | Spec sections | Open items it resolves | Status |
 |---|---|---|---|---|---|---|
-| 1 | **Engine core** | `installer start / next / submit / verify / resume / report` driven by a scripted operator against a fixture solution; atomic resumable state; hash-chained audit; kill-between-steps and idempotency tests | — | §6.3–6.6, §11.8 (audit chain), §15.1 (engine tests), §15.2 (scripted operator) | — | [Written](2026-10-06-01-engine-core.md) |
+| 1 | **Engine core** | `installer start / next / submit / verify / resume / report` driven by a scripted operator against a fixture solution; atomic resumable state; hash-chained audit; kill-between-steps and idempotency tests | — | §6.3–6.6, §11.8 (audit chain), §15.1 (engine tests), §15.2 (scripted operator) | — | [Implemented](2026-10-06-01-engine-core.md) on `feat/engine-core` |
 | 2 | **Runtime conformance + brain phase** | Runtime profiles, `installer probe` (C1–C6), Claude Code profile certified, `INSTALL.md` bootstrap, `agent_action` intents, Skills Wiki MCP registration + verify, manual combo activation step, `skillswiki:` solution refs, MODE phase (deployment mode + roles) | 1 | §5, §6.1–6.2, §7, §13 | O1 (Codex live test), O6 (`mcp add` syntax), O10 | Not started |
 | 3 | **Secrets + connector framework** | Local browser page for `secret`/`oauth`, OS keychain storage, connector definition loader, pinned + checksummed connector packages, `installer disconnect` | 1, 2 | §8, §14.2 (secrets, supply chain) | O3 (headless OAuth redirect) | Not started |
 | 4 | **Local MCP server + approvals** | Local MCP server, `installer tool` CLI fallback, approval items, action-hash tokens, level derivation, compiled floor, decisions (approve / edit / reject / expire), roles | 1–3 | §7.4, §11.1–11.6, §11.9 | — | Not started |
@@ -23,3 +23,17 @@ Language: TypeScript on Node ≥ 22 (D44).
 
 O8 (product name), O11 (unattended hosted evals) and O15 (combo activation
 by API key) are handled when the plan that touches them is written.
+
+## Carried forward from Plan 1
+
+Plan 2 must cover these when it writes `INSTALL.md` and the solution refs:
+
+- `installer next` prints a wrapped result, `{ "status": "step" | "blocked" | "complete", "view": { "step", "status", "attempts", "hint", "resume" } }`.
+  The spec §6.3 field names live inside `view.step`. Update the §6.3 example to match.
+- A step whose check failed is retried with `installer resume` when it is a `verify` step, and with
+  `installer verify <step_id>` for any other step type. Each retry counts toward the three-failure limit.
+  The step view's `resume` field and the report both name the right command.
+- `installer resume` also reopens optional steps that were given up, so the report goes back to `in_progress`.
+- A `--value` that starts with `-` must be written as `--value=<json>` (for example `--value=-5`).
+- Plan 1 pins the solution by copying it into `<engine_home>/solution/solution.json` and comparing content
+  hashes on `start`. Plan 2 adds `skillswiki:` refs and records the §6.4 `recipe_version` sha in the state.

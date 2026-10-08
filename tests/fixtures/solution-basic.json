@@ -1,0 +1,71 @@
+{
+  "id": "fixture-basic",
+  "version": "1.0.0",
+  "steps": [
+    {
+      "step_id": "preflight.write-config",
+      "phase": "PREFLIGHT",
+      "type": "auto",
+      "title": "Write base config",
+      "why": "Every later step reads this file.",
+      "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/base.txt", "content": "ok\n" } }
+    },
+    {
+      "step_id": "preflight.check-config",
+      "phase": "PREFLIGHT",
+      "type": "verify",
+      "title": "Check base config",
+      "why": "Confirms the engine can write to its home.",
+      "blocking": true,
+      "verify": { "check": "file_exists", "args": { "path": "config/base.txt" } }
+    },
+    {
+      "step_id": "mode.shared-work",
+      "phase": "MODE",
+      "type": "ask",
+      "title": "Is there shared work?",
+      "why": "Decides whether a shared host is needed.",
+      "blocking": true,
+      "input": { "kind": "choice", "options": ["yes", "no"] }
+    },
+    {
+      "step_id": "mode.report-time",
+      "phase": "MODE",
+      "type": "ask",
+      "title": "Morning report time",
+      "why": "Reports arrive at this local time.",
+      "blocking": true,
+      "input": { "kind": "time" }
+    },
+    {
+      "step_id": "brain.register",
+      "phase": "BRAIN",
+      "type": "agent_action",
+      "title": "Register the skills server",
+      "why": "The agent needs the skills server to do its work.",
+      "blocking": true,
+      "intent": "Create the file config/agent-marker.txt containing the word ok",
+      "verify": { "check": "file_exists", "args": { "path": "config/agent-marker.txt", "hint": "config/agent-marker.txt not found" } }
+    },
+    {
+      "step_id": "channels.optional-extra",
+      "phase": "CHANNELS",
+      "type": "human_action",
+      "title": "Connect an optional extra channel",
+      "why": "Lets outside contacts reach the team.",
+      "blocking": false,
+      "instructions": ["Create the file config/extra-channel.txt"],
+      "verify": { "check": "file_exists", "args": { "path": "config/extra-channel.txt", "hint": "Extra channel not connected yet" } }
+    },
+    {
+      "step_id": "report.final",
+      "phase": "REPORT",
+      "type": "auto",
+      "title": "Write final marker",
+      "why": "Marks the install as finished.",
+      "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } }
+    }
+  ]
+}

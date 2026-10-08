@@ -7,8 +7,8 @@ property management for investor-owners. Must stay industry-agnostic.
 
 - Started: 2026-10-06
 - Process: superpowers brainstorming, **architectural path** (sectioned
-  design → written spec → implementation plan). No code yet.
-- Status: Design D1–D45. Implementation plans: `docs/superpowers/plans/` (roadmap + Plan 1 written, awaiting review). No code yet.
+  design → written spec → implementation plan).
+- Status: Design D1–D45. Implementation plans: `docs/superpowers/plans/` (roadmap + Plan 1). Plan 1 (engine core) implemented on branch `feat/engine-core`.
 
 ---
 
