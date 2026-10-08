@@ -23,7 +23,7 @@ Fill this in as you go.
 | 0 | Setup and install | Pass | Run 2026-10-08 on commit `e5da2e2` (guide-only change after `00363ee`) |
 | 1 | Full install to READY | Pass | All outputs matched |
 | 2 | Repeating commands changes nothing | Pass | State byte-identical; audit ends at 9 lines |
-| 3 | Answers, wrong answers and retries | Pass | All 3c rows matched; heredoc paste issue noted |
+| 3 | Answers, wrong answers and retries | Pass | All 3c rows matched; heredoc paste issue fixed after the run |
 | 4 | Optional step given up, then reopened | Pass | All outputs matched |
 | 5 | Secrets are refused | Pass | Exit 2; value stored nowhere |
 | 6 | Crash in the middle of a step | Pass | Both crashes recovered; temp file cleaned up |
@@ -32,7 +32,7 @@ Fill this in as you go.
 | 9 | Audit chain verification | Pass | All 4 chains ok; tamper detected at line 2 |
 | 10 | Moved or changed solution file | Pass | Runs from its own copy; changed content refused |
 | 11 | Empty home path | Pass | Fell back to `$HOME/.installer`; cwd stayed empty |
-| 12 | Usage errors | Pass | `--force` message comes from Node's parser (see notes) |
+| 12 | Usage errors | Pass | Confusing `--force` hint fixed in `ef870af` (see notes) |
 | 13 | Clean up | Pass | Test folder removed; no tarball in the repo; `~/.installer` never created |
 
 ---
@@ -139,32 +139,13 @@ wc -l < $T/h1/audit/audit.jsonl
 
 ## Test 3: Answers, wrong answers and retries
 
-First, create a second solution file with a check that fails until you fix it, a text question, a number
-question and a manual step:
-
-```bash
-cat > $T/retry.json <<'EOF'
-{
-  "id": "live-retry",
-  "version": "1.0.0",
-  "steps": [
-    { "step_id": "pre.check", "phase": "PREFLIGHT", "type": "verify", "title": "Check the marker file", "why": "Shows how a failed check is retried.", "blocking": true,
-      "verify": { "check": "file_exists", "args": { "path": "config/late-marker.txt", "hint": "config/late-marker.txt not found" } } },
-    { "step_id": "mode.name", "phase": "MODE", "type": "ask", "title": "Team name", "why": "Used in reports.", "blocking": true, "input": { "kind": "text" } },
-    { "step_id": "mode.size", "phase": "MODE", "type": "ask", "title": "Team size", "why": "Sizes the setup.", "blocking": true, "input": { "kind": "number" } },
-    { "step_id": "channels.manual", "phase": "CHANNELS", "type": "human_action", "title": "Confirm a manual step", "why": "Shows a step the human confirms.", "blocking": true,
-      "instructions": ["Do the manual task", "Then confirm it is done"] },
-    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Write final marker", "why": "Marks the install as finished.", "blocking": true,
-      "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } } }
-  ]
-}
-EOF
-```
+These tests use a second solution file, `tests/fixtures/live-retry.json`: a check that fails until you fix it,
+a text question, a number question and a manual step.
 
 **3a. A failing check, three tries, then blocked:**
 
 ```bash
-installer --home $T/h2 start --solution file:$T/retry.json
+installer --home $T/h2 start --solution file:$REPO/tests/fixtures/live-retry.json
 installer --home $T/h2 report
 installer --home $T/h2 resume
 installer --home $T/h2 resume
@@ -223,7 +204,7 @@ The final `report` starts with `✅ READY  (5 of 5 steps done) · live-retry@1.0
 **Record:**
 - 3a attempts seen (1, 2, 3, then 1): 1, 2, 3 (`"status":"blocked"`), then 1. Both reports said `failed 1 of 3 tries`; `next` showed the same failed step at `"attempts":1` without retrying
 - 3b result: check passed, next step `mode.name`
-- Note: pasting the `cat <<'EOF'` block into zsh left the shell at a `heredoc>` prompt (the closing `EOF` line did not match after pasting). Ctrl+C cancels it safely; `retry.json` was then written to `$T` directly
+- Note: pasting the `cat <<'EOF'` block into zsh left the shell at a `heredoc>` prompt (the closing `EOF` line did not match after pasting). Ctrl+C cancels it safely; `retry.json` was then written to `$T` directly. Fixed after this run: the solution now ships as `tests/fixtures/live-retry.json`
 - 3c rows that differed: none. Exit codes 2, 2, 2, 2, 0, 0, 2, 0; final report `✅ READY  (5 of 5 steps done) · live-retry@1.0.0`
 - Pass / Fail: Pass
 
@@ -265,12 +246,10 @@ installer --home $T/h3 report
 
 ## Test 5: Secrets are refused
 
+This uses `tests/fixtures/live-secret.json`, a solution with one secret question.
+
 ```bash
-cat > $T/secret.json <<'EOF'
-{ "id": "live-secret", "version": "1.0.0", "steps": [
-  { "step_id": "brain.key", "phase": "BRAIN", "type": "ask", "title": "Service key", "why": "Shows that secrets are refused.", "blocking": true, "input": { "kind": "secret" } } ] }
-EOF
-installer --home $T/h4 start --solution file:$T/secret.json
+installer --home $T/h4 start --solution file:$REPO/tests/fixtures/live-secret.json
 installer --home $T/h4 submit brain.key --value '"abc123"'
 echo $?
 grep -c abc123 $T/h4/state/install-state.json $T/h4/audit/audit.jsonl
@@ -281,7 +260,7 @@ grep -c abc123 $T/h4/state/install-state.json $T/h4/audit/audit.jsonl
 **Record:**
 - Error shown: `{"error":"'secret' values are never accepted through submit; they are collected by the local browser page","code":2}`, exit `2`
 - grep counts: `install-state.json:0`, `audit.jsonl:0`
-- Pass / Fail: Pass (`secret.json` was written to `$T` directly to avoid the heredoc paste issue)
+- Pass / Fail: Pass (`secret.json` was written to `$T` directly to avoid the heredoc paste issue; it now ships as `tests/fixtures/live-secret.json`)
 
 ---
 
@@ -467,11 +446,11 @@ ls $T/h10
 **Expected:**
 - `{"error":"No install found in this home; run 'installer start --solution <ref>' first","code":2}`.
 - `{"error":"Unknown command 'bogus'. Commands: start, next, submit, verify, resume, report","code":2}`.
-- `{"error":"Unknown option '--force'. ...","code":2}`.
+- `{"error":"Unknown option '--force'. Options: --home, --solution, --value, --done, --json","code":2}` (since `ef870af`; before that, Node's own message).
 - `ls $T/h10` fails with `No such file or directory`: a failed command creates nothing.
 
 **Record:**
-- Outputs that differed: none; all three exited `2` and `ls $T/h10` failed with `No such file or directory`. The full `--force` message is Node's `parseArgs` text: `Unknown option '--force'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--force"`. The hint about `--` does not apply to this CLI and may confuse users (minor, cosmetic)
+- Outputs that differed: none; all three exited `2` and `ls $T/h10` failed with `No such file or directory`. The full `--force` message is Node's `parseArgs` text: `Unknown option '--force'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--force"`. The hint about `--` does not apply to this CLI and may confuse users (minor, cosmetic). Fixed in `ef870af`: the CLI now lists its valid options instead
 - Pass / Fail: Pass
 
 ---
