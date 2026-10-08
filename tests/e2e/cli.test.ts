@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -300,6 +301,28 @@ describe("installer CLI", () => {
     it("deletes the key even when this home has no install, and reports it", async () => {
       const env = await keychainEnv("k-1");
       expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: false, secret_deleted: true });
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
+    });
+
+    it("removes the agent's Skills Wiki registration even from a home with no install (review finding 2a)", async () => {
+      const agentHome = await makeTempHome();
+      const fake = resolve("tests/fakes/fake-agent.mjs");
+      spawnSync(process.execPath, [fake, "mcp", "add-json", "-s", "user", "skillswiki", '{"type":"http","url":"https://wiki.test/mcp"}'], { env: { ...process.env, FAKE_AGENT_HOME: agentHome } });
+      await expect(access(join(agentHome, "mcp", "skillswiki.json"))).resolves.toBeUndefined();
+      const env = { ...(await keychainEnv("k-1")), FAKE_AGENT_HOME: agentHome };
+      expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: true, secret_deleted: true });
+      await expect(access(join(agentHome, "mcp", "skillswiki.json"))).rejects.toThrow();
+    });
+
+    it("still deletes the key when the recorded agent profile cannot be loaded (review finding 2b)", async () => {
+      const home = await makeTempHome();
+      const runtime = { profile: "ghost", agent_version: null, c2_shell: true, c4_headless: false, c4_schema: false, c5_resume: false, c6_mcp: "not_probed", support_level: 0, tier: "unknown", notes: [] };
+      await mkdir(join(home, "state"), { recursive: true });
+      await writeFile(statePath(home), JSON.stringify({ schema: 1, solution: { ref: "file:/s.json", id: "s", version: "1" }, started_at: "2026-01-01T00:00:00.000Z", steps: {}, runtime }), "utf8");
+      const env = await keychainEnv("k-1");
+      const result = runCli(["disconnect", "skillswiki"], { home, env });
+      expect(result.code).toBe(0);
+      expect(result.json).toMatchObject({ status: "disconnected", unregistered: false, secret_deleted: true });
       await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
     });
 
