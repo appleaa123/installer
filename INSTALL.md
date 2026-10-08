@@ -37,6 +37,16 @@ Every command prints one line of JSON. Read its `status`:
 
 `installer next` shows the current step again. `installer report` shows progress. After a break of minutes or days, `installer resume` continues where the install stopped.
 
+## 5. The installer's tools and approvals
+
+The install connects you to the installer's own MCP server, `installer`; its tools appear to you as `mcp__installer__memo_list`, `mcp__installer__approvals_request` and so on. If you cannot use MCP tools, run the same tools from the shell: `installer tool <name> '<json arguments>'`, for example `installer tool memo.list '{}'`. Both follow the same rules.
+
+A tool that changes something a person must approve first (level L2 or L3) refuses to run and says so. Then:
+
+1. Call `approvals.request` with `{"tool":"<name>","args":{…the same arguments…},"why":"<one sentence>"}`. It answers with an item `id`.
+2. Tell the person what you want to do and why, and ask them to run `installer approvals approve <id>` in their own terminal. They can also change it with `installer approvals edit <id> --value '<json arguments>'` or refuse it with `installer approvals reject <id> --reason '<text>'`. An L3 item needs the decision maker: `installer approvals approve <id> --as '<their name>'`.
+3. When the person says they decided, call `approvals.get` with `{"id":<id>}`. If it is approved, call the tool again with exactly the arguments in `action.args` plus `"approval_token"`. A token works once.
+
 ## Removing the connection
 
 `installer disconnect skillswiki` removes the Skills Wiki server from your configuration and deletes the key from the keychain.
@@ -48,3 +58,4 @@ Every command prints one line of JSON. Read its `status`:
 3. Never request, repeat or store secrets in chat. Keys and sign-ins are entered on a page the installer opens on this computer, never through you.
 4. At a blocking human step, stop; state exactly what to do and how to resume (`installer resume`).
 5. After every `agent_action`, run the step's verify (`installer verify <step_id>`).
+6. Never approve, edit or reject an approval yourself, and never ask the person for a token: only the person decides, in their own terminal.

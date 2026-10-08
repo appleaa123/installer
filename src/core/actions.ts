@@ -6,7 +6,7 @@ import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { probeMcp, runProbe, withMcpProbe } from "./probe.js";
-import { headersHelperCommand, installerCliPath, registerMcp } from "./register.js";
+import { TOOLS_MCP_NAME, headersHelperCommand, installerCliPath, registerMcp, registerMcpConfig, toolsServerConfig } from "./register.js";
 import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
 import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
 
@@ -52,6 +52,7 @@ function stringArg(args: Args, key: string): string {
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'installer resume'";
+const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'installer resume', or use 'installer tool' instead";
 const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'installer resume'";
 
 async function probeDir(home: string): Promise<string> {
@@ -61,9 +62,9 @@ async function probeDir(home: string): Promise<string> {
 }
 
 /** The capability map and profile the probe recorded; without them Skills Wiki cannot be registered (fallbacks are later plans). */
-async function probedRuntime(state: InstallState | undefined): Promise<{ runtime: CapabilityMap; profile: RuntimeProfile }> {
+async function probedRuntime(state: InstallState | undefined, hint = NO_AGENT_HINT): Promise<{ runtime: CapabilityMap; profile: RuntimeProfile }> {
   const runtime = state?.runtime;
-  if (!runtime?.profile) throw new ActionFailure(NO_AGENT_HINT);
+  if (!runtime?.profile) throw new ActionFailure(hint);
   return { runtime, profile: await loadProfileById(runtime.profile) };
 }
 
@@ -92,6 +93,12 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     const { url } = await skillswikiTarget(state?.skillswiki?.url);
     const helper = headersHelperCommand(SKILLSWIKI_SECRET_ID, process.execPath, installerCliPath());
     await registerMcp(profile, SKILLSWIKI_MCP_NAME, url, helper, await probeDir(home));
+    return {};
+  },
+  /** D56: the agent reaches the installer's own tools over MCP, as `installer --home <home> mcp-serve`. */
+  register_tools_mcp: async (home, _args, state) => {
+    const { profile } = await probedRuntime(state, NO_AGENT_TOOLS_HINT);
+    await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
     return {};
   },
   /** C6 (D54): runs in the agent's own folder, allowing exactly the registered server's get_active_combo tool. */

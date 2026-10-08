@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
 import { getSecret, setSecret } from "../../src/core/keychain.js";
 import { usesSkillswiki } from "../../src/core/skillswiki.js";
+import { installerCliPath } from "../../src/core/register.js";
 import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
@@ -13,11 +14,11 @@ import { makeTempHome } from "../helpers/temp-home.js";
 import { STARTER_REF, operate, starterScript } from "../operator/scripted-operator.js";
 
 const DOC = readFileSync("INSTALL.md", "utf8");
-const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "disconnect"];
+const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "disconnect", "tool", "approvals"];
 
 describe("INSTALL.md", () => {
   it("states the five operator rules from spec §6.1", () => {
-    for (const rule of ["1. Never invent an answer", "2. Always tell the person why", "3. Never request, repeat or store secrets", "4. At a blocking human step, stop", "5. After every `agent_action`, run the step's verify"]) {
+    for (const rule of ["1. Never invent an answer", "2. Always tell the person why", "3. Never request, repeat or store secrets", "4. At a blocking human step, stop", "5. After every `agent_action`, run the step's verify", "6. Never approve, edit or reject an approval yourself"]) {
       expect(DOC).toContain(rule);
     }
   });
@@ -36,7 +37,7 @@ describe("INSTALL.md", () => {
   it("the shipped starter solution loads, probes with the bundled profiles and connects Skills Wiki", () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
     expect(starter.steps[0]?.auto).toEqual({ action: "probe_runtime", args: {} });
-    expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["brain.key", "brain.register", "brain.combo", "brain.probe-mcp"]));
+    expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "brain.key", "brain.register", "brain.combo", "brain.probe-mcp"]));
     expect(usesSkillswiki(starter)).toBe(true);
   });
 });
@@ -69,9 +70,11 @@ describe("starter install, operated the way INSTALL.md says", () => {
       runtime: { profile: "fake-agent", c6_mcp: true, support_level: 3, notes: [] },
     });
     const report = runCli(["report"], { home, env }).stdout;
-    expect(report).toContain("✅ READY  (10 of 10 steps done) · fixture-starter@1.0.0");
+    expect(report).toContain("✅ READY  (11 of 11 steps done) · fixture-starter@1.0.0");
     expect(report).toContain("🤖 Agent      fake-agent 9.9.9 — level 3 of 3");
     expect(JSON.parse(await readFile(registration, "utf8"))).toMatchObject({ type: "http", url: fake.url, headersHelper: expect.stringMatching(/mcp-headers skillswiki$/) });
+    const tools = JSON.parse(await readFile(join(dirname(registration), "installer.json"), "utf8"));
+    expect(tools).toEqual({ type: "stdio", command: process.execPath, args: [installerCliPath(), "--home", home, "mcp-serve"] });
 
     const gone = runCli(["disconnect", "skillswiki"], { home, env });
     expect(gone.json).toEqual({ status: "disconnected", unregistered: true, secret_deleted: true });
@@ -89,7 +92,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const run = await operate({ home, solutionRef: STARTER_REF, script, startArgs: ["--url", fake.url], env });
     expect(run.final.status).toBe("complete");
     expect((await loadState(home))?.runtime).toMatchObject({ c6_mcp: false, support_level: 2, notes: [expect.stringContaining("workspace trust may be missing in ")] });
-    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (10 of 10 steps done)");
+    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (11 of 11 steps done)");
     expect(runCli(["report"], { home, env }).stdout).toContain("level 2 of 3 (no MCP client; Skills Wiki content is inlined)");
   });
 

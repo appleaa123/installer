@@ -38,15 +38,27 @@ function mcpCommand(profile: RuntimeProfile, key: "mcp_register" | "mcp_remove",
 
 const tail = (stdout: string): string => (stdout.trim() === "" ? "" : ` (${stdout.trim().slice(-200)})`);
 
+/** The local tools server's name in the agent; Claude Code shows its tools as mcp__installer__<group>_<action> (D56). */
+export const TOOLS_MCP_NAME = "installer";
+
+/** The `claude mcp add-json` payload for the local tools server: a stdio command with absolute paths, no shell (D56). */
+export function toolsServerConfig(execPath: string, cliPath: string, home: string): string {
+  return JSON.stringify({ type: "stdio", command: execPath, args: [cliPath, "--home", home, "mcp-serve"] });
+}
+
 /**
  * Remove, then add: verified live that `claude mcp add-json` refuses an existing name and that
  * `claude mcp remove` of a missing name exits 1 with a message, so this is idempotent without `mcp get`
  * (which would health-check the server and run the headers helper).
  */
-export async function registerMcp(profile: RuntimeProfile, name: string, url: string, headersHelper: string, cwd: string): Promise<void> {
+export async function registerMcpConfig(profile: RuntimeProfile, name: string, configJson: string, cwd: string): Promise<void> {
   await mcpCommand(profile, "mcp_remove", { name }, cwd);
-  const result = await mcpCommand(profile, "mcp_register", { name, config_json: mcpServerConfig(url, headersHelper) }, cwd);
+  const result = await mcpCommand(profile, "mcp_register", { name, config_json: configJson }, cwd);
   if (result.error) throw new ActionFailure(`Could not register the '${name}' MCP server in ${profile.name}: the command ${result.error}${tail(result.stdout)}`);
+}
+
+export async function registerMcp(profile: RuntimeProfile, name: string, url: string, headersHelper: string, cwd: string): Promise<void> {
+  await registerMcpConfig(profile, name, mcpServerConfig(url, headersHelper), cwd);
 }
 
 /** True when a server of that name was removed, false when there was none (or the agent is gone). */
