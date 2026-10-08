@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
+import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
 
@@ -156,6 +157,16 @@ function checkSecretSteps(steps: readonly StepDef[]): void {
     }
   }
 }
+function parseDataContract(value: unknown): DataContract | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return parseContract(value);
+  } catch (error) {
+    if (error instanceof ContractError) throw new SolutionError(error.message);
+    throw error;
+  }
+}
+
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -175,7 +186,8 @@ export function parseSolution(raw: unknown): Solution {
   checkProbeArgs(steps);
   checkSecretSteps(steps);
   checkBrainOrder(steps);
-  return { id, version, steps };
+  const contract = parseDataContract(raw.data_contract);
+  return { id, version, steps, ...(contract ? { data_contract: contract } : {}) };
 }
 
 export function parseSolutionText(text: string, where: string): Solution {

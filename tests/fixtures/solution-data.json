@@ -1,0 +1,21 @@
+{
+  "id": "fixture-data",
+  "version": "1.0.0",
+  "data_contract": {
+    "entities": {
+      "contact": {
+        "key": "email",
+        "fields": {
+          "name": { "type": "text", "tags": ["personal"], "required": true },
+          "email": { "type": "email", "tags": ["personal"] },
+          "notes": { "type": "text" },
+          "balance": { "type": "money", "tags": ["financial"] }
+        }
+      }
+    }
+  },
+  "steps": [
+    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,
+      "auto": { "action": "noop" } }
+  ]
+}

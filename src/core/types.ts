@@ -1,3 +1,5 @@
+import type { DataContract } from "./contract.js";
+
 export const PHASES = [
   "PREFLIGHT",
   "MODE",
@@ -64,6 +66,8 @@ export interface Solution {
   readonly id: string;
   readonly version: string;
   readonly steps: readonly StepDef[];
+  /** What records the recipe works with (spec §9.2); a solution without one has no data layer. */
+  readonly data_contract?: DataContract;
 }
 
 export const STEP_STATUSES = ["pending", "done", "blocked", "skipped", "failed"] as const;
