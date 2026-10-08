@@ -36,16 +36,25 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
   stream.write(`${typeof value === "string" ? value : JSON.stringify(value)}\n`);
 }
 
+const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" } } as const;
+const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
+
+/** Node's own unknown-option message suggests '--', which does not apply here. */
+function unknownOption(argv: readonly string[]): string | undefined {
+  const { tokens } = parseArgs({ args: [...argv], allowPositionals: true, options: OPTIONS, strict: false, tokens: true });
+  for (const token of tokens) {
+    if (token.kind === "option" && !Object.hasOwn(OPTIONS, token.name)) return token.rawName;
+  }
+  return undefined;
+}
+
 function parse(argv: readonly string[]): { flags: Flags; positionals: string[] } {
   try {
-    const { values, positionals } = parseArgs({
-      args: [...argv],
-      allowPositionals: true,
-      options: { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" } },
-    });
+    const { values, positionals } = parseArgs({ args: [...argv], allowPositionals: true, options: OPTIONS });
     return { flags: values, positionals };
   } catch (error) {
-    throw new InputError((error as Error).message);
+    const unknown = (error as { code?: string }).code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? unknownOption(argv) : undefined;
+    throw new InputError(unknown ? `Unknown option '${unknown}'. Options: ${OPTION_LIST}` : (error as Error).message);
   }
 }
 

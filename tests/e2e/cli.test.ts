@@ -74,6 +74,14 @@ describe("installer CLI", () => {
     expect(runCli(["submit", "mode.shared-work", "--value", '"yes"'], { home }).code).toBe(0);
   });
 
+  it.each([["--force"], ["--force=1"], ["-f"]])("names the unknown option %s and lists the valid ones", async (option) => {
+    const home = await makeTempHome();
+    const result = runCli(["next", option], { home });
+    const raw = option.split("=")[0];
+    expect(result.code).toBe(2);
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json`, code: 2 });
+  });
+
   it("report prints text by default and JSON with --json", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });
