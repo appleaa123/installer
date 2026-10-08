@@ -1,11 +1,13 @@
 import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+
+const LIVE_RETRY_PATH = resolve("tests/fixtures/live-retry.json");
 
 describe("installer CLI", () => {
   it("start prints the first actionable step", async () => {
@@ -105,6 +107,17 @@ describe("installer CLI", () => {
     runCli(["submit", "mode.report-time", "--value", '"09:00"'], { home });
     const failed = runCli(["verify", "brain.register"], { home });
     expect(failed.json).toMatchObject({ status: "failed", retry: true, next: { status: "step" } });
+  });
+
+  it("accepts a negative number in the --value=<json> form", async () => {
+    const home = await makeTempHome();
+    await mkdir(join(home, "config"));
+    await writeFile(join(home, "config", "late-marker.txt"), "ok\n", "utf8");
+    runCli(["start", "--solution", `file:${LIVE_RETRY_PATH}`], { home });
+    runCli(["submit", "mode.name", "--value", '"North team"'], { home });
+    const result = runCli(["submit", "mode.size", "--value=-5"], { home });
+    expect(result.code).toBe(0);
+    expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.manual" } } });
   });
 
   it("exits 3 and leaves the audit file untouched when its last line is damaged", async () => {

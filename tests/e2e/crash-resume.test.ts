@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { verifyAudit } from "../../src/core/audit.js";
 import { loadState } from "../../src/core/state.js";
+import { runCli } from "../helpers/cli.js";
 import { FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { FIXTURE_SCRIPT, operate } from "../operator/scripted-operator.js";
@@ -35,4 +36,17 @@ describe("kill between steps (R2, §15.1)", () => {
     }
     expect(totalCrashes).toBeGreaterThan(0);
   }, 300_000);
+});
+
+describe("kill while pinning the solution", () => {
+  it("leaves no state, and the next start pins cleanly and removes the temp file", async () => {
+    const home = await makeTempHome();
+    const crashed = runCli(["start", "--solution", FIXTURE_REF], { home, env: { INSTALLER_CRASH_AT: "pin:before-rename" } });
+    expect(crashed.signal).toBe("SIGKILL");
+    expect(await loadState(home)).toBeNull();
+    expect((await readdir(join(home, "solution"))).filter((name) => name.endsWith(".tmp"))).toHaveLength(1);
+    const again = runCli(["start", "--solution", FIXTURE_REF], { home });
+    expect(again.json).toMatchObject({ status: "step", view: { step: { step_id: "mode.shared-work" } } });
+    expect(await readdir(join(home, "solution"))).toEqual(["solution.json"]);
+  });
 });

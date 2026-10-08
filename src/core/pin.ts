@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
+import { crashPoint } from "./crash.js";
 import { removeStaleTemps, syncDirectory, writeSynced } from "./durable.js";
 import { SolutionError, parseSolutionText } from "./solution.js";
 import type { Solution } from "./types.js";
@@ -15,6 +16,7 @@ export async function writePinnedSolution(home: string, text: string): Promise<v
   await removeStaleTemps(dir, basename(target));
   const temp = `${target}.${process.pid}.tmp`;
   await writeSynced(temp, text);
+  crashPoint("pin:before-rename");
   await rename(temp, target);
   await syncDirectory(dir);
 }
