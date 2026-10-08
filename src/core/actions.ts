@@ -2,6 +2,7 @@ import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
+import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById } from "./profile.js";
 import { runProbe } from "./probe.js";
@@ -85,6 +86,11 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
       if (error instanceof InputError) throw error;
       return { ok: false, hint: typeof args.hint === "string" ? args.hint : `Expected ${path} to exist` };
     }
+  },
+  secret_present: async (_home, args) => {
+    const id = stringArg(args, "id");
+    if ((await getSecret(id)) !== null) return { ok: true };
+    return { ok: false, hint: typeof args.hint === "string" ? args.hint : `No '${id}' key is stored yet: run 'installer secret ${id}', enter it on the page that opens, then run the verify again` };
   },
 };
 

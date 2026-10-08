@@ -29,11 +29,17 @@ export function fillTemplate(argv: readonly string[], vars: Readonly<Record<stri
   );
 }
 
-/** Spawns argv with no shell and no stdin; never rejects (Review Focus 1, 2, 5). */
-export function runProcess(argv: readonly string[], cwd: string, timeoutMs: number): Promise<{ readonly stdout: string; readonly error?: string }> {
+export interface ProcessResult {
+  readonly stdout: string;
+  readonly code: number | null;
+  readonly error?: string;
+}
+
+/** Spawns argv with no shell; stdin gets `input` (keychain values travel that way) and is closed at once. Never rejects. */
+export function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
   const [file, ...args] = argv;
   return new Promise((done) => {
-    const child = spawn(file, args, { cwd, stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "ignore"] });
     let stdout = "";
     let failure: string | undefined;
     const timer = setTimeout(() => {
@@ -50,12 +56,14 @@ export function runProcess(argv: readonly string[], cwd: string, timeoutMs: numb
     });
     child.on("error", (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
-      done({ stdout, error: error.code === "ENOENT" ? `'${file}' is not installed` : error.message });
+      done({ stdout, code: null, error: error.code === "ENOENT" ? `'${file}' is not installed` : error.message });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      done({ stdout, ...(failure ? { error: failure } : code === 0 ? {} : { error: `exited with code ${code}` }) });
+      done({ stdout, code, ...(failure ? { error: failure } : code === 0 ? {} : { error: `exited with code ${code}` }) });
     });
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(input);
   });
 }
 

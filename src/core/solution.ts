@@ -132,6 +132,19 @@ function checkProbeArgs(steps: readonly StepDef[]): void {
   }
 }
 
+const SECRET_ID = /^[a-z0-9-]+$/;
+
+/** A secret step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
+function checkSecretSteps(steps: readonly StepDef[]): void {
+  for (const step of steps) {
+    if (step.type !== "human_action" || step.input?.kind !== "secret") continue;
+    const provider = step.input.provider;
+    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a secret step needs input.provider, the secret id entered with 'installer secret <provider>'`);
+    if (step.verify?.check !== "secret_present" || step.verify.args?.id !== provider) {
+      throw new SolutionError(`Step '${step.step_id}': a secret step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
+    }
+  }
+}
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -149,6 +162,7 @@ export function parseSolution(raw: unknown): Solution {
   }, 0);
   checkModeReferences(steps);
   checkProbeArgs(steps);
+  checkSecretSteps(steps);
   return { id, version, steps };
 }
 

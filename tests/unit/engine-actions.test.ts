@@ -59,7 +59,7 @@ describe("submit", () => {
     const solution = parseSolution({
       id: "secret",
       version: "1",
-      steps: [{ step_id: "s", phase: "BRAIN", type: "human_action", title: "Enter key", why: "Needed.", blocking: true, input: { kind: "secret" } }],
+      steps: [{ step_id: "s", phase: "BRAIN", type: "human_action", title: "Enter key", why: "Needed.", blocking: true, input: { kind: "secret", provider: "demo" }, verify: { check: "secret_present", args: { id: "demo" } } }],
     });
     const { deps } = memoryDeps(home, solution);
     const { state } = await start(deps, null, "file:/s.json");
