@@ -34,6 +34,31 @@ function describe(error: unknown): string {
   return name === "TimeoutError" ? `timed out after ${MCP_TIMEOUT_MS} ms` : (message ?? String(error));
 }
 
+const tooLarge = (): ActionFailure => new ActionFailure(`Skills Wiki answer is larger than ${MCP_MAX_BYTES} bytes`);
+
+/** Reads at most MCP_MAX_BYTES; a stalled or endless answer is a failure, never a crash or a memory blow-up. */
+async function readCapped(response: Response): Promise<string> {
+  if (Number(response.headers.get("content-length") ?? "0") > MCP_MAX_BYTES) throw tooLarge();
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (let next = await reader.read(); !next.done; next = await reader.read()) {
+      size += next.value.byteLength;
+      if (size > MCP_MAX_BYTES) {
+        await reader.cancel();
+        throw tooLarge();
+      }
+      chunks.push(next.value);
+    }
+  } catch (error) {
+    if (error instanceof ActionFailure) throw error;
+    throw new ActionFailure(`Cannot read the Skills Wiki answer (${describe(error)})`);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 /** One POST; the session id of the initialize answer is echoed on every later request. */
 async function post(target: McpTarget, body: unknown, sessionId?: string | null): Promise<Reply> {
   const headers: Record<string, string> = {
@@ -51,8 +76,7 @@ async function post(target: McpTarget, body: unknown, sessionId?: string | null)
   }
   if (response.status === 401) throw new ActionFailure(KEY_REJECTED_HINT);
   if (!response.ok) throw new ActionFailure(`Skills Wiki answered HTTP ${response.status}`);
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > MCP_MAX_BYTES) throw new ActionFailure(`Skills Wiki answer is larger than ${MCP_MAX_BYTES} bytes`);
+  const text = await readCapped(response);
   return { text, contentType: response.headers.get("content-type") ?? "", sessionId: response.headers.get("mcp-session-id") };
 }
 

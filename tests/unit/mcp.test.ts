@@ -87,6 +87,20 @@ describe("callTool answer parsing (Review Focus 5)", () => {
     await expect(callTool(target, "t")).rejects.toThrow(message);
   });
 
+  it("turns a timeout while reading the answer into a failure, not a crash (review finding 1)", async () => {
+    const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    const stalled = new ReadableStream<Uint8Array>({ pull: (controller) => controller.error(timeout) });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(stalled, { headers: { "content-type": "text/event-stream" } }));
+    await expect(callTool(target, "t")).rejects.toThrow(ActionFailure);
+  });
+
+  it("stops reading an answer that never ends at the size cap (review finding 1)", async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(120);
+    const endless = new ReadableStream<Uint8Array>({ pull: (controller) => controller.enqueue(chunk) });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(endless, { headers: { "content-type": "application/json" } }));
+    await expect(callTool(target, "t")).rejects.toThrow(/larger than 1000000 bytes/);
+  }, 10_000);
+
   it("names a timeout", async () => {
     const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
     vi.spyOn(globalThis, "fetch").mockRejectedValue(timeout);
