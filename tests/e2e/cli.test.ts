@@ -21,11 +21,20 @@ describe("installer CLI", () => {
     expect((await stat(home)).mode & 0o777).toBe(0o700);
   });
 
-  it.skipIf(process.platform === "win32")("keeps the mode of a pre-existing home", async () => {
+  it.skipIf(process.platform === "win32")("refuses an existing home other users can open, and leaves its mode alone (D34)", async () => {
     const home = await makeTempHome();
     await chmod(home, 0o755);
-    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const result = runCli(["start", "--solution", FIXTURE_REF], { home });
+    expect(result.code).toBe(2);
+    expect(result.json).toEqual({ error: `${home} can be opened by other users (mode 755); run 'chmod 700 ${home}' or use a different --home`, code: 2 });
     expect((await stat(home)).mode & 0o777).toBe(0o755);
+    await expect(readdir(home)).resolves.toEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32")("accepts an existing home that only its owner can open", async () => {
+    const home = await makeTempHome();
+    await chmod(home, 0o700);
+    expect(runCli(["start", "--solution", FIXTURE_REF], { home }).code).toBe(0);
   });
 
   it.each([
