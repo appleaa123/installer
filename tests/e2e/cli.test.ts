@@ -282,6 +282,20 @@ describe("installer CLI", () => {
       expect(result.json).toMatchObject({ error: "Secret id 'Skills Wiki' must be lowercase letters, digits and dashes" });
     });
   });
+  describe("installer mcp-headers (D52)", () => {
+    it("prints exactly the Authorization header line from the keychain", async () => {
+      const result = runCli(["mcp-headers", "skillswiki"], { env: await keychainEnv("sw_live_123") });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe('{"Authorization":"Bearer sw_live_123"}\n');
+    });
+
+    it("prints nothing and exits 1 when the key is missing", async () => {
+      const result = runCli(["mcp-headers", "skillswiki"], { env: await keychainEnv() });
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+    });
+  });
   it("report prints text by default and JSON with --json", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });

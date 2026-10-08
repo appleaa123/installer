@@ -132,6 +132,17 @@ function checkProbeArgs(steps: readonly StepDef[]): void {
   }
 }
 
+/** BRAIN steps read what earlier engine steps recorded (the probed profile, the registration). */
+const NEEDS_EARLIER: Readonly<Record<string, string>> = { register_mcp: "probe_runtime", probe_mcp: "register_mcp" };
+
+function checkBrainOrder(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    const action = step.auto?.action ?? "";
+    if (!Object.hasOwn(NEEDS_EARLIER, action)) return;
+    const needed = NEEDS_EARLIER[action];
+    if (!steps.slice(0, index).some((earlier) => earlier.auto?.action === needed)) throw new SolutionError(`Step '${step.step_id}': ${action} needs an earlier ${needed} step`);
+  });
+}
 const SECRET_ID = /^[a-z0-9-]+$/;
 
 /** A secret step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
@@ -163,6 +174,7 @@ export function parseSolution(raw: unknown): Solution {
   checkModeReferences(steps);
   checkProbeArgs(steps);
   checkSecretSteps(steps);
+  checkBrainOrder(steps);
   return { id, version, steps };
 }
 

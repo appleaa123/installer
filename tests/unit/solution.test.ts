@@ -61,6 +61,17 @@ describe("secret steps (§8.3)", () => {
     expect(() => parseSolution(secret(extra))).toThrow(message);
   });
 });
+describe("BRAIN step order", () => {
+  const auto = (step_id: string, action: string) => ({ step_id, phase: "BRAIN", type: "auto", title: step_id, why: "Needed.", blocking: true, auto: { action } });
+
+  it("refuses register_mcp before probe_runtime", () => {
+    expect(() => parseSolution({ id: "b", version: "1", steps: [auto("brain.register", "register_mcp")] })).toThrow("Step 'brain.register': register_mcp needs an earlier probe_runtime step");
+  });
+
+  it("accepts register_mcp after probe_runtime", () => {
+    expect(parseSolution({ id: "b", version: "1", steps: [auto("pre.probe", "probe_runtime"), auto("brain.register", "register_mcp")] }).steps).toHaveLength(2);
+  });
+});
 describe("loadSolution", () => {
   it("loads a file: reference", async () => {
     await expect(loadSolution(`file:${FIXTURE}`)).resolves.toMatchObject({ id: "fixture-basic" });

@@ -8,6 +8,8 @@ export interface HeadlessRequest {
   readonly prompt: string;
   readonly schema?: object;
   readonly sessionId?: string;
+  /** Exactly one tool the agent may call; replaces the profile's tools-off flags for this call (C6 probe, D54). */
+  readonly allowTool?: string;
 }
 
 export type HeadlessResult =
@@ -71,11 +73,18 @@ function pick(value: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((node, key) => (typeof node === "object" && node !== null ? (node as Record<string, unknown>)[key] : undefined), value);
 }
 
-function buildArgv(profile: RuntimeProfile, request: HeadlessRequest): string[] {
+function toolArgs(profile: RuntimeProfile, request: HeadlessRequest): string[] {
+  if (request.allowTool === undefined) return [...(profile.headless.tools_off ?? [])];
+  if (!profile.headless.allow_tool) throw new ProfileError(`Profile '${profile.id}' has no headless.allow_tool template, so it cannot allow '${request.allowTool}'`);
+  return fillTemplate(profile.headless.allow_tool, { tool: request.allowTool });
+}
+
+/** Exported for tests: the exact argv a request produces. */
+export function buildArgv(profile: RuntimeProfile, request: HeadlessRequest): string[] {
   const base = fillTemplate(profile.headless.cmd, { profile_dir: profile.dir, prompt: request.prompt });
   const schema = request.schema && profile.schema ? fillTemplate(profile.schema.flag, { schema_json: JSON.stringify(request.schema) }) : [];
   const resume = request.sessionId && profile.resume ? fillTemplate(profile.resume.flag, { session_id: request.sessionId }) : [];
-  return [...base, ...schema, ...resume];
+  return [...base, ...toolArgs(profile, request), ...schema, ...resume];
 }
 
 export async function runHeadless(profile: RuntimeProfile, request: HeadlessRequest, options: HeadlessOptions): Promise<HeadlessResult> {

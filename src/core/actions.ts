@@ -4,9 +4,11 @@ import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
-import { listBundledProfiles, loadProfileById } from "./profile.js";
+import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { runProbe } from "./probe.js";
-import type { Action, Check, InstallState, StatePatch } from "./types.js";
+import { headersHelperCommand, installerCliPath, registerMcp } from "./register.js";
+import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, skillswikiTarget } from "./skillswiki.js";
+import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
 
 export interface CheckResult {
   readonly ok: boolean;
@@ -49,6 +51,20 @@ function stringArg(args: Args, key: string): string {
 
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
+const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'installer resume'";
+
+async function probeDir(home: string): Promise<string> {
+  const cwd = await confinedPath(home, PROBE_DIR);
+  await mkdir(cwd, { recursive: true, mode: 0o700 });
+  return cwd;
+}
+
+/** The capability map and profile the probe recorded; without them Skills Wiki cannot be registered (fallbacks are later plans). */
+async function probedRuntime(state: InstallState | undefined): Promise<{ runtime: CapabilityMap; profile: RuntimeProfile }> {
+  const runtime = state?.runtime;
+  if (!runtime?.profile) throw new ActionFailure(NO_AGENT_HINT);
+  return { runtime, profile: await loadProfileById(runtime.profile) };
+}
 
 type ActionRun = (home: string, args: Args, state: InstallState | undefined) => Promise<StatePatch>;
 
@@ -66,12 +82,17 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     return {};
   },
   probe_runtime: async (home, args) => {
-    const cwd = await confinedPath(home, PROBE_DIR);
-    await mkdir(cwd, { recursive: true, mode: 0o700 });
     const profiles = typeof args.profile === "string" ? [await loadProfileById(args.profile)] : await listBundledProfiles();
-    return { runtime: await runProbe({ profiles, cwd }) };
+    return { runtime: await runProbe({ profiles, cwd: await probeDir(home) }) };
   },
   derive_mode: async (_home, args, state) => deriveModeAction(args, state),
+  register_mcp: async (home, _args, state) => {
+    const { profile } = await probedRuntime(state);
+    const { url } = await skillswikiTarget(state?.skillswiki?.url);
+    const helper = headersHelperCommand(SKILLSWIKI_SECRET_ID, process.execPath, installerCliPath());
+    await registerMcp(profile, SKILLSWIKI_MCP_NAME, url, helper, await probeDir(home));
+    return {};
+  },
 };
 
 type CheckRun = (home: string, args: Args, state: InstallState | undefined) => Promise<CheckResult>;

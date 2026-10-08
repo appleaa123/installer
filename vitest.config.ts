@@ -16,6 +16,8 @@ export default defineConfig({
       INSTALLER_KEYCHAIN_DIR: mkdtempSync(join(tmpdir(), "installer-keychain-")),
       // `installer secret` must never open a browser tab during a test run.
       INSTALLER_BROWSER: "none",
+      // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
+      INSTALLER_CLI: resolve("dist/cli.js"),
     },
   },
 });

@@ -191,6 +191,14 @@ async function secretServeCommand(id: string): Promise<number> {
   return EXIT.OK;
 }
 
+/** Run by the agent for every Skills Wiki request (D52): the header line, or exit 1 and no output when the key is missing. */
+async function headersCommand(id: string): Promise<number> {
+  const key = await getSecret(requireSecretId(id));
+  if (key === null) return EXIT.INTERNAL;
+  emit(process.stdout, JSON.stringify({ Authorization: `Bearer ${key}` }));
+  return EXIT.OK;
+}
+
 type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
 type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined) => Promise<unknown>;
 
@@ -221,6 +229,7 @@ async function run(argv: readonly string[]): Promise<number> {
   const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
   const [command = "", arg] = positionals;
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
+  if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;

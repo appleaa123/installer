@@ -7,9 +7,13 @@
     "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "-p", "{prompt}", "--output-format", "json"],
     "result_path": "result",
     "session_path": "session_id",
-    "error_path": "is_error"
+    "error_path": "is_error",
+    "tools_off": ["--tools", ""],
+    "allow_tool": ["--allowedTools", "{tool}"]
   },
   "schema": { "flag": ["--json-schema", "{schema_json}"], "result_path": "structured_output" },
   "resume": { "flag": ["-r", "{session_id}"] },
+  "mcp_register": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "mcp", "add-json", "-s", "user", "{name}", "{config_json}"] },
+  "mcp_remove": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "mcp", "remove", "-s", "user", "{name}"] },
   "tos_review": { "status": "ok", "note": "Test double used only by the test suite." }
 }

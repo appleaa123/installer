@@ -16,6 +16,15 @@ describe("runtime profiles", () => {
     expect(profile).toMatchObject({ id: "claude-code", headless: { result_path: "result" }, schema: { result_path: "structured_output" } });
   });
 
+  it("carries the verified MCP templates and tools-off flags of Claude Code (D52)", async () => {
+    const profile = await loadProfile("claude-code");
+    expect(profile.headless.cmd).toEqual(["claude", "-p", "{prompt}", "--output-format", "json"]);
+    expect(profile.headless.tools_off).toEqual(["--tools", "", "--strict-mcp-config"]);
+    expect(profile.headless.allow_tool).toEqual(["--allowedTools", "{tool}"]);
+    expect(profile.mcp_register?.cmd).toEqual(["claude", "mcp", "add-json", "-s", "user", "{name}", "{config_json}"]);
+    expect(profile.mcp_remove?.cmd).toEqual(["claude", "mcp", "remove", "-s", "user", "{name}"]);
+  });
+
   it("lists the bundled profiles", async () => {
     expect((await listBundledProfiles()).map((profile) => profile.id)).toEqual(["claude-code"]);
   });
@@ -38,6 +47,10 @@ describe("runtime profiles", () => {
     ["an unknown tos status", { ...valid, tos_review: { status: "maybe", note: "n" } }, /tos_review.status/],
     ["an id with capitals", { ...valid, id: "Claude" }, /id must be lowercase/],
     ["a placeholder the command cannot use", { ...valid, headless: { ...valid.headless, cmd: ["x", "-p", "{prompt}", "{session_id}"] } }, /headless.cmd uses \{session_id\}/],
+    ["an allow_tool without {tool}", { ...valid, headless: { ...valid.headless, allow_tool: ["--allowedTools"] } }, /headless.allow_tool must contain \{tool\}/],
+    ["an mcp_register without {config_json}", { ...valid, mcp_register: { cmd: ["x", "mcp", "add", "{name}"] } }, /mcp_register.cmd must contain \{config_json\}/],
+    ["an mcp_remove without {name}", { ...valid, mcp_remove: { cmd: ["x", "mcp", "remove"] } }, /mcp_remove.cmd must contain \{name\}/],
+    ["an mcp_remove that uses {prompt}", { ...valid, mcp_remove: { cmd: ["x", "{name}", "{prompt}"] } }, /mcp_remove.cmd uses \{prompt\}/],
   ])("refuses %s", (_name, raw, message) => {
     expect(() => parseProfile(raw, "/p")).toThrow(ProfileError);
     expect(() => parseProfile(raw, "/p")).toThrow(message);

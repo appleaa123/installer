@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fillTemplate, runHeadless, runProcess } from "../../src/core/headless.js";
+import { buildArgv, fillTemplate, runHeadless, runProcess } from "../../src/core/headless.js";
 import { ProfileError, loadProfile } from "../../src/core/profile.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -21,6 +21,22 @@ describe("fillTemplate", () => {
   });
 });
 
+describe("buildArgv", () => {
+  it("appends the tools-off flags to an ordinary call", async () => {
+    const argv = buildArgv(await loadProfile("claude-code"), { prompt: "hi" });
+    expect(argv).toEqual(["claude", "-p", "hi", "--output-format", "json", "--tools", "", "--strict-mcp-config"]);
+  });
+
+  it("allows exactly one tool instead when the request names it (C6 probe, D54)", async () => {
+    const argv = buildArgv(await loadProfile("claude-code"), { prompt: "hi", allowTool: "mcp__skillswiki__get_active_combo" });
+    expect(argv).toEqual(["claude", "-p", "hi", "--output-format", "json", "--allowedTools", "mcp__skillswiki__get_active_combo"]);
+  });
+
+  it("refuses to allow a tool on a profile without an allow_tool template", async () => {
+    const profile = await loadProfile(resolve("tests/fixtures/profiles/missing-agent.json"));
+    expect(() => buildArgv(profile, { prompt: "hi", allowTool: "x" })).toThrow(ProfileError);
+  });
+});
 describe("runProcess", () => {
   it("names a command that is not installed (Review Focus 2)", async () => {
     const result = await runProcess(["installer-test-no-such-agent"], await makeTempHome(), 5_000);
@@ -30,6 +46,12 @@ describe("runProcess", () => {
   it("kills a command that runs past the timeout (Review Focus 1)", async () => {
     const result = await runProcess([process.execPath, "-e", "setInterval(() => {}, 1000)"], await makeTempHome(), 300);
     expect(result.error).toBe("timed out after 300 ms");
+  });
+
+  it("passes input on stdin and reports the exit code", async () => {
+    const echo = [process.execPath, "-e", "process.stdin.pipe(process.stdout); process.stdin.on('end', () => process.exit(44))"];
+    const result = await runProcess(echo, await makeTempHome(), 5_000, "a b\"c");
+    expect(result).toEqual({ stdout: "a b\"c", code: 44, error: "exited with code 44" });
   });
 });
 
