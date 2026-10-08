@@ -123,9 +123,9 @@ export async function advance(deps: EngineDeps, state: InstallState): Promise<Ad
     const record = recordOf(current, step.step_id);
     if (record?.status === "blocked") return { state: current, result: { status: "blocked", view: viewOf(step, record) } };
     if (step.type === "auto" && step.auto) {
-      await runAction(deps.home, step.auto);
+      const patch = await runAction(deps.home, step.auto, current);
       crashPoint("engine:after-action");
-      current = await transition(deps, current, step, { status: "done", at: deps.now(), by: "engine" }, "engine");
+      current = await transition(deps, { ...current, ...patch }, step, { status: "done", at: deps.now(), by: "engine" }, "engine");
       continue;
     }
     if (step.type === "verify" && (record === undefined || record.status === "pending")) {

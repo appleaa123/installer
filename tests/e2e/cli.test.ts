@@ -91,7 +91,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
@@ -106,6 +106,47 @@ describe("installer CLI", () => {
     const result = runCli(["start", "--solution", ref], { home });
     expect(result.code).toBe(2);
     await expect(access(home)).rejects.toThrow();
+  });
+
+  describe("runtime probe", () => {
+    const FAKE_PROFILE = resolve("tests/fixtures/profiles/fake-agent.json");
+
+    async function probeSolution(): Promise<string> {
+      const path = join(await makeTempHome(), "probe.json");
+      const steps = [
+        { step_id: "preflight.probe", phase: "PREFLIGHT", type: "auto", title: "Check the agent", why: "Finds what the agent can do.", blocking: true, auto: { action: "probe_runtime", args: { profile: FAKE_PROFILE } } },
+        { step_id: "report.final", phase: "REPORT", type: "auto", title: "Finish", why: "Marks the end.", blocking: true, auto: { action: "noop" } },
+      ];
+      await writeFile(path, JSON.stringify({ id: "probe-only", version: "1.0.0", steps }), "utf8");
+      return `file:${path}`;
+    }
+
+    it("installer probe prints the capability map", () => {
+      const result = runCli(["probe", "--profile", FAKE_PROFILE], {});
+      expect(result.code).toBe(0);
+      expect(result.json).toMatchObject({ profile: "fake-agent", c4_headless: true, c5_resume: true, support_level: 2 });
+    });
+
+    it("installer probe names an unknown profile, exit 2", () => {
+      const result = runCli(["probe", "--profile", "no-such-agent"], {});
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: "Unknown runtime profile 'no-such-agent'" });
+    });
+
+    it("the probe_runtime step stores the capability map in the state", async () => {
+      const home = await makeTempHome();
+      expect(runCli(["start", "--solution", await probeSolution()], { home }).json).toEqual({ status: "complete" });
+      expect((await loadState(home))?.runtime).toMatchObject({ profile: "fake-agent", support_level: 2 });
+    });
+
+    it("a kill right after the probe runs it again on resume and keeps one result", async () => {
+      const home = await makeTempHome();
+      const crashed = runCli(["start", "--solution", await probeSolution()], { home, env: { INSTALLER_CRASH_AT: "engine:after-action" } });
+      expect(crashed.signal).toBe("SIGKILL");
+      expect((await loadState(home))?.runtime).toBeUndefined();
+      expect(runCli(["resume"], { home }).json).toEqual({ status: "complete" });
+      expect((await loadState(home))?.runtime).toMatchObject({ profile: "fake-agent" });
+    });
   });
 
   it("report prints text by default and JSON with --json", async () => {
