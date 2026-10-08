@@ -12,7 +12,7 @@ Language: TypeScript on Node ≥ 22 (D44).
 |---|---|---|---|---|---|---|
 | 1 | **Engine core** | `installer start / next / submit / verify / resume / report` driven by a scripted operator against a fixture solution; atomic resumable state; hash-chained audit; kill-between-steps and idempotency tests | — | §6.3–6.6, §11.8 (audit chain), §15.1 (engine tests), §15.2 (scripted operator) | — | [Implemented](2026-10-06-01-engine-core.md) on `feat/engine-core` |
 | 2 | **Runtime conformance** | Runtime profiles as JSON, `installer probe` (C2, C4, C4 schema, C5) with a capability map in the state and report, `https:` solution refs with `recipe_version`, MODE phase (mode + decision maker), per-runtime hints on `agent_action`, `INSTALL.md`, starter solution (D46) | 1 | §5, §6.1–6.3, §7 | — | [Implemented](2026-10-08-02-runtime-conformance.md) on `feat/runtime-conformance` |
-| 3 | **Secrets + BRAIN phase** | Local browser page for `secret`/`oauth`, OS keychain storage, Skills Wiki key, engine-run MCP registration (O6 syntax verified), C6 probe, `skillswiki:` refs, combo `human_action` verified via `get_active_combo`, `installer disconnect` for the Skills Wiki key (D46) | 1, 2 | §6.2 BRAIN, §7.3 C6, §8.3, §13, §14.2 | O3 (headless OAuth redirect), O10, O15 | Not started |
+| 3 | **Secrets + BRAIN phase** | Non-blocking local browser page for `secret` (D47), keychain module with macOS / Linux / file backends (D51), `installer secret`, `mcp-headers` and `disconnect`, engine-run MCP registration with a headers helper (D52), hand-rolled MCP client and `skillswiki:` refs (D55), combo `human_action` verified via `get_active_combo` (D37), C6 probe in the agent's folder (D54), auto-action failure path (D53), starter solution with BRAIN steps, opt-in live tests (D48) | 1, 2 | §6.1–6.3, §7.2–7.3 C6, §8.3, §13, §14.2 | O3 (mostly), O6, O7, O8, O10 (deferred) | [Implemented](2026-10-08-03-secrets-brain.md) on `feat/brain-secrets` |
 | 4 | **Local MCP server + approvals** | Local MCP server, `installer tool` CLI fallback, approval items, action-hash tokens, level derivation, compiled floor, decisions (approve / edit / reject / expire), roles | 1–3 | §7.4, §11.1–11.6, §11.9 | — | Not started |
 | 5 | **Connectors + data layer** | Connector definition loader, pinned + checksummed connector packages, `installer disconnect <connector>`, data contract, phase-3 mapping, `records.*` tools, field tags, spreadsheet connector (Google / Microsoft), default sheet creation, import with change preview, optimistic concurrency | 3, 4 | §8.1–8.2, §9, §14.2 (supply chain) | — | Not started |
 | 6 | **Gateway + channels** | Always-on gateway, channel connector interface, Telegram + email connectors, inbound envelope, injection marking, sender identity via `invite`, reply codes, opt-out, consent policy | 3, 4, 5 | §12, §11.9 | O4 (tunnels, webhook channels later) | Not started |
@@ -21,8 +21,9 @@ Language: TypeScript on Node ≥ 22 (D44).
 | 9 | **Operations + security hardening** | `doctor`, host readiness (Layer 1), pause / unpause, uninstall, support bundle, pack pinning + shadow upgrade, data-flow summary, retention | 1–8 | §5.1, §14, §16 | — | Not started |
 | 10 | **CI matrix + certification** | CI for engine + scripted operator, nightly real-agent matrix, connector contract nightlies, universal injection suite, Codex certification | 1–9 | §15 | O2 (vendor terms), O5 (other profiles), O7 (CI budget cap) | Not started |
 
-O8 (product name), O11 (unattended hosted evals) and O15 (combo activation
-by API key) are handled when the plan that touches them is written.
+O11 (unattended hosted evals) and O15 (combo activation by API key) are
+handled when the plan that touches them is written. `oauth` input steps
+(the OAuth redirect half of O3) arrive with the connectors in Plan 5.
 
 ## Carried forward from Plan 1
 

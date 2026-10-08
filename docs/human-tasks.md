@@ -26,9 +26,18 @@ Each task says why it is needed and what to do, step by step.
 2. Run Tests 0 to 5 in one terminal, in order, and paste the output to Claude (as with the Plan 1 live test).
 3. Test 3b needs internet and shows the real HTTP status for a missing file; Claude could not see it from its sandbox.
 
+### 3. Run the Plan 3 live test (Skills Wiki, keychain, your real Claude Code)
+
+**Why:** the automated tests use a fake Skills Wiki server, a file keychain and a fake agent. This checks the real ones. The guide's expected outputs are predictions: they have not been run against the real services yet.
+
+1. Open `docs/testing/2026-10-08-plan-3-live-test.md` and follow it in one terminal, in order.
+2. When a page opens in your browser, paste your Skills Wiki API key there (never into the chat or the terminal).
+3. Paste each test's output to Claude. If an output differs from the guide, Claude will fix the code or the guide.
+4. The guide's last test removes the Skills Wiki registration and the keychain item it created.
+
 ## Optional
 
-### 3. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 4. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 

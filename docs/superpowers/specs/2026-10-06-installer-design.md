@@ -235,9 +235,12 @@ Wiki file resource: `skillswiki:<pack>/<skill>/<path>` (fetched with
 a recipe file. A solution with no recipe uses `skillswiki:none` and builds
 everything interactively. `file:<path>` refs are accepted for local
 solutions and tests. A `skillswiki:` ref needs the Skills Wiki key before
-`start`, so `INSTALL.md` runs `installer secret skillswiki` first (Plan 3,
-D46). The `INSTALL.md` served at the solution URL
-embeds this reference.
+`start`, so `INSTALL.md` runs `installer secret skillswiki` first, and the
+per-client MCP URL from the dashboard (not a secret) is passed as
+`installer start --solution <ref> --url <MCP URL>` and kept in the state
+(D46, D55). `start` refuses with exit 2 and creates nothing when the key or
+the URL is missing. The `INSTALL.md` served at the solution URL embeds the
+reference and the URL (`{{SOLUTION_REF}}`, `{{SKILLSWIKI_URL}}`).
 
 `INSTALL.md` also fixes the **operator rules** the agent must follow:
 1. Never invent an answer on the human's behalf; ask.
@@ -304,7 +307,15 @@ status (Plan 1):
 
 `input.kind`: `text | choice | multi_choice | confirm | number | time |
 cron | secret | oauth | file`. `secret` and `oauth` are never collected
-through the agent (§8.3).
+through the agent (§8.3). A `human_action` with `input.kind: secret`
+names the secret in `input.provider`, is entered through
+`installer secret <provider>` and completes through
+`installer verify <step_id>` with the check `secret_present` (D47).
+
+An `auto` step whose action fails for a reason the person can fix
+(network, keychain, a child process) is recorded as `failed` with the
+hint and retried with `installer resume`; the third failure blocks it
+(D53).
 
 Errors: a failed `verify` returns `{ "status": "failed", "hint": "...",
 "retry": true }`; after 3 failures the step becomes `blocked` with the
@@ -365,7 +376,8 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer next` / `submit` / `verify` / `resume` | Step loop (§6.3) |
 | `installer report [--json]` | Install / health report |
 | `installer probe` | Runtime conformance check (§7.3) |
-| `installer secret <connector>` | Open the local browser page for credential entry (§8.3) |
+| `installer secret <id>` | Start the local browser page for credential entry and return at once (§8.3, D47) |
+| `installer mcp-headers <id>` | Run by the agent's MCP client: prints the Authorization header from the keychain (§7.2, D52) |
 | `installer invite` | Create per-member join links (channel identity + optional personal sign-ins) |
 | `installer run <workflow> [--sandbox]` | Run a workflow now |
 | `installer harden <workflow>` | Review and apply hardening proposals (§10.8) |
@@ -422,10 +434,22 @@ The Claude Code profile values above were verified live on 2026-10-08
 `.session_id`, error flag `.is_error`), `--json-schema` (object at
 `.structured_output`), `-r <session_id>` resume, and tools off with
 `--tools "" --strict-mcp-config` (`--restricted` only removes code-running
-tools, so it is not used). Plan 3 adds `mcp_register.cmd`, an argv
-template the **engine** runs with the key from the keychain, so the key
-never enters the agent's context (D46). Its syntax is verified (O6):
-`claude mcp add [-s scope] --transport http <name> <url> --header "Authorization: Bearer <key>"`.
+tools, so it is not used). Plan 3 (D52) splits the tools-off flags into
+`headless.tools_off`, adds `headless.allow_tool` (`["--allowedTools",
+"{tool}"]`) for the C6 probe, and the templates the **engine** runs to
+manage the agent's MCP servers, so the key never enters the agent's
+context (D46):
+
+```json
+"headless": { "cmd": ["claude", "-p", "{prompt}", "--output-format", "json"], "tools_off": ["--tools", "", "--strict-mcp-config"], "allow_tool": ["--allowedTools", "{tool}"], "…": "…" },
+"mcp_register": { "cmd": ["claude", "mcp", "add-json", "-s", "user", "{name}", "{config_json}"] },
+"mcp_remove": { "cmd": ["claude", "mcp", "remove", "-s", "user", "{name}"] }
+```
+
+`{config_json}` is `{"type":"http","url":<url>,"headersHelper":"'<node>' '<installer cli>' mcp-headers skillswiki"}`;
+`installer mcp-headers <id>` prints `{"Authorization":"Bearer <key>"}` from
+the keychain for every request (verified live, O6 resolved). Claude Code
+runs the helper only in folders with persisted workspace trust.
 
 ### 7.3 Probe (`installer probe`, phase 0)
 
@@ -435,7 +459,7 @@ never enters the agent's context (D46). Its syntax is verified (O6):
 | C4 headless | Profile headless command with a fixed two-label classification | Valid output |
 | C4 schema | Same with schema flag (if any) | Runner validation passes |
 | C5 resume | Store a nonce word, resume, ask it back | Same word returned, same session |
-| C6 MCP (Plan 3) | Engine registers Skills Wiki MCP, then the agent calls a ping tool | Ping succeeds |
+| C6 MCP (`probe_mcp`, BRAIN) | Engine registers Skills Wiki MCP; a headless call in the agent's own folder (`work_dir`) allows exactly `mcp__skillswiki__get_active_combo` and names it in the prompt (D54) | The agent reports the same `combo_slug` the engine's own call returned |
 
 Output: capability map in the install state (`runtime`) and the report;
 **support level** = number of C4, C5, C6 that pass (0–3); tier (§7.5).
@@ -510,15 +534,26 @@ risk:
 
 ### 8.3 Secret and sign-in entry (D8, D22)
 - `input.kind: secret | oauth` steps are handled by the CLI, never by the
-  agent: the CLI serves a **local browser page on localhost** (one-time
-  path token, closes after use).
-- OAuth uses the provider's redirect to that local page.
-- **Headless host fallback:** the CLI prints a one-time link to open from a
-  phone or laptop (redirect mechanics are an open item, §19).
-- Storage: OS keychain (macOS Keychain, Windows Credential Manager, Linux
-  Secret Service). Never written to config, state, logs, run folders or
-  bundles.
-- The agent only learns `{"status":"done"}`.
+  agent: `installer secret <id>` starts a **detached page process on
+  127.0.0.1** (random port, 32-byte path token, Host and Origin checks,
+  POST only, one accepted value, exits after it or after 10 minutes),
+  opens the browser and returns at once with
+  `{"status":"waiting","url":…,"pid":…}` (D47). The page process writes
+  only the keychain.
+- OAuth uses the provider's redirect to that local page (Plan 5).
+- **Headless host fallback:** the output carries a `hint` with the
+  `ssh -L <port>:127.0.0.1:<port>` tunnel to open the same page from a
+  laptop; entry from another machine without a tunnel stays open (§19).
+- Storage: OS keychain through `security` (macOS, value on stdin) or
+  `secret-tool` (Linux), service `installer`, account `<id>`; a file
+  backend (`INSTALLER_KEYCHAIN=file`) for tests and platforms without a
+  keychain; Windows Credential Manager later (D51). Never written to
+  config, state, logs, run folders or bundles; the state holds only ids
+  and the non-secret Skills Wiki URL.
+- The agent only learns `{"status":"waiting"}` and, after
+  `installer verify <step_id>` with `secret_present`, `{"status":"passed"}`.
+- `installer disconnect skillswiki` removes the MCP server from the agent,
+  deletes the keychain item and writes an audit line.
 - For Google Workspace / Microsoft 365, prefer an OAuth app **created in
   the client's own tenant** (internal app), with admin consent where the
   mode needs several mailboxes.
@@ -1177,13 +1212,13 @@ Same engine, same phases, same contracts.
 |---|---|---|
 | O1 | Live test of Codex `exec`, `exec resume`, `--output-schema` (documented by third-party guides only) | Codex certification |
 | O2 | Vendor terms review per runtime before certification | Certification |
-| O3 | OAuth redirect to a headless team host (loopback vs tunnel vs one-time link) | §8.3 fallback |
+| O3 | Secret entry on a headless team host: resolved for `secret` by the `ssh -L` hint (D47); the OAuth redirect half stays open until Plan 5 | §8.3 fallback |
 | O4 | Tunnel choice and setup for webhook channels | Webhook connectors |
 | O5 | Runtime profile details for OpenClaw, Hermes, Pi, WorkBuddy | Compatible tier |
-| O6 | Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header | Claude Code profile |
-| O7 | CI monthly budget cap amount | §15.2 |
-| O8 | Final CLI / product name | Packaging |
-| O10 | Whether Skills Wiki `enterprise` routes support team seats | Hybrid/personal seats |
+| O6 | ~~Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header~~ Resolved: `claude mcp add-json -s user <name> '{"type":"http","url":…,"headersHelper":…}'` (D52) | — |
+| O7 | ~~CI monthly budget cap amount~~ Resolved: no paid CI; local offline tests plus opt-in live tests (D48) | — |
+| O8 | ~~Final CLI / product name~~ Resolved: `installer` (D49) | — |
+| O10 | Whether Skills Wiki `enterprise` routes support team seats; v1 runs helper and keychain as the agent's OS user (D50) | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
 | O14 | Verify per-OS scheduler behaviour after sleep (cron skips, launchd may coalesce missed fires into one late fire) so the D38 tolerance check catches it | §10.3 |
