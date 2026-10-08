@@ -33,6 +33,17 @@ describe("concurrent audit appends (D57)", () => {
     await expect(access(join(home, AUDIT_LOCK_FILE))).rejects.toThrow();
   });
 
+  it("never forks the chain when several processes take over a dead process's lock at once (review finding 1)", async () => {
+    for (let round = 0; round < 25; round += 1) {
+      const home = await makeTempHome();
+      await mkdir(join(home, "audit"), { recursive: true });
+      await writeFile(join(home, AUDIT_LOCK_FILE), String(deadPid()));
+      const codes = await Promise.all(["a", "b", "c", "d", "e", "f"].map((name) => appender(home, name, 5)));
+      expect(codes).toEqual([0, 0, 0, 0, 0, 0]);
+      await expect(verifyAudit(home)).resolves.toEqual({ ok: true, lines: 30 });
+    }
+  }, 120_000);
+
   it("takes over a lock left by a process that is gone", async () => {
     const home = await makeTempHome();
     await mkdir(join(home, "audit"), { recursive: true });

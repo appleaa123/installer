@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isAlive } from "./durable.js";
@@ -80,15 +80,36 @@ function parseLastRow(row: string, file: string): AuditLine {
   return parsed as AuditLine;
 }
 
-/** A lock left by a process that is gone no longer protects anything. */
-async function removeStaleLock(path: string): Promise<void> {
-  let pid = 0;
+const TAKEOVER_STALE_MS = 5_000;
+
+/** A guard left by a process that died mid-takeover is dropped after a few seconds; a takeover takes milliseconds. */
+async function dropOldGuard(guard: string): Promise<void> {
   try {
-    pid = Number(await readFile(path, "utf8"));
+    if (Date.now() - (await stat(guard)).mtimeMs > TAKEOVER_STALE_MS) await rm(guard, { force: true });
   } catch {
     return;
   }
-  if (Number.isInteger(pid) && pid > 0 && !isAlive(pid)) await rm(path, { force: true });
+}
+
+/**
+ * A lock left by a process that is gone no longer protects anything. Only the holder of the takeover guard may
+ * judge and remove it: two processes that both read the dead pid would otherwise remove each other's fresh lock
+ * and fork the chain (review finding). Under the guard the lock can only change by its own (dead) owner.
+ */
+async function removeStaleLock(path: string): Promise<void> {
+  const guard = `${path}.takeover`;
+  try {
+    await (await open(guard, "wx", 0o600)).close();
+  } catch {
+    await dropOldGuard(guard);
+    return;
+  }
+  try {
+    const pid = Number(await readFile(path, "utf8").catch(() => "0"));
+    if (Number.isInteger(pid) && pid > 0 && !isAlive(pid)) await rm(path, { force: true });
+  } finally {
+    await rm(guard, { force: true });
+  }
 }
 
 /** The CLI and the local MCP server append at the same time (D57): one writer at a time, through an exclusive lock file. */
