@@ -1,6 +1,7 @@
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
 import { InputError } from "./inputs.js";
+import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfile } from "./profile.js";
 import { runProbe } from "./probe.js";
 import type { Action, Check, InstallState, StatePatch } from "./types.js";
@@ -64,6 +65,7 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     const profiles = typeof args.profile === "string" ? [await loadProfile(args.profile)] : await listBundledProfiles();
     return { runtime: await runProbe({ profiles, cwd }) };
   },
+  derive_mode: async (_home, args, state) => deriveModeAction(args, state),
 };
 
 const CHECKS: Readonly<Record<string, (home: string, args: Args) => Promise<CheckResult>>> = {

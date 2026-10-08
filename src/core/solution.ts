@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
+import { MODE_ARGS } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
 
 export class SolutionError extends Error {
@@ -89,6 +90,20 @@ function parseStep(value: unknown, index: number): StepDef {
   return step;
 }
 
+/** derive_mode reads earlier answers; refuse a solution whose references point nowhere (Review Focus 4). */
+function checkModeReferences(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    if (step.auto?.action !== "derive_mode") return;
+    const earlierAsks = new Set(steps.slice(0, index).filter((earlier) => earlier.type === "ask").map((earlier) => earlier.step_id));
+    for (const key of MODE_ARGS) {
+      const ref = step.auto.args?.[key];
+      if (typeof ref !== "string" || !earlierAsks.has(ref)) {
+        throw new SolutionError(`Step '${step.step_id}': derive_mode args.${key} must name an earlier ask step, got ${JSON.stringify(ref ?? null)}`);
+      }
+    }
+  });
+}
+
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -104,6 +119,7 @@ export function parseSolution(raw: unknown): Solution {
     if (index < previous) throw new SolutionError(`Step '${step.step_id}' is in phase ${step.phase}, earlier than the previous step`);
     return index;
   }, 0);
+  checkModeReferences(steps);
   return { id, version, steps };
 }
 
