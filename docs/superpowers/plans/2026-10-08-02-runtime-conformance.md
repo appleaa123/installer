@@ -397,15 +397,25 @@ In `src/cli.ts` `startCommand`, change the last line to:
   return (await start(depsFor(home, solution), existing, ref, sha256(text))).result;
 ```
 
-- [ ] **Step 9: Run the whole suite**
+- [ ] **Step 9: Update the Plan 1 test that expected `https:` to be refused**
+
+`tests/unit/solution.test.ts` has `it("rejects unsupported references")`, which calls `loadSolution("https://example.com/solution.json")` and expects `/only file:/`. After Step 6 that ref is fetched for real (a live network call), so change the test to:
+
+```ts
+  it("rejects unsupported references", async () => {
+    await expect(loadSolution("ftp://example.com/solution.json")).rejects.toThrow(/use file:<path> or https:/);
+  });
+```
+
+- [ ] **Step 10: Run the whole suite**
 
 Run: `npm run typecheck && npx vitest run`
-Expected: typecheck exits 0; all tests pass (Plan 1's 155 plus this task's new ones).
+Expected: typecheck exits 0; all tests pass (Plan 1's 155 plus this task's new ones), with no network access needed.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/core/types.ts src/core/state.ts src/core/solution.ts src/core/engine.ts src/cli.ts tests/unit/state-fields.test.ts tests/unit/solution-refs.test.ts tests/unit/engine-advance.test.ts tests/e2e/cli.test.ts
+git add src/core/types.ts src/core/state.ts src/core/solution.ts src/core/engine.ts src/cli.ts tests/unit/state-fields.test.ts tests/unit/solution-refs.test.ts tests/unit/engine-advance.test.ts tests/unit/solution.test.ts tests/e2e/cli.test.ts
 git commit -m "feat(core): accept https solution refs and pin recipe_version"
 ```
 
@@ -524,6 +534,7 @@ describe("runtime profiles", () => {
     ["an empty detect command", { ...valid, detect: { cmd: [], match: "X" } }, /detect.cmd must be a non-empty list of strings/],
     ["an unknown tos status", { ...valid, tos_review: { status: "maybe", note: "n" } }, /tos_review.status/],
     ["an id with capitals", { ...valid, id: "Claude" }, /id must be lowercase/],
+    ["a placeholder the command cannot use", { ...valid, headless: { ...valid.headless, cmd: ["x", "-p", "{prompt}", "{session_id}"] } }, /headless.cmd uses \{session_id\}/],
   ])("refuses %s", (_name, raw, message) => {
     expect(() => parseProfile(raw, "/p")).toThrow(ProfileError);
     expect(() => parseProfile(raw, "/p")).toThrow(message);
@@ -585,11 +596,21 @@ function str(value: unknown, where: string): string {
   return value;
 }
 
+/** Placeholders each command may use; anything else is an authoring error caught at load time, never at run time. */
+const ALLOWED: Readonly<Record<string, readonly string[]>> = {
+  "detect.cmd": ["profile_dir"],
+  "headless.cmd": ["profile_dir", "prompt"],
+  "schema.flag": ["schema_json"],
+  "resume.flag": ["session_id"],
+};
+
 function argv(value: unknown, where: string, placeholder?: string): readonly string[] {
   if (!Array.isArray(value) || value.length === 0 || !value.every((part) => typeof part === "string")) {
     throw new ProfileError(`Profile ${where} must be a non-empty list of strings`);
   }
   if (placeholder && !value.some((part: string) => part.includes(placeholder))) throw new ProfileError(`Profile ${where} must contain ${placeholder}`);
+  const unknown = (value as string[]).flatMap((part) => [...part.matchAll(/\{([a-z_]+)\}/g)].map((match) => match[1])).find((name) => !(ALLOWED[where] ?? []).includes(name));
+  if (unknown) throw new ProfileError(`Profile ${where} uses {${unknown}}, which it cannot use`);
   return value as string[];
 }
 
@@ -677,7 +698,7 @@ In `package.json`, change `"files": ["dist"]` to `"files": ["dist", "profiles"]`
 - [ ] **Step 5: Run the tests**
 
 Run: `npx vitest run tests/unit/profile.test.ts && npm run typecheck`
-Expected: PASS (14 tests); typecheck exits 0.
+Expected: PASS (15 tests); typecheck exits 0.
 
 - [ ] **Step 6: Commit**
 
@@ -1290,15 +1311,23 @@ async function probeCommand(flags: Flags): Promise<CapabilityMap> {
   }
 ```
 
-- [ ] **Step 6: Run the whole suite**
+- [ ] **Step 6: Let the neutrality guard accept the JSON Schema keyword**
+
+`probe.ts` contains the JSON Schema key `properties:`, which `tests/unit/neutrality.test.ts` bans as the real-estate word "property". Exempt only the schema key form. In `tests/unit/neutrality.test.ts`, change `BANNED` to:
+
+```ts
+const BANNED = /\b(tenants?|landlords?|realtors?|leases?|rent|rental|mortgages?|propert(y|ies)(?!\s*:)|listings?|brokerages?)\b/i;
+```
+
+- [ ] **Step 7: Run the whole suite**
 
 Run: `npm run typecheck && npx vitest run`
 Expected: typecheck exits 0; all tests pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/core/probe.ts src/core/actions.ts src/core/engine.ts src/cli.ts tests/unit/probe.test.ts tests/e2e/cli.test.ts
+git add src/core/probe.ts src/core/actions.ts src/core/engine.ts src/cli.ts tests/unit/probe.test.ts tests/unit/neutrality.test.ts tests/e2e/cli.test.ts
 git commit -m "feat(core): probe the host agent and store its capabilities"
 ```
 
@@ -1919,7 +1948,7 @@ git commit -m "feat(install): add INSTALL.md and a starter solution"
 
 - [ ] **Step 1: Record D46**
 
-In `DECISIONS.md`, add this row directly after the D45 row:
+In `DECISIONS.md`, change the status line "Status: Design D1–D45. Implementation plans: `docs/superpowers/plans/` (roadmap + Plan 1)." to "Status: Design D1–D46. Implementation plans: `docs/superpowers/plans/` (roadmap + Plans 1–2)." Then add this row directly after the D45 row:
 
 ```markdown
 | D46 | **Plan 2 needs no secret; BRAIN moves to Plan 3.** Plan 2 = runtime profiles (JSON data), `installer probe` (C2, C4, C4 schema, C5), `https:` refs with a content-sha `recipe_version`, MODE phase, per-runtime hints, `INSTALL.md`. Plan 3 = secrets page + keychain **and** the BRAIN phase (Skills Wiki key, MCP registration, C6 probe, `skillswiki:` refs, combo check). Connector framework moves to Plan 5. **The engine, not the agent, registers the Skills Wiki MCP**, running the profile's registration command with the key read from the keychain, so the key never enters the agent's context (R4/D8 take precedence over D7). Claude Code headless flags verified live on 2.1.294: `-p --output-format json` (`.result`, `.session_id`, `.is_error`), `--json-schema` (`.structured_output`), `-r <id>`, tools off with `--tools "" --strict-mcp-config`. O6 resolved: `claude mcp add [-s scope] --transport http <name> <url> --header "Authorization: Bearer <key>"`. | 2026-10-08 |
@@ -1944,7 +1973,7 @@ Make these edits in `docs/superpowers/specs/2026-10-06-installer-design.md`:
 1. §6.1 "Solution reference": after "or a plain HTTPS URL to a recipe file." add: "`file:<path>` refs are accepted for local solutions and tests. A `skillswiki:` ref needs the Skills Wiki key before `start`, so `INSTALL.md` runs `installer secret skillswiki` first (Plan 3, D46)."
 2. §6.3: replace the JSON example's first line `{` … closing `}` with the wrapped shape `{ "status": "step", "view": { "step": { …the same step fields… }, "status": "pending", "attempts": 0, "resume": "installer resume" } }` and add one sentence: "`view.hints` lists the probed runtime's lines from the step's `hints` (D7)."
 3. §6.4: replace the example with one that has `"solution": { "ref", "id", "version", "recipe_version" }`, no top-level `phase`, a blocked step recorded as `{ "status": "blocked", "at": "…", "attempts": 3, "hint": "…", "reason": "check failed 3 times" }`, and optional `mode`, `roles: { "decision_maker" }` and `runtime` (the §7.3 capability map).
-4. §6.5: change "(6 of 8 phases done)" to "(6 of 8 steps done)" and change the agent line to "🤖 Agent     Pi 0.73 — level 1 of 3 (no session resume, MCP not checked yet)".
+4. §6.5: change "(6 of 8 phases done)" to "(6 of 8 steps done)". Replace the line `⚠️ Limited   Agent: Pi 0.73 — Level 3 of 4 (tools via CLI, no MCP)` with two lines: `🤖 Agent      pi 0.73 — level 1 of 3 (no session resume, MCP not checked yet)` (six spaces after "Agent", as `agentLine` renders it) and, for the remaining limit, `⚠️ Limited   External WhatsApp: Meta verification pending (1–3 days)` (move the next line up).
 5. §4.2: under `<engine_home>/` add `solution/solution.json   # pinned solution (Plan 1)`, `runtime/probe/            # working folder for headless probe calls`, and `state/install-state.json.bak  # previous state (Plan 1)`; change `profiles/<runtime>.yaml` to `profiles/<runtime>.json` (bundled with the package; Plan 2).
 6. §7.2: change the profile example to JSON (copy `profiles/claude-code.json`), note that `--tools ""` replaces `--restricted` as the tools-off flag, and replace `mcp_register_hint` with: "Plan 3 adds `mcp_register.cmd`, an argv template the **engine** runs with the key from the keychain (D46)."
 7. §7.3: in the C2 row, replace the method with "The agent runs `installer probe` from its shell and reads the JSON back"; in the C6 row add "(Plan 3)"; change "Output: … written to `instance.yaml`" to "Output: capability map in the install state (`runtime`) and the report; support level = number of C4, C5, C6 that pass (0–3)".
@@ -1956,7 +1985,7 @@ Create `docs/testing/2026-10-08-plan-2-live-test.md` with the same structure as 
 0. Setup: identical to Plan 1's Test 0 (pack into `~/installer-plan2-test`, install with `--prefix`).
 1. `installer probe` on the real Claude Code: `installer probe`. Expected: `"profile":"claude-code"`, `"c4_headless":true`, `"c4_schema":true`, `"c5_resume":true`, `"support_level":2`, `"tier":"compatible"`, `"notes":[]`.
 2. Starter install from `file:` with the real agent: `installer --home $T/h1 start --solution file:$REPO/solutions/starter.json`, then the three `submit` commands (`'"yes"'`, `'"no"'`, `'"Owner"'`), then `installer --home $T/h1 report`. Expected: `✅ READY  (6 of 6 steps done) · starter@1.0.0` and `🤖 Agent      claude-code <version> — level 2 of 3 (MCP not checked yet)`; `jq .mode,.roles $T/h1/state/install-state.json` prints `"team_host"` and `{"decision_maker":"Owner"}`.
-3. `https:` refs: `installer --home $T/h2 start --solution http://example.com/s.json` (exit 2, `$T/h2` not created) and `installer --home $T/h3 start --solution https://example.com/no-such-file.json` (exit 2, message names the URL and `HTTP 404`).
+3. `https:` refs: `installer --home $T/h2 start --solution http://example.com/s.json` (exit 2, `$T/h2` not created) and `installer --home $T/h3 start --solution https://example.com/no-such-file.json` (exit 2, message names the URL and the HTTP status; record the status actually returned, since it depends on that server).
 4. No agent found: `installer probe --profile $REPO/tests/fixtures/profiles/missing-agent.json` (a profile whose command does not exist). Expected: `"profile":null`, `"tier":"unknown"`, note `No known agent was found; fallbacks will apply`.
 5. Clean up: `rm -rf ~/installer-plan2-test`.
 
