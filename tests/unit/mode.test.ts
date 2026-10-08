@@ -61,6 +61,9 @@ describe("derive_mode in an install", () => {
     ["a step that does not exist", { ...ARGS, shared_work: "q9" }, [...QUESTIONS, derive({ ...ARGS, shared_work: "q9" })]],
     ["a step that comes after it", ARGS, [QUESTIONS[0], QUESTIONS[1], derive(ARGS), QUESTIONS[2]]],
     ["a missing argument", { shared_work: "q1", always_on: "q2" }, [...QUESTIONS, derive({ shared_work: "q1", always_on: "q2" })]],
+    ["a shared-work question that takes free text", ARGS, [ask("q1", { kind: "text" }), QUESTIONS[1], QUESTIONS[2], derive(ARGS)]],
+    ["an always-on question with an answer derive_mode cannot use", ARGS, [QUESTIONS[0], ask("q2", { kind: "choice", options: ["no", "yes", "sometimes"] }), QUESTIONS[2], derive(ARGS)]],
+    ["a decision-maker question that is a choice", ARGS, [QUESTIONS[0], QUESTIONS[1], ask("q3", { kind: "choice", options: ["a", "b"] }), derive(ARGS)]],
   ])("refuses a solution whose derive_mode names %s (Review Focus 4)", (_name, _args, steps) => {
     expect(() => parseSolution({ id: "m", version: "1", steps })).toThrow(SolutionError);
     expect(() => parseSolution({ id: "m", version: "1", steps })).toThrow(/derive_mode args\.\w+ must name an earlier ask step/);

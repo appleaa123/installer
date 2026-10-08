@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
-import { MODE_ARGS } from "./mode.js";
+import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
 
 export class SolutionError extends Error {
@@ -110,11 +110,13 @@ function parseStep(value: unknown, index: number): StepDef {
 function checkModeReferences(steps: readonly StepDef[]): void {
   steps.forEach((step, index) => {
     if (step.auto?.action !== "derive_mode") return;
-    const earlierAsks = new Set(steps.slice(0, index).filter((earlier) => earlier.type === "ask").map((earlier) => earlier.step_id));
+    const earlierAsks = new Map(steps.slice(0, index).filter((earlier) => earlier.type === "ask").map((earlier) => [earlier.step_id, earlier]));
     for (const key of MODE_ARGS) {
       const ref = step.auto.args?.[key];
-      if (typeof ref !== "string" || !earlierAsks.has(ref)) {
-        throw new SolutionError(`Step '${step.step_id}': derive_mode args.${key} must name an earlier ask step, got ${JSON.stringify(ref ?? null)}`);
+      const asked = typeof ref === "string" ? earlierAsks.get(ref) : undefined;
+      if (!asked || !acceptsModeQuestion(key, asked.input)) {
+        const rule = MODE_QUESTION_RULE[key];
+        throw new SolutionError(`Step '${step.step_id}': derive_mode args.${key} must name an earlier ask step with ${rule}, got ${JSON.stringify(ref ?? null)}`);
       }
     }
   });

@@ -1,9 +1,22 @@
 import { InputError } from "./inputs.js";
-import type { InstallState, Mode, StatePatch } from "./types.js";
+import type { InstallState, Mode, StatePatch, StepInput } from "./types.js";
 
 export const MODE_ARGS = ["shared_work", "always_on", "decision_maker"] as const;
 const SHARED_ANSWERS: readonly unknown[] = ["no", "yes", "both"];
 const ALWAYS_ON_ANSWERS: readonly unknown[] = ["no", "yes"];
+
+/** The question each derive_mode answer must come from, so a loaded solution can never fail at derive time. */
+export function acceptsModeQuestion(key: (typeof MODE_ARGS)[number], input: StepInput | undefined): boolean {
+  if (key === "decision_maker") return input?.kind === "text";
+  const allowed = key === "shared_work" ? SHARED_ANSWERS : ALWAYS_ON_ANSWERS;
+  return input?.kind === "choice" && (input.options ?? []).every((option) => allowed.includes(option));
+}
+
+export const MODE_QUESTION_RULE: Readonly<Record<(typeof MODE_ARGS)[number], string>> = {
+  shared_work: "a choice of no, yes or both",
+  always_on: "a choice of no or yes",
+  decision_maker: "a text answer",
+};
 
 /** Spec §5: shared and personal work → hybrid; neither shared nor always-on → personal; otherwise team host. */
 export function deriveMode(sharedWork: unknown, alwaysOn: unknown): Mode {
