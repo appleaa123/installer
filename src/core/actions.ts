@@ -5,7 +5,7 @@ import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
-import { runProbe } from "./probe.js";
+import { probeMcp, runProbe, withMcpProbe } from "./probe.js";
 import { headersHelperCommand, installerCliPath, registerMcp } from "./register.js";
 import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
 import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
@@ -52,6 +52,7 @@ function stringArg(args: Args, key: string): string {
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'installer resume'";
+const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'installer resume'";
 
 async function probeDir(home: string): Promise<string> {
   const cwd = await confinedPath(home, PROBE_DIR);
@@ -92,6 +93,14 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     const helper = headersHelperCommand(SKILLSWIKI_SECRET_ID, process.execPath, installerCliPath());
     await registerMcp(profile, SKILLSWIKI_MCP_NAME, url, helper, await probeDir(home));
     return {};
+  },
+  /** C6 (D54): runs in the agent's own folder, allowing exactly the registered server's get_active_combo tool. */
+  probe_mcp: async (home, _args, state) => {
+    const { runtime, profile } = await probedRuntime(state);
+    const expectedSlug = await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url));
+    if (!expectedSlug) throw new ActionFailure(NO_COMBO_HINT);
+    const cwd = state?.work_dir ?? (await probeDir(home));
+    return { runtime: withMcpProbe(runtime, await probeMcp({ profile, cwd, serverName: SKILLSWIKI_MCP_NAME, expectedSlug })) };
   },
 };
 

@@ -91,7 +91,7 @@ export interface Roles {
   readonly decision_maker: string;
 }
 
-/** Result of `installer probe` (spec §7.3). C6 is probed by Plan 3. */
+/** Result of `installer probe` (spec §7.3); C6 is filled in by the BRAIN phase's probe_mcp step (D54). */
 export interface CapabilityMap {
   readonly profile: string | null;
   readonly agent_version: string | null;
@@ -99,7 +99,7 @@ export interface CapabilityMap {
   readonly c4_headless: boolean;
   readonly c4_schema: boolean;
   readonly c5_resume: boolean;
-  readonly c6_mcp: "not_probed";
+  readonly c6_mcp: boolean | "not_probed";
   readonly support_level: number;
   readonly tier: "compatible" | "unknown";
   readonly notes: readonly string[];
