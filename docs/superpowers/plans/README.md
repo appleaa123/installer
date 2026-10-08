@@ -37,3 +37,16 @@ Plan 2 must cover these when it writes `INSTALL.md` and the solution refs:
 - A `--value` that starts with `-` must be written as `--value=<json>` (for example `--value=-5`).
 - Plan 1 pins the solution by copying it into `<engine_home>/solution/solution.json` and comparing content
   hashes on `start`. Plan 2 adds `skillswiki:` refs and records the §6.4 `recipe_version` sha in the state.
+- The spec examples still differ from the code. Update them when Plan 2 edits the spec:
+  - §6.4: the state has no top-level `phase` (the report works it out from the steps), and a blocked step
+    records `at`, `reason`, `hint` and `attempts` instead of `since`. `mode` arrives with the MODE phase in Plan 2.
+  - §6.5: the report header counts steps (`6 of 7 steps done`), not phases.
+  - §4.2: the layout gains `solution/solution.json` (the pinned solution) and `state/install-state.json.bak`.
+  - §6.1: `file:` refs are accepted (used by tests and local solutions). Plain HTTPS refs are not supported yet.
+- `installer resume` reopens every failed step, not only `verify` ones, keeping its attempts. A reopened
+  `agent_action` step then shows `installer resume` instead of `installer verify <step_id>`; Plan 2's
+  `agent_action` work should name the right command for a reopened step.
+- `submit` and `verify` for a known step that is not current first finish any pending engine steps, then refuse.
+  This only runs work that `next` would run anyway.
+- D34 rules in the code: `start` creates a new home with mode `0700` and refuses an existing home that other users
+  can open, without changing its mode. Paths that go through a symbolic link below the home are refused.
