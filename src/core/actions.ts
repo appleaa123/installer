@@ -7,7 +7,7 @@ import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { runProbe } from "./probe.js";
 import { headersHelperCommand, installerCliPath, registerMcp } from "./register.js";
-import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, skillswikiTarget } from "./skillswiki.js";
+import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
 import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
 
 export interface CheckResult {
@@ -112,6 +112,11 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     const id = stringArg(args, "id");
     if ((await getSecret(id)) !== null) return { ok: true };
     return { ok: false, hint: typeof args.hint === "string" ? args.hint : `No '${id}' key is stored yet: run 'installer secret ${id}', enter it on the page that opens, then run the verify again` };
+  },
+  /** D37: the person activates the combo in the Skills Wiki dashboard; the engine asks get_active_combo itself. */
+  combo_active: async (_home, args, state) => {
+    if (await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url))) return { ok: true };
+    return { ok: false, hint: typeof args.hint === "string" ? args.hint : "No combo is active yet: activate one in your Skills Wiki dashboard, then run the verify again" };
   },
 };
 
