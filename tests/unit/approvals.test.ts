@@ -8,7 +8,7 @@ import {
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
 import { InputError } from "../../src/core/inputs.js";
 import type { Level } from "../../src/core/levels.js";
-import { listIds } from "../../src/core/numbered.js";
+import { claimOnce, listIds } from "../../src/core/numbered.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const T0 = "2026-10-08T12:00:00.000Z";
@@ -31,6 +31,18 @@ async function requested(level: Level = "L2"): Promise<{ home: string; id: numbe
   const item = await requestApproval(home, { prepared: prepared(undefined, level), why: "The text is out of date.", via: "mcp" }, T0);
   return { home, id: item.id };
 }
+
+describe("a token spent by a call that crashed before it was recorded (review finding 2)", () => {
+  it("reads as used, not approved, and says so once in the audit", async () => {
+    const { home, id } = await requested();
+    await approveItem(home, id, MEMBER, LATER);
+    expect(await claimOnce(home, APPROVALS_DIR, id)).toBe(true);
+    await expect(getApproval(home, id, LATER)).resolves.toMatchObject({ status: "used" });
+    await expect(listApprovals(home, LATER)).resolves.toMatchObject([{ id, status: "used" }]);
+    expect((await events(home)).filter((event) => event === "approval.used")).toHaveLength(1);
+    await expect(verifyAudit(home)).resolves.toMatchObject({ ok: true });
+  });
+});
 
 describe("actionHash (§11.1, D58)", () => {
   it("is sha256 of the canonical tool, args and expected values, whatever the key order", () => {

@@ -1,4 +1,4 @@
-import { link, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
+import { access, link, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { crashPoint } from "./crash.js";
@@ -126,6 +126,16 @@ export function removeRecord(home: string, dir: string, id: number): Promise<boo
       throw error;
     }
   });
+}
+
+/** True once `claimOnce` has succeeded for this id, even if the claimer crashed right after. */
+export async function isClaimed(home: string, dir: string, id: number): Promise<boolean> {
+  try {
+    await access(join(await folder(home, dir), `${id}.claimed`));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Exactly one caller, in any process, ever gets true for a given id (D58: single-use tokens). */

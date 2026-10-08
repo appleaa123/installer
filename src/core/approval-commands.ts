@@ -43,7 +43,7 @@ async function decide(home: string, roles: Roles | undefined, command: Approvals
   const decider = deciderFor(command.as, roles);
   if (!command.interactive) {
     const reason = `Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'installer approvals ${command.sub} ${id}' there`;
-    return refuseDecision(home, await getApproval(home, id, now()), decider.name, reason, now());
+    return refuseDecision(home, await getApproval(home, id, now()), decider.name, reason, now(), "agent");
   }
   if (command.sub === "approve") return approveItem(home, id, decider, now());
   if (command.sub === "reject") return rejectItem(home, id, decider, command.reason, now());

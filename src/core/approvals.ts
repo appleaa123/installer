@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { appendAudit, canonicalJson } from "./audit.js";
 import { InputError } from "./inputs.js";
 import { LEVELS, ROLES, needsApproval, requiredRole, roleAtLeast, type Level, type Role } from "./levels.js";
-import { claimOnce, createRecord, listRecords, readRecord, replaceRecord } from "./numbered.js";
+import { claimOnce, createRecord, isClaimed, listRecords, readRecord, replaceRecord } from "./numbered.js";
 import type { Roles } from "./types.js";
 
 /** Approval items, one file each (D57); `<id>.claimed` marks a token as spent (D58). */
@@ -129,8 +129,18 @@ export async function requestApproval(home: string, request: ApprovalRequest, no
   return item;
 }
 
+/** A token claimed by a call that crashed before recording it is spent (D58): say so instead of "approved". */
+async function settleSpent(home: string, item: ApprovalItem, now: string): Promise<ApprovalItem> {
+  if (item.status !== "approved" || !(await isClaimed(home, APPROVALS_DIR, item.id))) return item;
+  const used: ApprovalItem = { ...item, status: "used", used_at: now };
+  await replaceRecord(home, APPROVALS_DIR, used);
+  await audit(home, now, "engine", "approval.used", used, { note: "token was spent by a call that did not finish" });
+  return used;
+}
+
 /** Lazy expiry (D62): an open item past `expires_at` becomes `expired` the first time anything reads it. */
-async function expireIfDue(home: string, item: ApprovalItem, now: string): Promise<ApprovalItem> {
+async function expireIfDue(home: string, stored: ApprovalItem, now: string): Promise<ApprovalItem> {
+  const item = await settleSpent(home, stored, now);
   const open = item.status === "pending" || item.status === "approved";
   if (!open || Date.parse(now) < Date.parse(item.expires_at)) return item;
   const expired: ApprovalItem = { ...item, status: "expired" };
@@ -161,8 +171,8 @@ export function deciderFor(as: string | undefined, roles: Roles | undefined): De
 }
 
 /** A decision attempt that is not allowed: audited, then refused (§11.9). */
-export async function refuseDecision(home: string, item: ApprovalItem, by: string, reason: string, now: string): Promise<never> {
-  await audit(home, now, "human", "approval.refused", item, { by, reason });
+export async function refuseDecision(home: string, item: ApprovalItem, by: string, reason: string, now: string, actor: "human" | "agent" = "human"): Promise<never> {
+  await audit(home, now, actor, "approval.refused", item, { by, reason });
   throw new InputError(reason);
 }
 

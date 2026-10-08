@@ -59,7 +59,7 @@ describe("installer approvals (D61)", () => {
     const { ctx, run } = await queue();
     await expect(run({ sub: "approve", id: "1", interactive: false })).rejects.toThrow("Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'installer approvals approve 1' there");
     const last = (await readFile(join(ctx.home, AUDIT_FILE), "utf8")).trim().split("\n").at(-1) ?? "";
-    expect(JSON.parse(last)).toMatchObject({ event: "approval.refused", actor: "human", ref: "approval:1" });
+    expect(JSON.parse(last)).toMatchObject({ event: "approval.refused", actor: "agent", ref: "approval:1" });
     await expect(run({ sub: "list" })).resolves.toMatchObject({ items: [{ id: 1, status: "pending" }, { id: 2 }] });
   });
 
