@@ -1,0 +1,15 @@
+{
+  "id": "fake-agent",
+  "name": "Fake Agent",
+  "min_version": "1.0.0",
+  "detect": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "--version"], "match": "Fake Agent" },
+  "headless": {
+    "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "-p", "{prompt}", "--output-format", "json"],
+    "result_path": "result",
+    "session_path": "session_id",
+    "error_path": "is_error"
+  },
+  "schema": { "flag": ["--json-schema", "{schema_json}"], "result_path": "structured_output" },
+  "resume": { "flag": ["-r", "{session_id}"] },
+  "tos_review": { "status": "ok", "note": "Test double used only by the test suite." }
+}

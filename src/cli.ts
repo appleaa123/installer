@@ -9,6 +9,7 @@ import { EngineError, advance, resume, start, submit, verifyStep, type EngineDep
 import { InputError } from "./core/inputs.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
+import { ProfileError } from "./core/profile.js";
 import { SolutionError, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import type { InstallState, Solution } from "./core/types.js";
@@ -158,7 +159,7 @@ async function run(argv: readonly string[]): Promise<number> {
 
 function exitCodeFor(error: unknown): number {
   if (error instanceof StateCorruptError || error instanceof AuditCorruptError) return EXIT.STATE_CORRUPT;
-  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError) return EXIT.USAGE;
+  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError || error instanceof ProfileError) return EXIT.USAGE;
   return EXIT.INTERNAL;
 }
 

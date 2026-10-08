@@ -11,7 +11,8 @@
     "installer": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "profiles"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
