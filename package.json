@@ -12,7 +12,9 @@
   },
   "files": [
     "dist",
-    "profiles"
+    "profiles",
+    "solutions",
+    "INSTALL.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

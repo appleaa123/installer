@@ -13,7 +13,7 @@ function files(dir: string): string[] {
 }
 
 describe("industry neutrality", () => {
-  it.each([...files("src"), ...files("tests/fixtures")])("%s has no industry vocabulary", (path) => {
+  it.each([...files("src"), ...files("tests/fixtures"), ...files("profiles"), ...files("solutions"), "INSTALL.md"])("%s has no industry vocabulary", (path) => {
     const match = BANNED.exec(readFileSync(path, "utf8"));
     expect(match?.[0] ?? null).toBeNull();
   });

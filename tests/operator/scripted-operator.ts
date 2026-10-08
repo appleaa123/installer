@@ -43,6 +43,13 @@ export const RETRY_SCRIPT: OperatorScript = { answers: {}, perform: { "preflight
 
 export const GIVE_UP_SCRIPT: OperatorScript = { ...FIXTURE_SCRIPT, giveUp: ["channels.optional-extra"] };
 
+export const STARTER_REF = `file:${resolve("tests/fixtures/solution-starter.json")}`;
+
+export const STARTER_SCRIPT: OperatorScript = {
+  answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
+  perform: {},
+};
+
 /** A fake agent: follows the step protocol exactly as INSTALL.md tells a real agent to. */
 export async function operate(options: { home: string; solutionRef: string; script: OperatorScript; crash?: CrashPlan }): Promise<OperatorRun> {
   const calls: CliResult[] = [];
