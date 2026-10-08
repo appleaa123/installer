@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { isAlive } from "./durable.js";
+import { ActionFailure } from "./failure.js";
 import type { AuditHead } from "./types.js";
 
 export const AUDIT_FILE = join("audit", "audit.jsonl");
+export const AUDIT_LOCK_FILE = join("audit", "audit.lock");
 export const GENESIS_HASH = "0".repeat(64);
+const LOCK_RETRY_MS = 10;
+const LOCK_TIMEOUT_MS = 10_000;
 
 export interface AuditEntry {
   readonly ts: string;
@@ -74,7 +80,47 @@ function parseLastRow(row: string, file: string): AuditLine {
   return parsed as AuditLine;
 }
 
-export async function appendAudit(home: string, entry: AuditEntry): Promise<AuditLine> {
+/** A lock left by a process that is gone no longer protects anything. */
+async function removeStaleLock(path: string): Promise<void> {
+  let pid = 0;
+  try {
+    pid = Number(await readFile(path, "utf8"));
+  } catch {
+    return;
+  }
+  if (Number.isInteger(pid) && pid > 0 && !isAlive(pid)) await rm(path, { force: true });
+}
+
+/** The CLI and the local MCP server append at the same time (D57): one writer at a time, through an exclusive lock file. */
+async function withAuditLock<T>(home: string, task: () => Promise<T>): Promise<T> {
+  const path = join(home, AUDIT_LOCK_FILE);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const until = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      const handle = await open(path, "wx", 0o600);
+      await handle.writeFile(String(process.pid), "utf8");
+      await handle.close();
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      await removeStaleLock(path);
+      if (Date.now() > until) throw new ActionFailure(`The audit log is locked by another installer process (${path}); if none is running, remove that file`);
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return await task();
+  } finally {
+    await rm(path, { force: true });
+  }
+}
+
+export function appendAudit(home: string, entry: AuditEntry): Promise<AuditLine> {
+  return withAuditLock(home, () => appendUnlocked(home, entry));
+}
+
+async function appendUnlocked(home: string, entry: AuditEntry): Promise<AuditLine> {
   const file = join(home, AUDIT_FILE);
   const rows = await readRows(home);
   const lastRow = rows.at(-1);
