@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit, canonicalJson } from "./audit.js";
@@ -155,6 +155,41 @@ async function folderNames(home: string, relative: string): Promise<string[]> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
+}
+
+/** A claimed key whose run.json was never written (a crash between the two writes of `claimRun`). */
+export interface OrphanClaim {
+  readonly file: string;
+  readonly workflow: string | null;
+  readonly run_id: string | null;
+  readonly age_ms: number;
+}
+
+/** Claims without their run (D103): such a key can never be started again, so `doctor` clears the old ones. */
+export async function orphanClaims(home: string, now: string): Promise<OrphanClaim[]> {
+  let names: string[];
+  try {
+    names = (await readdir(await confinedPath(home, KEYS_DIR))).filter((name) => /^[0-9a-f]{64}$/.test(name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const found: OrphanClaim[] = [];
+  for (const name of names) {
+    const file = join(KEYS_DIR, name);
+    const claim = await readConfig(home, file).catch(() => null);
+    const ref = isRecord(claim) && typeof claim.workflow === "string" && typeof claim.run_id === "string" ? { workflow: claim.workflow, run_id: claim.run_id } : null;
+    // A damaged run.json is still a run: `doctor` names it, it is not an orphan.
+    if (ref && (await readConfig(home, runFile(ref.workflow, ref.run_id)).catch(() => "damaged")) !== null) continue;
+    const age = Date.parse(now) - (await stat(await confinedPath(home, file))).mtimeMs;
+    found.push({ file, workflow: ref?.workflow ?? null, run_id: ref?.run_id ?? null, age_ms: age });
+  }
+  return found;
+}
+
+export async function clearClaim(home: string, claim: OrphanClaim, now: string): Promise<void> {
+  await rm(await confinedPath(home, claim.file), { force: true });
+  await appendAudit(home, { ts: now, actor: "engine", event: "run.claim_cleared", ref: claim.file, payload: { workflow: claim.workflow, run_id: claim.run_id } });
 }
 
 /** Called with a damaged run record's error instead of throwing it, so one damaged file does not stop the rest. */

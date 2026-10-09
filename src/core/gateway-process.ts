@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
 import { listChannels } from "./channels.js";
 import { readConfig } from "./data-source.js";
-import { isAlive } from "./durable.js";
+import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { GATEWAY_DIR, LOG_FILE, gatewayLog, runGateway, statusFile } from "./gateway.js";
 import { InputError } from "./inputs.js";
@@ -17,7 +17,8 @@ import { installerCliPath } from "./register.js";
  * `installer --home <home> gateway-serve`, recorded in `runtime/gateway/gateway.pid`. Start is idempotent: a live
  * gateway is left alone, and a pid file whose process is gone (a crash, a reboot) is removed and a new gateway
  * started. Stop sends SIGTERM, which ends the long poll at once. Starting it at boot and restarting it after a
- * crash by the OS (launchd, systemd) is Plan 9's host readiness.
+ * crash by the OS (launchd, systemd) is Plan 9's host service (D104). The pid file is claimed with an exclusive create,
+ * so two starts at the same moment leave one gateway (D103).
  */
 export const PID_FILE = join(GATEWAY_DIR, "gateway.pid");
 const READY_TIMEOUT_MS = 10_000;
@@ -73,7 +74,15 @@ export async function startGateway(home: string, now: () => string): Promise<Rec
   const current = await gatewayStatus(home);
   if (current.status === "running") return { ...current, note: "The gateway is already running" };
   if (current.status === "stale") await removePid(home);
-  const pid = await spawnGateway(home);
+  let pid: number;
+  try {
+    pid = await spawnGateway(home);
+  } catch (error) {
+    // Another start may have won the race for the pid file: then the gateway runs, which is what was asked.
+    const raced = await gatewayStatus(home);
+    if (raced.status === "running") return { ...raced, note: "Another start won the race: the gateway is running" };
+    throw error;
+  }
   await appendAudit(home, { ts: now(), actor: "engine", event: "gateway.started", ref: "gateway", payload: { pid, replaced_stale: current.status === "stale" } });
   return { status: "started", pid, log: await confinedPath(home, LOG_FILE), ...(current.status === "stale" ? { note: `Replaced a gateway that had stopped without cleaning up (pid ${String(current.pid)})` } : {}) };
 }
@@ -100,16 +109,20 @@ export async function gatewayCommand(home: string, sub: string | undefined, now:
   throw new InputError("gateway needs one of: start, stop, status");
 }
 
-/** Claims the pid file for this process; a live owner wins, a dead one is replaced. */
-async function claimPid(home: string, startedAt: string): Promise<void> {
+/**
+ * Claims the pid file for this process with an exclusive create, so of two gateways starting at once exactly one
+ * wins (D103: the read-then-remove of Plan 6 let both run). A live owner wins; a dead one is replaced once.
+ */
+export async function claimPid(home: string, startedAt: string): Promise<void> {
   const path = await confinedPath(home, PID_FILE);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const existing = await readPid(home);
-  if (existing && existing.pid !== process.pid && isAlive(existing.pid)) throw new ActionFailure(`Another gateway is running for this home (pid ${existing.pid})`);
-  await rm(path, { force: true });
-  const handle = await open(path, "wx", 0o600);
-  await handle.writeFile(JSON.stringify({ pid: process.pid, started_at: startedAt }), "utf8");
-  await handle.close();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await createExclusive(path, JSON.stringify({ pid: process.pid, started_at: startedAt }))) return;
+    const existing = await readPid(home);
+    if (existing && existing.pid !== process.pid && isAlive(existing.pid)) throw new ActionFailure(`Another gateway is running for this home (pid ${existing.pid})`);
+    await rm(path, { force: true });
+  }
+  throw new ActionFailure("Another gateway claimed this home at the same moment: run 'installer gateway status'");
 }
 
 /** The detached process itself: claims the pid file, reports ready over IPC, runs until SIGTERM. */

@@ -113,7 +113,7 @@ async function removeStaleLock(path: string): Promise<void> {
 }
 
 /** The CLI and the local MCP server append at the same time (D57): one writer at a time, through an exclusive lock file. */
-async function withAuditLock<T>(home: string, task: () => Promise<T>): Promise<T> {
+export async function withAuditLock<T>(home: string, task: () => Promise<T>): Promise<T> {
   const path = join(home, AUDIT_LOCK_FILE);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const until = Date.now() + LOCK_TIMEOUT_MS;
