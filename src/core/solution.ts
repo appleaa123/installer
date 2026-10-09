@@ -146,14 +146,15 @@ function checkBrainOrder(steps: readonly StepDef[]): void {
 }
 const SECRET_ID = /^[a-z0-9-]+$/;
 
-/** A secret step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
+/** A secret or oauth step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
 function checkSecretSteps(steps: readonly StepDef[]): void {
   for (const step of steps) {
-    if (step.type !== "human_action" || step.input?.kind !== "secret") continue;
-    const provider = step.input.provider;
-    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a secret step needs input.provider, the secret id entered with 'installer secret <provider>'`);
+    const kind = step.input?.kind;
+    if (step.type !== "human_action" || (kind !== "secret" && kind !== "oauth")) continue;
+    const provider = step.input?.provider;
+    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a ${kind} step needs input.provider, the secret id entered with 'installer secret <provider>'`);
     if (step.verify?.check !== "secret_present" || step.verify.args?.id !== provider) {
-      throw new SolutionError(`Step '${step.step_id}': a secret step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
+      throw new SolutionError(`Step '${step.step_id}': a ${kind} step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
     }
   }
 }

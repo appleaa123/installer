@@ -7,6 +7,7 @@ import { parseArgs } from "node:util";
 import { approvalsCommand } from "./core/approval-commands.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
+import { oauthConnectorFor } from "./core/connectors.js";
 import { disconnect } from "./core/disconnect.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
@@ -14,6 +15,7 @@ import { InputError } from "./core/inputs.js";
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
+import { startOAuthPage } from "./core/oauth-page.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
@@ -189,9 +191,11 @@ async function secretCommand(id: string): Promise<unknown> {
   return { status: "waiting", url, pid, ...(hint ? { hint } : {}) };
 }
 
-/** The detached page process: serves the form, writes the keychain once, then exits. Never touches the engine home. */
+/** The detached page process: serves the form (an OAuth sign-in for a connector's secret, D66), writes the keychain once, then exits. Never touches the engine home. */
 async function secretServeCommand(id: string): Promise<number> {
-  const page = await startSecretPage({ id: requireSecretId(id), store: (value) => setSecret(id, value) });
+  const store = (value: string): Promise<void> => setSecret(id, value);
+  const def = await oauthConnectorFor(requireSecretId(id));
+  const page = def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
   if (process.send) {
     process.send({ url: page.url });
     process.disconnect();
