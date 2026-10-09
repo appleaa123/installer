@@ -447,6 +447,8 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer disconnect <connector>` | Revoke access and delete stored credentials (`skillswiki`, or a pinned connector such as `google-sheets`: deletes its sign-in and names the provider page that removes the grant, D67) |
 | `installer uninstall` | Remove the body, export the audit, keep business records; a person's terminal only (§16.4, D109) |
 | `installer support bundle` | Redacted diagnostic file under `exports/` (§16.5, D110) |
+| `installer certify --profile <id>` | Local certification on this machine, from a source checkout: the offline suite, the live checks, the real agent's probe, a dated record with its tier (§7.5, §15.2, D116) |
+| `installer version` | The installer's and Node's versions (D119) |
 
 > **Naming (D36):** un-pausing is `installer unpause` / `/unpause`;
 > `installer resume` is reserved for resuming an install.
@@ -510,6 +512,17 @@ context (D46):
 the keychain for every request (verified live, O6 resolved). Claude Code
 runs the helper only in folders with persisted workspace trust.
 
+**Plan 10 (D112, D113).** A profile may read JSON Lines
+(`headless.output: "jsonl"` with `headless.result_line`), pass the schema
+as a file (`{schema_file}` in `schema.flag`) and resume with a whole
+command (`resume.cmd`). `profiles/codex.json` uses all three, written from
+Codex's documented `exec --json`, `--output-schema` and `exec resume`; it
+has not been run yet (O1) and its terms are under review
+(`tos_review: pending`, O2), so the engine uses it only where it is named
+and its tier stays Unknown. It has no MCP templates. Antigravity has no
+profile (D114). On Windows the engine runs an npm shim's script with
+`node` instead of the `.cmd` file, never through a shell (D115).
+
 ### 7.3 Probe (`installer probe`, phase 0)
 
 | Check | Method | Pass condition |
@@ -545,9 +558,9 @@ Output: capability map in the install state (`runtime`) and the report;
 
 | Tier | Meaning | v1 members |
 |---|---|---|
-| **Certified** | In nightly CI (§15.2); guaranteed | Claude Code; Codex next (D33) |
-| **Compatible** | Profile exists and probe passes at install | Codex (until certified), Pi, OpenClaw, Hermes, WorkBuddy (once profiles exist) |
-| **Unknown** | No profile; probe decides; fallbacks apply | Anything else |
+| **Certified** | A person ran `installer certify` on that platform from a clean checkout and every check passed (§15.2, D116) | None yet: Claude Code first, then Codex (D33) |
+| **Compatible** | Profile exists, its vendor terms are reviewed, and the probe passes at install | Claude Code (until certified), Pi, OpenClaw, Hermes, WorkBuddy (once profiles exist) |
+| **Unknown** | No profile, terms not reviewed, or Windows not yet certified; probe decides; fallbacks apply | Codex (terms pending, D113), anything else |
 
 Desktop-only agents (e.g. WorkBuddy) remain Compatible with a manual
 pre-release check. Each vendor's terms are reviewed before certification
@@ -1307,7 +1320,7 @@ score.
 
 ## 15. Testing and evaluation (D31–D33)
 
-### 15.1 Engine tests (CI, no model)
+### 15.1 Engine tests (offline, no model)
 - Idempotency: every phase run twice → no changes.
 - Resume: process killed between every pair of steps → `resume` completes
   with identical state.
@@ -1328,12 +1341,27 @@ score.
   interventions, time to first value, failures by phase, tokens.
 - Certified set: Claude Code, then Codex (D33). Funded by Allen's test
   accounts with a monthly cap.
+- **Adapted by Plan 10 (O7, D48, D116): no CI, local certification.** The
+  offline suite (engine tests and the scripted operator) runs on the
+  developer's machine before every commit, with fakes only. Instead of
+  nightly real-agent runs, a person runs `installer certify --profile <id>`
+  on each machine and platform a release claims: the offline suite, the
+  opt-in live checks with their own keys (`tests/live`, as a child
+  process), and the probe on the real agent. The dated record under
+  `<home>/certification/` carries the commit, the results and the tier
+  (§7.5); only a full pass on a clean checkout of a shipped profile with
+  reviewed terms is Certified. No clean VMs and no repeated runs yet
+  (D120).
 
 ### 15.3 Connector contract tests
 - Recorded responses for offline CI.
 - Nightly live sandbox accounts (test mailbox, test bot) to catch upstream
   API changes.
 - Capability degradation checks (no buttons → reply codes, etc.).
+- Plan 10 (D118): one shared contract per connector kind (the Sheets
+  adapter, the channel adapters) runs against the fakes in the offline
+  suite and against the real services in the opt-in live tests, under
+  their own keys; live Telegram checks sending only.
 
 ### 15.4 Workflow and judge tests
 - Golden cases per workflow; deterministic checks first (schema, labels).
@@ -1342,6 +1370,12 @@ score.
 - Replay tests gate hardening (§10.8).
 - **Universal injection suite** on every inbound path; pass = flagged, no
   tool action, no injected content in any approval item.
+  Plan 10 (D117): one corpus through Telegram and email (strangers and
+  members), sheet cells read by `records.find`, messages and skill files
+  judges read, and the inbox an agent reads, with a model that obeys the
+  text: nothing is decided, changed, paused or sent, no secret reaches a
+  prompt, and an approval item's reason and action come from the runner
+  (the record's current values it shows may contain the text).
 - Pure vs context-tool judges compared per workflow (§10.5).
 
 ### 15.5 Client-side
@@ -1432,13 +1466,13 @@ Same engine, same phases, same contracts.
 
 | # | Item | Blocks |
 |---|---|---|
-| O1 | Live test of Codex `exec`, `exec resume`, `--output-schema` (documented by third-party guides only) | Codex certification |
-| O2 | Vendor terms review per runtime before certification | Certification |
+| O1 | Live test of Codex `exec`, `exec resume`, `--output-schema` (documented by third-party guides only); the profile is written from them (D112, D113) and human task 15 runs it | Codex certification |
+| O2 | Vendor terms review per runtime before certification: Codex pending (D113), Antigravity out of automated use (D114); human task 17 | Certification |
 | O3 | ~~Secret entry on a headless team host~~ Resolved: the `ssh -L` hint (D47) also carries the OAuth redirect, which returns to the same loopback page (D66) | — |
 | O4 | Tunnel choice and setup for webhook channels (v1 channels poll instead: D74, D75) | Webhook connectors |
-| O5 | Runtime profile details for OpenClaw, Hermes, Pi, WorkBuddy | Compatible tier |
+| O5 | Runtime profile details for OpenClaw, Hermes, Pi, WorkBuddy (Codex shipped with terms pending, D113) | Compatible tier |
 | O6 | ~~Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header~~ Resolved: `claude mcp add-json -s user <name> '{"type":"http","url":…,"headersHelper":…}'` (D52) | — |
-| O7 | ~~CI monthly budget cap amount~~ Resolved: no paid CI; local offline tests plus opt-in live tests (D48) | — |
+| O7 | ~~CI monthly budget cap amount~~ Resolved: no paid CI; local offline tests plus opt-in live tests (D48), and local certification with `installer certify` (D116) | — |
 | O8 | ~~Final CLI / product name~~ Resolved: `installer` (D49) | — |
 | O10 | Whether Skills Wiki `enterprise` routes support team seats; v1 runs helper and keychain as the agent's OS user (D50) | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install (the shadow upgrade grades by its own comparison until then, D108) | §15.4 at install time, hosted evals in shadow upgrades |
@@ -1456,7 +1490,7 @@ Same engine, same phases, same contracts.
 | §4 | D1, D13, D30 |
 | §5 | D9, D12, D41–D43, D104, D105 |
 | §6 | D3, D4, D17, D20–D22, D36, D37, D98 |
-| §7 | D7, D32, D33 |
+| §7 | D7, D32, D33, D112–D116 |
 | §8 | D8, D21, D22, D34, D65–D67 |
 | §9 | D28, D29, D64, D68–D71 |
 | §10 | D10–D19, D38–D40, D81–D93, D97, D99, D100 |
@@ -1464,5 +1498,5 @@ Same engine, same phases, same contracts.
 | §12 | D30, D72–D80, D96 |
 | §13 | D1, D6, D8, D19, D107 |
 | §14 | D24, D34, D43, D101, D102, D106–D108 |
-| §15 | D31–D33, D91 |
-| §16 | D34, D103, D109, D110 |
+| §15 | D31–D33, D91, D116–D118 |
+| §16 | D34, D103, D109, D110, D119 |

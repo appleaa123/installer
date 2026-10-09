@@ -139,16 +139,45 @@ Each task says why it is needed and what to do, step by step.
 6. Run `installer doctor` as `installer-engine`: the `host` check should say `readiness 5/5` (4/4 on Linux) and the `gateway` and `runner` checks `ok` after a minute. Decide approvals from Telegram; the terminal-only commands remain for a person at that account.
 7. Tell Claude the readiness score you saw and any check that stayed `unknown`.
 
+### 14. Certify Claude Code on your Mac (the Plan 10 live test)
+
+**Why:** there is no CI (O7, D48), so a runtime is Certified only after a person runs `installer certify` on a real machine and every check passes (D116). This runs the offline suite, every live check with your own keys and the probe on your Claude Code, and writes a dated record. It sends one Telegram message to your test chat and one email to your test mailbox, writes a test tab in your test spreadsheet (deleted afterwards), makes read-only Skills Wiki calls, registers a temporary Skills Wiki server in Claude Code (removed afterwards) and makes about six short `claude -p` calls on your subscription. About 15 minutes.
+
+1. Merge or check out `feat/certification`, with nothing uncommitted (`git status --short` prints nothing).
+2. Activate a combo in the Skills Wiki dashboard (the C6 rehearsal needs one).
+3. Open `docs/testing/2026-10-09-plan-10-live-test.md` and follow it in one terminal, in order, from the repository folder (Claude Code must trust it).
+4. Paste the record of Test 2 to Claude (`tier`, `reasons`, `offline`, `live`, `probe`). When the tier is `certified`, Claude puts its date, commit and Claude Code version in the README's "What is certified" table. Otherwise the `reasons` say what to fix.
+
+### 15. Install Codex and certify it (O1)
+
+**Why:** the Codex profile (D113) was written from Codex's documentation; nobody has run it, because Codex is not installed on the development machine. Its tier stays Unknown until its terms are reviewed (task 17) and a certification passes. It uses your ChatGPT plan's Codex allowance (a few short calls).
+
+1. Install the Codex CLI as OpenAI's documentation says (for example `npm install -g @openai/codex`), sign in (`codex login`) and check that `codex --version` prints `codex-cli <version>`.
+2. In an empty folder, check the three documented facts by hand: `codex exec --json --skip-git-repo-check "Reply with exactly this word: alpha"` prints JSON lines, among them `{"type":"thread.started","thread_id":…}` and an `item.completed` line whose `item.type` is `agent_message` and `item.text` is `alpha`; `codex exec resume --json --skip-git-repo-check <thread_id> "What word did you just reply with?"` answers in the same thread; and `--output-schema <file>` with a JSON schema file makes the answer JSON that fits it.
+3. From the repository, run `node dist/cli.js probe --profile codex`: C4, C4 schema and C5 should pass, and the tier stays `unknown` with the note about the terms.
+4. Run Test 5 of the Plan 10 guide (`installer certify --profile codex`).
+5. Paste everything to Claude. Claude corrects the profile from what you saw (flags, `min_version`, a stricter tools-off switch than `--sandbox read-only` if Codex has one). Once task 17 says the terms allow it, Claude sets `tos_review` to `ok` and you certify again.
+
+### 16. Certify on Windows (only before a client runs on Windows)
+
+**Why:** on Windows the engine runs an npm shim's script with `node` instead of `claude.cmd`, never through a shell (D115). That was tested only against sample shim files, not on a Windows machine, so Windows stays Unknown. Scheduling, host readiness and the OS keychain are not supported on Windows yet (D120), and some offline tests check POSIX file modes, so expect the offline suite to report failures there; the list is what Claude needs.
+
+1. On a Windows 11 machine or VM with Node 22 and Git, install Claude Code (`npm install -g @anthropic-ai/claude-code`), sign in, clone the repository, then `npm ci` and `npm run build`.
+2. In PowerShell, in the repository: `node dist/cli.js probe --profile claude-code`. Expected: C4, C4 schema and C5 pass (the engine found `claude.cmd`, read it and ran its script with `node`), and the tier is `unknown` with the note "Windows is not certified yet".
+3. Set a file keychain (Windows has no keychain backend yet, D51): `$env:INSTALLER_KEYCHAIN="file"; $env:INSTALLER_KEYCHAIN_DIR="$HOME\installer-keys"`, set the live keys in the same window, then `npm run certify -- --profile claude-code --home $HOME\installer-certification`.
+4. Paste the probe's output, the record and any error to Claude. When everything passes, Claude lifts the Windows cap in the probe.
+
+### 17. Review the vendors' terms (O2)
+
+**Why:** decision D32: each runtime's terms are read before the installer runs it for a client. The Codex profile waits on this (`tos_review: pending`). Antigravity's terms (clause 6) forbid other programs from invoking it, so it has no profile and the installer never calls `agy` (D114).
+
+1. Codex: read OpenAI's current terms of use and any Codex CLI terms or usage policy, looking for running Codex from another program, headless or unattended, and business use of a ChatGPT plan. Tell Claude what you found, with the date and the links: Claude sets `tos_review` to `ok` (or `blocked`) with that note.
+2. Antigravity (only if you want `agy` as an automatic model fallback): read its current Additional Terms, clause 6 in particular. Tell Claude; if they now allow it, Claude adds a profile as D114 describes and you certify it.
+3. Before any other agent is certified later (OpenClaw, Hermes, Pi, WorkBuddy, O5), do the same for its vendor.
+
 ## Optional
 
-### 14. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
-
-**Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
-
-1. Read Antigravity's current terms of service and find the section on automated or third-party use.
-2. Tell Claude what it says. Claude will record the outcome as a decision.
-
-### 15. Check the crontab entry on a Linux host (only if a client will run on Linux)
+### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
 
 **Why:** on Linux the runner's minute is a crontab line (D82). It was only checked as text on macOS.
 
@@ -156,7 +185,7 @@ Each task says why it is needed and what to do, step by step.
 2. `crontab -l` shows a line that ends with `# com.installer.tick.<8 characters>`; after two minutes `installer schedule list` shows a `last_tick` from the last minute.
 3. Suspend the host across a scheduled run of a test workflow for ten minutes, resume it, and check that the run is listed as `missed` within a minute and that one back-online notice appears in the audit (`grep runner.back_online <home>/audit/audit.jsonl`).
 4. Remove it with the command `installer schedule remove` prints. Tell Claude what you saw.
-### 16. Skills Wiki side: serve each pack's commit_sha (only if you want installs to record it)
+### 19. Skills Wiki side: serve each pack's commit_sha (only if you want installs to record it)
 
 **Why:** installs pin each skill file by its text (D107), because Skills Wiki's MCP answers do not say which version they are: `skill_pack_meta.commit_sha` is only read by its own scripts. If `get_skill_resource` (or a small tool of its own) also returned the pack's `commit_sha`, installs could record it next to the content pin, and the shadow upgrade's message could name the commit.
 
