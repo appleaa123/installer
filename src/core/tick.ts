@@ -4,6 +4,7 @@ import { confinedPath } from "./actions.js";
 import { ToolRefusal } from "./approvals.js";
 import { appendAudit } from "./audit.js";
 import { MINUTE_MS, cronTimes } from "./cron.js";
+import { dueReports } from "./daily-report.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
@@ -179,6 +180,11 @@ export async function tick(home: string, now: () => string = () => new Date().to
     const last = ((await readConfig(home, HEARTBEAT_FILE)) as { last?: string } | null)?.last ?? null;
     const loaded = await workflows(state);
     for (const workflow of loaded) await guard(state, workflow.id, () => scheduled(state, workflow, last));
+    await guard(state, "report", async () => {
+      const reports = await dueReports(home, now, state.at, last);
+      result.started.push(...reports.sent.map(label));
+      result.missed.push(...reports.missed.map(label));
+    });
     if (last !== null && Date.parse(state.at) - Date.parse(last) > BACK_ONLINE_GAP_MS) await backOnline(state, last);
     await guard(state, "events", () => events(state, loaded));
     await guard(state, "resume", () => resumable(state, loaded));
