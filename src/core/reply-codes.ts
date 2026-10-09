@@ -7,7 +7,8 @@ import type { ReplyCode } from "./envelope.js";
 import { InputError } from "./inputs.js";
 import { roleAtLeast } from "./levels.js";
 import { listMembers, type Member } from "./members.js";
-import { claimOnce } from "./numbered.js";
+import { claimOnce, isClaimed } from "./numbered.js";
+import { outboundBlock, type Delivery } from "./outbound.js";
 import { MAX_TEXT, invokeTool, prepareAction, requireTool, type ToolContext } from "./tools.js";
 
 /**
@@ -19,6 +20,8 @@ import { MAX_TEXT, invokeTool, prepareAction, requireTool, type ToolContext } fr
  * a reply code can decide (the sender is verified: Telegram, not email).
  */
 export const ANNOUNCED_DIR = join("state", "gateway", "announced");
+/** Items recorded in sandbox/outbox while the install was not finished (R6), so they are recorded once. */
+export const RECORDED_DIR = join("state", "gateway", "announced-recorded");
 const CUT = " [cut: see it whole with 'installer approvals list']";
 
 const decided = (item: ApprovalItem): string => `Approval ${item.id} is ${item.status}${item.decision?.decision === "edited" ? " as edited" : ""}.`;
@@ -71,15 +74,40 @@ What will happen: ${whatWillHappen(item.action)}${preview}\nWhy, as the agent sa
 
 const canDecideThere = (member: Member): boolean => member.identity !== undefined && CHANNEL_FACTS[requireChannelId(member.identity.channel)].risk.sender_verified;
 
-/** Sends each pending item, once, to the joined members whose role may decide it; returns the ids announced. */
+/** Tells each member on their own; one member who cannot be reached never stops the others. */
+async function tellEach(ctx: ToolContext, item: ApprovalItem, targets: Iterable<Member>): Promise<{ sent: boolean; error: unknown }> {
+  let sent = false;
+  let error: unknown = null;
+  for (const member of targets) {
+    try {
+      const result = await invokeTool(ctx, "channel.notify", { member: member.name, text: announcement(item), channel: member.identity?.channel });
+      sent ||= (result.deliveries as readonly Delivery[]).some((delivery) => delivery.status === "sent");
+    } catch (caught) {
+      error ??= caught;
+    }
+  }
+  return { sent, error };
+}
+
+/**
+ * Sends each pending item to the joined members whose role may decide it; returns the ids announced. An item counts
+ * as announced only once a member really received it, so a failed send is tried again next round; while the install
+ * is not finished (R6) it is recorded once, and sent for real once the install is finished. The first failure is
+ * thrown after every item was tried, so the gateway logs it.
+ */
 export async function announceApprovals(ctx: ToolContext): Promise<number[]> {
   const members = (await listMembers(ctx.home, ctx.now())).filter((member) => member.status === "joined" && canDecideThere(member));
+  const recordOnly = (await outboundBlock(ctx.home)) !== null;
   const announced: number[] = [];
+  let failure: unknown = null;
   for (const item of (await listApprovals(ctx.home, ctx.now())).filter((entry) => entry.status === "pending")) {
     const targets = new Map(members.filter((member) => roleAtLeast(member.role, item.required_role)).map((member) => [`${member.name}\n${member.identity?.channel}`, member]));
-    if (targets.size === 0 || !(await claimOnce(ctx.home, ANNOUNCED_DIR, item.id))) continue;
-    for (const member of targets.values()) await invokeTool(ctx, "channel.notify", { member: member.name, text: announcement(item), channel: member.identity?.channel });
-    announced.push(item.id);
+    if (targets.size === 0 || (await isClaimed(ctx.home, ANNOUNCED_DIR, item.id))) continue;
+    if (recordOnly && !(await claimOnce(ctx.home, RECORDED_DIR, item.id))) continue;
+    const { sent, error } = await tellEach(ctx, item, targets.values());
+    failure ??= error;
+    if (recordOnly || (sent && (await claimOnce(ctx.home, ANNOUNCED_DIR, item.id)))) announced.push(item.id);
   }
+  if (failure !== null) throw failure;
   return announced;
 }

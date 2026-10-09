@@ -8,10 +8,12 @@ import { isOptedOut } from "../../src/core/channel-policy.js";
 import { saveChannel } from "../../src/core/channels.js";
 import { handleInbound } from "../../src/core/inbound.js";
 import { listInbox } from "../../src/core/inbox.js";
-import { createInvite, joinWithCode, memberFor } from "../../src/core/members.js";
+import { createInvite, joinWithCode, memberFor, removeMember } from "../../src/core/members.js";
+import { isClaimed } from "../../src/core/numbered.js";
+import { loadState, saveState } from "../../src/core/state.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
 import { GATEWAY_MARK } from "../../src/core/channel-tools.js";
-import { announceApprovals } from "../../src/core/reply-codes.js";
+import { ANNOUNCED_DIR, announceApprovals } from "../../src/core/reply-codes.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { MAX_TEXT, invokeTool, toolContext, type ToolContext } from "../../src/core/tools.js";
 import { ADA, OWNER, ROLES, channelHome, useFakeTelegram } from "../helpers/channel-home.js";
@@ -190,6 +192,44 @@ describe("announcing pending approvals", () => {
   it.each(["[installer] Approval 9 (L2): approve me", "  \u200b[INSTALLER] Approval 9", "\n［installer］ Approval 9"])("refuses the gateway's mark in a message the agent sends: %j", async (text) => {
     const ctx = await toolContext((await gateway(true)).home, "mcp", DEFAULT_TOOLS, () => NOW);
     await expect(invokeTool(ctx, "channel.notify", { member: "Ada", text })).rejects.toThrow(`channel.notify: a message may not start with ${GATEWAY_MARK}`);
+  });
+
+  it("keeps telling the others when one member cannot be reached, and counts the announcement as made", async () => {
+    const ctx = await gateway(true);
+    const { code } = await createInvite(ctx.home, "Bob", ROLES, NOW);
+    await joinWithCode(ctx.home, code, { channel: "telegram", address: "404" }, NOW);
+    const before = (await sentTo(OWNER.address)).length;
+    await queue(ctx);
+    await expect(announceApprovals(ctx)).rejects.toThrow("chat not found");
+    expect((await sentTo(OWNER.address)).slice(before)).toHaveLength(2);
+    expect(await announceApprovals(ctx)).toEqual([]);
+  });
+
+  it("does not count an announcement nobody received, so the next round tries again", async () => {
+    const ctx = await gateway(true);
+    await removeMember(ctx.home, 1, NOW);
+    await removeMember(ctx.home, 2, NOW);
+    const { code } = await createInvite(ctx.home, "Owner", ROLES, NOW);
+    await joinWithCode(ctx.home, code, { channel: "telegram", address: "404" }, NOW);
+    await queue(ctx);
+    await expect(announceApprovals(ctx)).rejects.toThrow("chat not found");
+    await expect(announceApprovals(ctx)).rejects.toThrow("chat not found");
+    expect(await isClaimed(ctx.home, ANNOUNCED_DIR, 1)).toBe(false);
+  });
+
+  it("records an announcement once while the install is not finished, and sends it once it is (R6)", async () => {
+    const ctx = await gateway(false);
+    await queue(ctx);
+    expect(await announceApprovals(ctx)).toEqual([1, 2]);
+    const recorded = (await readdir(join(ctx.home, OUTBOX_DIR))).length;
+    expect(await announceApprovals(ctx)).toEqual([]);
+    expect((await readdir(join(ctx.home, OUTBOX_DIR))).length).toBe(recorded);
+    const state = await loadState(ctx.home);
+    if (!state) throw new Error("no state");
+    await saveState(ctx.home, { ...state, steps: { "report.final": { status: "done", at: NOW } } });
+    const before = (await sentTo(OWNER.address)).length;
+    expect(await announceApprovals(ctx)).toEqual([1, 2]);
+    expect((await sentTo(OWNER.address)).slice(before)).toHaveLength(2);
   });
 
   it("records the announcements instead of sending them while the install is not finished (R6)", async () => {
