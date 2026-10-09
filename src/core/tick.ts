@@ -10,6 +10,7 @@ import { readConfig, writeConfig } from "./data-source.js";
 import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { listInbox, type InboxItem } from "./inbox.js";
+import { collectLearnings, submitLearnings } from "./learning.js";
 import { InputError } from "./inputs.js";
 import { resumeRun, startRun } from "./runner.js";
 import { listRuns, recordMissed, runForKey, type OnDamaged, type RunRecord } from "./runs.js";
@@ -47,6 +48,8 @@ export interface TickResult {
   readonly alerts: number;
   readonly reminded: number[];
   readonly rate_limited: number;
+  /** Learnings sent to Skills Wiki (D97). */
+  readonly learnings: number;
   readonly errors: string[];
 }
 
@@ -204,7 +207,7 @@ async function guard(tick: Tick, name: string, task: () => Promise<void>): Promi
 }
 
 export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env): Promise<TickResult> {
-  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, errors: [] };
+  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, errors: [] };
   const lock = await lockTick(home);
   if (lock === null) return { ...result, status: "busy" };
   try {
@@ -228,6 +231,10 @@ export async function tick(home: string, now: () => string = () => new Date().to
     await guard(state, "alerts", async () => {
       result.alerts = await repeatAlerts(await toolContext(home, "runner", DEFAULT_TOOLS, now), (await loadState(home))?.roles);
       result.reminded = await remindApprovals(await toolContext(home, "gateway", DEFAULT_TOOLS, now));
+    });
+    await guard(state, "learning", async () => {
+      await collectLearnings(home, state.at);
+      result.learnings = (await submitLearnings(home, (await loadState(home))?.skillswiki?.url, state.at)).length;
     });
     await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: now(), pid: process.pid });
     return { ...result };
