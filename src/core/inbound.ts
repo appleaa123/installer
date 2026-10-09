@@ -3,11 +3,15 @@ import { access, mkdir, open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
+import { ToolRefusal } from "./approvals.js";
 import { DEFAULT_POLICY, recordOptOut } from "./channel-policy.js";
 import { CHANNEL_FACTS, requireChannelId } from "./channels.js";
-import { isOptOut, joinCodeIn, normalizeInbound, replyCodeIn, type InboundEnvelope, type RawInbound, type ReplyCode } from "./envelope.js";
+import { isOptOut, joinCodeIn, killSwitchIn, normalizeInbound, replyCodeIn, type InboundEnvelope, type RawInbound, type ReplyCode } from "./envelope.js";
+import { ActionFailure } from "./failure.js";
 import { storeInbound, type Route } from "./inbox.js";
+import { InputError } from "./inputs.js";
 import { joinWithCode, memberFor, type Identity, type Member } from "./members.js";
+import { PAUSED_TEXT, PAUSE_FILE, UNPAUSED_TEXT, setPaused, switchRefusal } from "./pause.js";
 import { loadPinnedSolution } from "./pin.js";
 import { acknowledgeByReply } from "./alerts.js";
 import { decideByReply } from "./reply-codes.js";
@@ -17,7 +21,8 @@ import { invokeTool, type ToolContext } from "./tools.js";
  * The inbound pipeline (spec §12.4, D76): normalise and mark → drop a message handled before → opt-out → join code →
  * identify the sender → a member's reply code decides an approval, a member's other text is a conversation, anyone
  * else's text is an event (the hook for Plan 7's `message.received` triggers). Nothing in a message's text is obeyed:
- * only the three command shapes are read, and only a joined member's reply code can decide anything.
+ * only the command shapes are read, only a joined member's reply code can decide anything, and only the decision
+ * maker's `/pause` or `/unpause` on a channel that proves the sender works the kill switch (D101).
  */
 export const SEEN_DIR = join("state", "gateway", "seen");
 
@@ -75,6 +80,32 @@ async function strangerCode(ctx: ToolContext, envelope: InboundEnvelope): Promis
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "human", event: "approval.refused", ref: `approval:${code.id}`, payload: { id: code.id, by: `unknown ${envelope.channel} sender`, reason: "not a joined member" } });
 }
 
+/** Tells the member before the switch closes; a message that cannot go out never keeps the engine from pausing. */
+async function tellFirst(ctx: ToolContext, member: Member, channel: string, text: string): Promise<boolean> {
+  try {
+    await tell(ctx, member, channel, text);
+    return true;
+  } catch (error) {
+    if (error instanceof InputError || error instanceof ToolRefusal || error instanceof ActionFailure) return false;
+    throw error;
+  }
+}
+
+/** `/pause` and `/unpause` (§14.4, D101): the decision maker on a channel that proves the sender; anyone else is refused and audited. */
+async function killSwitch(ctx: ToolContext, envelope: InboundEnvelope, member: Member, command: "pause" | "unpause"): Promise<Outcome> {
+  await storeInbound(ctx.home, envelope, "command", member.name);
+  const refusal = switchRefusal(member, envelope.channel, command);
+  if (refusal !== null) {
+    await appendAudit(ctx.home, { ts: ctx.now(), actor: "human", event: "engine.switch_refused", ref: PAUSE_FILE, payload: { command, by: member.name, channel: envelope.channel } });
+    await tellFirst(ctx, member, envelope.channel, refusal);
+    return "refused";
+  }
+  if (command === "pause") await tellFirst(ctx, member, envelope.channel, PAUSED_TEXT);
+  await setPaused(ctx.home, command === "pause", { name: member.name, actor: "human", via: envelope.channel }, ctx.now());
+  if (command === "unpause") await tell(ctx, member, envelope.channel, UNPAUSED_TEXT);
+  return "decided";
+}
+
 /** Drops a message handled before; otherwise routes it and only then marks it seen (storing is idempotent). */
 export async function handleInbound(ctx: ToolContext, raw: RawInbound): Promise<Outcome> {
   const envelope = normalizeInbound(raw, ctx.now());
@@ -95,6 +126,8 @@ async function routeInbound(ctx: ToolContext, envelope: InboundEnvelope): Promis
   const code = joinCodeIn(envelope.text);
   if (code) return joinByCode(ctx, envelope, identity, code);
   const member = await memberFor(ctx.home, identity, ctx.now());
+  const command = member ? killSwitchIn(envelope.text) : null;
+  if (member && command) return killSwitch(ctx, envelope, member, command);
   const reply = member ? replyCodeIn(envelope.text) : null;
   if (member && reply) {
     await storeInbound(ctx.home, envelope, "command", member.name);

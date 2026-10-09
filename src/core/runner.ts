@@ -9,6 +9,7 @@ import { judgeBackend } from "./model.js";
 import { loadPinnedContract } from "./pin.js";
 import { checkApproval, runApprove, runJudge, runTool, type Exec, type StepOutcome } from "./runner-steps.js";
 import { FINISHED, auditRun, claimRun, fingerprint, loadStep, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
+import { PAUSED_REASON, isPaused } from "./pause.js";
 import { runsInSandbox } from "./sandbox.js";
 import { loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -158,6 +159,7 @@ export async function resumeRun(request: RunRequest, record: RunRecord): Promise
 
 /** Starts the run for this key; a key that already has a run is never started twice (§10.7). */
 export async function startRun(request: RunRequest): Promise<RunRecord> {
+  if (await isPaused(request.home)) throw new InputError(`No run starts: ${PAUSED_REASON}`);
   const existing = await runForKey(request.home, request.key);
   if (existing) return FINISHED.includes(existing.status) ? existing : resumeRun(request, existing);
   const at = request.trigger.scheduled_for ?? request.now();
