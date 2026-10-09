@@ -42,6 +42,12 @@ const INJECTION_PATTERNS: readonly (readonly [string, RegExp])[] = [
   ["system_prompt", /\bsystem prompt\b|<\/?\s*(system|assistant|tool)\b|\[(system|assistant)\]/i],
   ["approval_bypass", /\bapproval[_ ]token\b|\b(approve|confirm) (it|this) yourself\b|\bwithout (asking|approval)\b/i],
   ["secret_request", /\b(send|share|reveal|print|give)\b[^\n]{0,40}\b(api[_ ]?keys?|passwords?|secrets?|tokens?)\b/i],
+  // Plan 10's universal injection suite (D117): a tool call written as JSON, a level change, the kill switch below
+  // the first line (only a member's first line is ever read as a command) and a try to close the data fence.
+  ["tool_call", /["'](tool|tool_calls?|function_call|function)["']\s*:/i],
+  ["level_change", /\b(set|change|lower|raise)\b[^\n]{0,40}\blevels?\b[^\n]{0,40}\bL[0-3]\b/i],
+  ["kill_switch", /(^|\s)\/(un)?pause\b/i],
+  ["fence_escape", /```/],
 ];
 
 /** The names of the patterns found; `hidden_text` when the raw text carried invisible characters. */
