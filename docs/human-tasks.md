@@ -118,16 +118,37 @@ Each task says why it is needed and what to do, step by step.
 2. Run the `confirm`, `apply`, `sandbox off` and `alerts ack` commands yourself, in your own terminal; the guide also shows that they refuse without one.
 3. Paste each test's output to Claude, including the hardening proposal of Test 4. If an output differs from the guide, Claude fixes the code or the guide.
 4. After a pilot with a real client, tell Claude whether the first thresholds (D99: 5 runs, 10 replays, 25 approvals, 3 messages a day per contact) feel right.
+### 12. Run the Plan 9 live test (doctor, host readiness, kill switch, support bundle, uninstall)
+
+**Why:** the automated tests never read a real computer's settings (they answer with a fake), use a fake Skills Wiki and a file keychain. This checks the doctor and the host readiness checks on your own Mac (read only), the kill switch, the boot service files, the support bundle's redaction with your own name, and uninstall, all inside a test folder, and reads one Skills Wiki skill file twice. It makes no `claude` call and changes no OS setting. The host readiness outputs in the guide are predictions.
+
+1. Open `docs/testing/2026-10-09-plan-9-live-test.md` and follow it in one terminal, in order.
+2. Type `installer unpause`, `installer retention --value …` and `installer uninstall` yourself; the guide also shows that they refuse without a terminal.
+3. Run none of the `sudo` commands the guide prints on your laptop; they are for a team host (task 13).
+4. Paste each test's output to Claude, including the `installer host` checks of Test 2. If an output differs from the guide, Claude fixes the code or the guide.
+
+### 13. Set up a team host: the dedicated user, the host readiness fixes and the boot services
+
+**Why:** on a Team host the assistant must keep running when nobody is at the computer (D42), and the engine should belong to an OS user of its own rather than to a person's account (D50, D61, D105). The installer only reads the settings and prints what to change; a person with administrator rights makes every change. Do this on the client's always-on computer during their install (and once on a spare Mac or Linux box if you want to see it before a client does). About 30 minutes.
+
+1. Create the engine user, as `installer host` prints it: on macOS a standard (not administrator) user named `installer-engine` (System Settings → Users & Groups → Add User); on Linux `sudo useradd --create-home --shell /bin/bash installer-engine`, then `sudo passwd installer-engine`. Keep its password yourself.
+2. Sign in as `installer-engine`, install Node 22, the agent and the installer there, and run the install from that account, so the engine home, its keychain items and the agent's MCP servers belong to it.
+3. As `installer-engine`, run `installer host`. For every check whose status is `fix`, run its command from your own administrator account (for example `sudo pmset -a sleep 0` and `sudo pmset -a autorestart 1` on macOS, `sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target` and `sudo timedatectl set-ntp true` on Linux). Turn on FileVault (macOS) if it is off, keeping the recovery key yourself (the engine never stores it, D43). On Linux, set the firmware's power-loss setting to Power On.
+4. As `installer-engine`, run `installer schedule remove` if the per-user schedule was loaded (and the commands it prints), then `installer gateway stop` and `installer host service install`; run the printed `sudo cp`, `chown`, `chmod` and `launchctl bootstrap system …` (macOS) or `systemctl enable --now …` (Linux) commands from your administrator account. On Linux the tick stays the engine user's crontab (`installer schedule install`).
+5. Follow the `updates` advice: schedule OS updates and planned restarts in the quiet window `installer host` names; put the computer on a wired network and a UPS.
+6. Run `installer doctor` as `installer-engine`: the `host` check should say `readiness 5/5` (4/4 on Linux) and the `gateway` and `runner` checks `ok` after a minute. Decide approvals from Telegram; the terminal-only commands remain for a person at that account.
+7. Tell Claude the readiness score you saw and any check that stayed `unknown`.
+
 ## Optional
 
-### 12. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 14. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 
 1. Read Antigravity's current terms of service and find the section on automated or third-party use.
 2. Tell Claude what it says. Claude will record the outcome as a decision.
 
-### 13. Check the crontab entry on a Linux host (only if a client will run on Linux)
+### 15. Check the crontab entry on a Linux host (only if a client will run on Linux)
 
 **Why:** on Linux the runner's minute is a crontab line (D82). It was only checked as text on macOS.
 
@@ -135,6 +156,13 @@ Each task says why it is needed and what to do, step by step.
 2. `crontab -l` shows a line that ends with `# com.installer.tick.<8 characters>`; after two minutes `installer schedule list` shows a `last_tick` from the last minute.
 3. Suspend the host across a scheduled run of a test workflow for ten minutes, resume it, and check that the run is listed as `missed` within a minute and that one back-online notice appears in the audit (`grep runner.back_online <home>/audit/audit.jsonl`).
 4. Remove it with the command `installer schedule remove` prints. Tell Claude what you saw.
+### 16. Skills Wiki side: serve each pack's commit_sha (only if you want installs to record it)
+
+**Why:** installs pin each skill file by its text (D107), because Skills Wiki's MCP answers do not say which version they are: `skill_pack_meta.commit_sha` is only read by its own scripts. If `get_skill_resource` (or a small tool of its own) also returned the pack's `commit_sha`, installs could record it next to the content pin, and the shadow upgrade's message could name the commit.
+
+1. In the Skills Wiki repository, add the pack's `commit_sha` from `fetch_skill_pack_meta` to the `get_skill_resource` answer (for example a `commit_sha` field next to `path`, `kind` and `content`).
+2. Tell Claude when it is live; the installer then records it with each pin (a small change, left for later in D111).
+
 ## Done
 
 - 2026-10-08: Plan 1 live test (14 of 14 passed).
