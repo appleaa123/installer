@@ -28,7 +28,7 @@ afterEach(async () => {
 
 /** A home and a private file keychain holding the given secrets, plus the env that reaches the fakes. */
 async function setup(secrets: Record<string, string>) {
-  const env = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome(), ...telegram.env, ...TEST_TLS_ENV };
+  const env = { INSTALLER_KEYCHAIN_DIR: await makeTempHome(), ...telegram.env, ...TEST_TLS_ENV };
   for (const [id, value] of Object.entries(secrets)) await setSecret(id, value, env);
   return { home: await makeTempHome(), env, now: fixedClock("2026-10-08T12:00:00.000Z") };
 }
@@ -81,7 +81,7 @@ describe("installer channel (D73)", () => {
   it("verifies the mailbox with an IMAP and an SMTP sign-in, sends nothing, and starts reading after the newest message", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { smtp, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    expect(await channelCommand(home, "email", value, now, env)).toMatchObject({ status: "verified", channel: "email", address: MAIL_USER });
+    expect(await channelCommand(home, "email", value, now, env, true)).toMatchObject({ status: "verified", channel: "email", address: MAIL_USER });
     expect(smtp.received).toEqual([]);
     expect(await loadCursor(home, "email")).toEqual({ uidvalidity: 7, last_uid: 101 });
     expect(await readFile(join(home, "config", "channels", "email.json"), "utf8")).not.toContain(MAIL_PASSWORD);
@@ -90,8 +90,19 @@ describe("installer channel (D73)", () => {
   it("refuses a wrong app password and saves nothing", async () => {
     const { home, env, now } = await setup({ email: "wrong" });
     const { value } = await mailServers();
-    await expect(channelCommand(home, "email", value, now, env)).rejects.toThrow("refused the sign-in");
+    await expect(channelCommand(home, "email", value, now, env, true)).rejects.toThrow("refused the sign-in");
     expect(await loadChannel(home, "email")).toBeNull();
+  });
+
+  it("refuses to set up the mailbox from an agent's shell (no terminal), audited, before any sign-in", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    const { imap, smtp, value } = await mailServers();
+    const refused = channelCommand(home, "email", value, now, env, false);
+    await expect(refused).rejects.toThrow(InputError);
+    await expect(refused).rejects.toThrow("The mailbox's servers are set by a person in their own terminal, not by the agent");
+    expect([...imap.logins, ...smtp.logins]).toEqual([]);
+    expect(await loadChannel(home, "email")).toBeNull();
+    expect(await events(home)).toEqual(["channel.refused"]);
   });
 
   it("lists the configured channels, refuses an unknown one and a value for Telegram", async () => {
@@ -127,7 +138,7 @@ describe("the channel connectors (§12.2)", () => {
   it("email: reads only new mail from others, oldest first, and sends from the mailbox's address", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { imap, smtp, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    await channelCommand(home, "email", value, now, env);
+    await channelCommand(home, "email", value, now, env, true);
     const channel = await openChannel(home, "email", env);
     imap.deliver(MAIL("Ada <ada@example.com>", "A3", "a1"));
     imap.deliver(MAIL(MAIL_USER, "my own copy", "m1"));
@@ -140,7 +151,7 @@ describe("the channel connectors (§12.2)", () => {
   it("email: a renumbered mailbox restarts after its newest message instead of reading it all again", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    await channelCommand(home, "email", value, now, env);
+    await channelCommand(home, "email", value, now, env, true);
     const channel = await openChannel(home, "email", env);
     expect(await channel.receive({ uidvalidity: 3, last_uid: 0 }, 0, new AbortController().signal)).toEqual({ messages: [], cursor: { uidvalidity: 7, last_uid: 101 } });
   });
@@ -148,7 +159,7 @@ describe("the channel connectors (§12.2)", () => {
   it("email: reads a message over 1 MB, since the line limit does not apply to a message's bytes", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    await channelCommand(home, "email", value, now, env);
+    await channelCommand(home, "email", value, now, env, true);
     const channel = await openChannel(home, "email", env);
     imap.deliver(MAIL("ada@example.com", `Long${" x".repeat(600_000)}`, "big"));
     const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
@@ -159,7 +170,7 @@ describe("the channel connectors (§12.2)", () => {
   it("email: skips a message over the size limit with a note, never its text, and reads the mail after it", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    await channelCommand(home, "email", value, now, env);
+    await channelCommand(home, "email", value, now, env, true);
     const channel = await openChannel(home, "email", env);
     imap.deliver(MAIL("ada@example.com", `SECRET${"y".repeat(10_000_000)}`, "huge"));
     imap.deliver(MAIL("grace@example.com", "after", "g1"));
@@ -175,7 +186,7 @@ describe("the channel connectors (§12.2)", () => {
   it("email: skips a message that is gone before it is fetched", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
-    await channelCommand(home, "email", value, now, env);
+    await channelCommand(home, "email", value, now, env, true);
     const channel = await openChannel(home, "email", env);
     imap.deliver(MAIL("ada@example.com", "gone", "a1"));
     imap.deliver(MAIL("grace@example.com", "after", "g1"));

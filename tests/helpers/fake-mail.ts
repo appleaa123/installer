@@ -9,7 +9,7 @@ import { TLSSocket, createServer as createTlsServer } from "node:tls";
  */
 const KEY = readFileSync("tests/fixtures/tls/key.pem");
 const CERT = readFileSync("tests/fixtures/tls/cert.pem");
-export const TEST_TLS_ENV = { INSTALLER_TLS_CA: resolve("tests/fixtures/tls/cert.pem") };
+export const TEST_TLS_ENV = { INSTALLER_TLS_CA: resolve("tests/fixtures/tls/cert.pem"), INSTALLER_KEYCHAIN: "file" };
 export const MAIL_USER = "desk@example.com";
 export const MAIL_PASSWORD = "app-pass \"quoted\" \\ 1";
 

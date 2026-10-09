@@ -277,7 +277,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     approvalsCommand(deps.home, state.roles, { sub: arg, id: extra, as: flags.as, reason: flags.reason, value: flags.value, interactive: process.stdin.isTTY === true }, deps.now),
   connect: async ({ deps }, flags, arg) => connectEntity(deps.home, requireEntityArg(arg, "connect"), flags.sheet, deps.now),
   map: async ({ deps }, flags, arg) => mapEntity(deps.home, requireEntityArg(arg, "map"), flags.value, deps.now, process.env, process.stdin.isTTY === true),
-  channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now),
+  channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now, process.env, process.stdin.isTTY === true),
   invite: async ({ state, deps }, _flags, arg) => inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now),
   members: async ({ deps }, _flags, arg, extra) => membersCommand(deps.home, { sub: arg, id: extra, interactive: process.stdin.isTTY === true }, deps.now),
   gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),

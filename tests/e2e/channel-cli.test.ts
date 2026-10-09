@@ -38,6 +38,14 @@ describe("installer channel and disconnect from the shell (D73)", () => {
     expect(missing.json).toEqual({ error: "No telegram secret is stored: run 'installer secret telegram' and enter it on the page that opens", code: 2 });
     expect(runCli(["channel", "fax"], { home, env }).code).toBe(2);
   });
+
+  it("refuses to set up the mailbox from an agent's shell (no terminal)", async () => {
+    const { home, env } = await install({ email: "app-pass" });
+    const value = '{"address":"desk@example.com","imap":{"host":"127.0.0.1","port":1,"security":"ssl"},"smtp":{"host":"127.0.0.1","port":1,"security":"ssl"}}';
+    const refused = runCli(["channel", "email", "--value", value], { home, env });
+    expect(refused.code).toBe(2);
+    expect(refused.json).toMatchObject({ error: expect.stringContaining("not by the agent") });
+  });
 });
 
 describe("installer invite and members from the shell (D77)", () => {

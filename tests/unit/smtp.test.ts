@@ -90,5 +90,6 @@ describe("the message and the test certificate override", () => {
     expect(tlsOptions("127.0.0.1", TEST_TLS_ENV)).toHaveProperty("ca");
     expect(() => tlsOptions("smtp.example.com", TEST_TLS_ENV)).toThrow("only for a test server on 127.0.0.1");
     expect(tlsOptions("smtp.example.com", {})).toEqual({ host: "smtp.example.com", servername: "smtp.example.com" });
+    expect(() => tlsOptions("127.0.0.1", { INSTALLER_TLS_CA: TEST_TLS_ENV.INSTALLER_TLS_CA })).toThrow("INSTALLER_TLS_CA is only for tests with the throwaway file keychain (INSTALLER_KEYCHAIN=file)");
   });
 });

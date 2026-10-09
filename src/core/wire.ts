@@ -8,7 +8,7 @@ import { InputError } from "./inputs.js";
  * A line connection for the mail protocols (IMAP, SMTP), on `node:net` and `node:tls` only. `ssl` is TLS from the
  * first byte (ports 993 / 465); `starttls` starts in plain text and is upgraded with `startTls()` before any
  * credential is sent. Certificates are checked against the system's trusted roots; tests trust their own
- * certificate through INSTALLER_TLS_CA, accepted for a server on 127.0.0.1 only.
+ * certificate through INSTALLER_TLS_CA, accepted for a server on 127.0.0.1 only and with the test file keychain only.
  */
 export const MAIL_SECURITY = ["ssl", "starttls"] as const;
 export type MailSecurity = (typeof MAIL_SECURITY)[number];
@@ -37,6 +37,7 @@ export interface Wire {
 export function tlsOptions(host: string, env: Env = process.env): ConnectionOptions {
   const ca = env[TLS_CA_ENV];
   if (!ca) return { host, ...(isIP(host) ? {} : { servername: host }) };
+  if (env.INSTALLER_KEYCHAIN !== "file") throw new InputError(`${TLS_CA_ENV} is only for tests with the throwaway file keychain (INSTALLER_KEYCHAIN=file); a real mailbox's certificate is checked against the system's trusted roots`);
   if (host !== "127.0.0.1") throw new InputError(`${TLS_CA_ENV} is only for a test server on 127.0.0.1, not ${host}`);
   return { host, ca: readFileSync(ca) };
 }
