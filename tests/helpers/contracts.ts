@@ -73,7 +73,7 @@ export function channelContract(target: () => ChannelTarget, options: { readonly
     if (delivered) expect((await delivered()).some((body) => body.includes(text))).toBe(true);
   });
 
-  it.skipIf(!options.receive)("contract: reads messages as the gateway needs them: the channel, a sender, a message id and text", async () => {
+  if (options.receive) it("contract: reads messages as the gateway needs them: the channel, a sender, a message id and text", async () => {
     const { channel, inject } = target();
     const start = await channel.receive(null, 0, signal());
     if (inject) await inject("contract hello");
@@ -84,7 +84,7 @@ export function channelContract(target: () => ChannelTarget, options: { readonly
     if (inject) expect(read.messages.map((message) => message.text)).toContain("contract hello");
   });
 
-  it.skipIf(!options.receive)("contract: never returns a message twice when read again from the cursor it gave", async () => {
+  if (options.receive) it("contract: never returns a message twice when read again from the cursor it gave", async () => {
     const { channel, inject } = target();
     const start = await channel.receive(null, 0, signal());
     if (inject) await inject("contract again");

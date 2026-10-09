@@ -88,6 +88,7 @@ export function tierOf(parts: Parts, profile: RuntimeProfile): { readonly tier: 
   const reasons = [
     ...(offline.status === "passed" ? [] : [`the offline suite ${offline.status === "failed" ? "failed" : "did not run"}`]),
     ...(live.status === "passed" ? [] : [`the live checks ${live.status === "failed" ? "failed" : "did not run"}`]),
+    ...(live.status === "passed" && live.skipped > 0 ? [`the live checks skipped ${live.skipped} test${live.skipped === 1 ? "" : "s"}`] : []),
     ...(live.missing.length === 0 ? [] : [`the live checks lacked ${live.missing.join(", ")}`]),
     ...(probe.c4_headless && probe.c4_schema && probe.c5_resume ? [] : ["the agent did not pass C4, C4 schema and C5"]),
     ...(versionOk ? [] : [`the agent's version is unknown or older than ${profile.min_version}`]),

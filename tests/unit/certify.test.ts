@@ -60,6 +60,7 @@ describe("installer certify, the local certification (D116)", () => {
   it.each([
     ["a failed offline suite, which also skips the live checks", { offline: { ...PASSED, status: "failed", failed: 2 } as SuiteResult }, ["the offline suite failed", "the live checks did not run"], "compatible"],
     ["failed live checks", { live: { ...LIVE_PASSED, status: "failed", failed: 1 } as SuiteResult }, ["the live checks failed"], "compatible"],
+    ["live checks that passed with some skipped", { live: { ...LIVE_PASSED, skipped: 1 } as SuiteResult }, ["the live checks skipped 1 test"], "compatible"],
     ["a live key that is not set", { env: { ...ALL_KEYS, TELEGRAM_BOT_TOKEN: "" } }, ["the live checks lacked TELEGRAM_BOT_TOKEN"], "compatible"],
     ["no C6 rehearsal", { env: { ...ALL_KEYS, INSTALLER_LIVE_AGENT: "" } }, ["the live checks lacked INSTALLER_LIVE_AGENT=1"], "compatible"],
     ["an agent without session resume", { map: { ...CLAUDE, c5_resume: false } }, ["the agent did not pass C4, C4 schema and C5"], "compatible"],
