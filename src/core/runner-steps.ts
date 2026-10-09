@@ -1,0 +1,123 @@
+import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
+import { interpolate, lookup, type Scope } from "./expressions.js";
+import { InputError } from "./inputs.js";
+import { askJudge, protectedFields, runContextTools, skillText, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
+import { needsApproval } from "./levels.js";
+import { fingerprint, saveStep, type RunRecord, type StepLog } from "./runs.js";
+import { TOKEN_ARG, invokeTool, prepareAction, requireTool, type ToolArgs, type ToolContext } from "./tools.js";
+import type { DataContract } from "./contract.js";
+import type { InstallState } from "./types.js";
+import type { WorkflowStep } from "./workflow.js";
+
+/**
+ * One step of a run (spec §10.2, D87). Tools act through Plan 4's gate (`invokeTool`): an L0 or L1 call runs; an
+ * L2 or L3 call becomes an approval item for exactly that call and the run waits (§10.9 policy escalation, also
+ * what an `approve` step asks for); once approved, the runner makes the same call with the item's token, so the
+ * gate checks the hash, the role and single use as for any caller. Judges only answer (D83). No argument a
+ * workflow or a judge produces can carry an approval token (R8).
+ */
+export interface Exec {
+  readonly home: string;
+  readonly ctx: ToolContext;
+  readonly state: InstallState | undefined;
+  readonly contract: DataContract | null;
+  readonly backend: () => Promise<JudgeBackend>;
+}
+
+export type StepOutcome =
+  | { readonly kind: "done"; readonly output: unknown; readonly actions: number; readonly needs_human: number }
+  | { readonly kind: "wait"; readonly approval: number }
+  | { readonly kind: "stop"; readonly status: "partial" | "failed"; readonly reason: string };
+
+const now = (exec: Exec): string => exec.ctx.now();
+
+/** Arguments for a call: the workflow's templates filled in; an approval token there is refused (R8). */
+export function argsFor(template: unknown, scope: Scope, step: string): ToolArgs {
+  const args = interpolate(template, scope);
+  if (typeof args !== "object" || args === null || Array.isArray(args)) throw new InputError(`Step '${step}': the arguments must be an object`);
+  if (Object.hasOwn(args, TOKEN_ARG)) throw new InputError(`Step '${step}': an argument named ${TOKEN_ARG} came from the run's data; only the runner passes tokens`);
+  return args as ToolArgs;
+}
+
+function items(step: WorkflowStep, scope: Scope): readonly unknown[] {
+  if (!("foreach" in step) || step.foreach === undefined) return [undefined];
+  const list = lookup(scope, step.foreach.slice(2, -1));
+  if (!Array.isArray(list)) throw new InputError(`Step '${step.id}': foreach ${step.foreach} is not a list`);
+  return list;
+}
+
+async function save(exec: Exec, record: RunRecord, log: Omit<StepLog, "finished_at" | "duration_ms">): Promise<void> {
+  const finished = now(exec);
+  await saveStep(exec.home, record, { ...log, finished_at: finished, duration_ms: Math.max(0, Date.parse(finished) - Date.parse(log.started_at)) });
+}
+
+/** Asks a person to approve exactly this call; the run waits for the decision (§10.9 policy). */
+async function escalate(exec: Exec, record: RunRecord, step: string, prepared: PreparedAction, request: { why: string; urgent: boolean; startedAt: string }): Promise<StepOutcome> {
+  const run = { workflow: record.workflow, run_id: record.run_id, step };
+  const item = await requestApproval(exec.home, { prepared, why: request.why, urgent: request.urgent, via: "runner", run }, now(exec));
+  await save(exec, record, { step, status: "waiting", started_at: request.startedAt, input_fingerprint: fingerprint(prepared.args), approval: item.id });
+  return { kind: "wait", approval: item.id };
+}
+
+export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "tool" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
+  const outputs: unknown[] = [];
+  let actions = 0;
+  const list = items(step, scope);
+  for (const item of list) {
+    const args = argsFor(step.args, { ...scope, item }, step.id);
+    const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
+    if (needsApproval(prepared.level)) {
+      if (step.foreach !== undefined) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs an approval for each item; approve one call with an approve step instead`);
+      return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: false, startedAt });
+    }
+    outputs.push(await invokeTool(exec.ctx, step.tool, args));
+    actions += prepared.level === "L0" ? 0 : 1;
+  }
+  const output = step.foreach === undefined ? outputs[0] : outputs;
+  await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(list), output });
+  return { kind: "done", output, actions, needs_human: 0 };
+}
+
+export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "judge" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
+  const spec = step.judge;
+  const backend = await exec.backend();
+  const skill = spec.skill ? await skillText(exec.state?.skillswiki?.url, spec.skill) : null;
+  const hidden = protectedFields(exec.contract);
+  const [outputs, calls, needs, inputs]: [unknown[], ContextCall[], { index: number; reason: string }[], unknown[]] = [[], [], [], []];
+  for (const [index, item] of items(step, scope).entries()) {
+    const itemScope = { ...scope, item };
+    const input = stripFields(spec.input === undefined ? (item ?? null) : interpolate(spec.input, itemScope), hidden);
+    const context = (await runContextTools(exec.ctx, spec, itemScope)).map((call) => ({ ...call, result: stripFields(call.result, hidden) as ContextCall["result"] }));
+    const outcome = await askJudge(backend, spec, input, context, skill);
+    inputs.push(input);
+    calls.push(...context);
+    if (outcome.status === "ok") outputs.push(outcome.value);
+    else needs.push({ index, reason: outcome.reason });
+  }
+  const output = step.foreach === undefined ? (outputs[0] ?? null) : outputs;
+  await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(inputs), output, context_calls: calls, ...(needs.length > 0 ? { needs_human: needs } : {}) });
+  return { kind: "done", output, actions: 0, needs_human: needs.length };
+}
+
+export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "approve" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
+  const args = argsFor(step.args, scope, step.id);
+  const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
+  if (!needsApproval(prepared.level)) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs no approval; make it a tool step`);
+  return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent, startedAt });
+}
+
+/** A waiting step: approved → the same call with the token; rejected → the run stops; expired → it fails. */
+export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog): Promise<StepOutcome> {
+  const id = log.approval ?? 0;
+  const item = await getApproval(exec.home, id, now(exec));
+  if (item.status === "pending") return { kind: "wait", approval: id };
+  if (item.status === "approved" && item.token) {
+    const output = await invokeTool(exec.ctx, item.action.tool, { ...item.action.args, [TOKEN_ARG]: item.token });
+    await save(exec, record, { ...log, status: "done", output });
+    return { kind: "done", output, actions: 1, needs_human: 0 };
+  }
+  const rejected = item.status === "rejected";
+  const reason = rejected ? `approval ${id} was rejected${item.decision?.reason ? `: ${item.decision.reason}` : ""}` : `approval ${id} is ${item.status}`;
+  await save(exec, record, { ...log, status: rejected ? "rejected" : "failed", error: reason });
+  return { kind: "stop", status: rejected ? "partial" : "failed", reason };
+}
