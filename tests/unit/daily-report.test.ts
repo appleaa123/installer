@@ -1,10 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { InputError } from "../../src/core/inputs.js";
 import { REPORT_CONFIG, composeReport, parseReportConfig, reportSlots, saveReportConfig } from "../../src/core/daily-report.js";
-import { REPORT_RUNS, claimRun, listRuns, recordMissed, runIdFor, type RunRecord } from "../../src/core/runs.js";
+import { REPORT_RUNS, RUNS_DIR, claimRun, listRuns, recordMissed, runIdFor, type RunRecord } from "../../src/core/runs.js";
 import { HEARTBEAT_FILE, tick } from "../../src/core/tick.js";
 import { writeConfig } from "../../src/core/data-source.js";
 import { channelHome, useFakeTelegram } from "../helpers/channel-home.js";
@@ -91,6 +91,17 @@ describe("sending it (D40)", () => {
     expect(await reportsTo("1002")).toContain("Report Wed 17:00 → Thu 09:00 (America/Toronto): 0 runs.\nNo runs in this window.");
     await tick(home, () => "2026-10-08T13:01:40.000Z");
     expect((await reportsTo("1002")).filter((text) => text.startsWith("Report Wed 17:00"))).toHaveLength(1);
+  });
+
+  it("skips a damaged run record, says so, and still sends the report", async () => {
+    const home = await channelHome(true);
+    await saveReportConfig(home, JSON.stringify({ recipients: [OWNER] }), NINE);
+    await mkdir(join(home, RUNS_DIR, "morning", "damaged"), { recursive: true });
+    await writeFile(join(home, RUNS_DIR, "morning", "damaged", "run.json"), "{}");
+    const result = await tick(home, () => "2026-10-08T13:00:40.000Z");
+    expect(result.started).toEqual([expect.stringMatching(/^_report .* \(completed\)$/)]);
+    expect(result.errors).toContainEqual(expect.stringMatching(/^report: .*runs\/morning\/damaged\/run\.json/));
+    expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"run.damaged"');
   });
 
   it("does not send a report late: past five minutes it is missed", async () => {

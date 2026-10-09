@@ -6,7 +6,7 @@ import { MINUTE_MS, cronTimes, isTimeZone, wallClock } from "./cron.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
-import { REPORT_RUNS, auditRun, claimRun, listRuns, recordMissed, runForKey, runIdFor, saveRun, type RunRecord } from "./runs.js";
+import { REPORT_RUNS, auditRun, claimRun, listRuns, recordMissed, runForKey, runIdFor, saveRun, type OnDamaged, type RunRecord } from "./runs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { MAX_TEXT, invokeTool, toolContext } from "./tools.js";
 
@@ -104,8 +104,8 @@ function line(record: RunRecord, tz: string): string {
 }
 
 /** The report's text: every run (not the reports themselves) whose time falls in (previous, slot]. */
-export async function composeReport(home: string, recipient: Recipient, previous: string, slot: string): Promise<string> {
-  const inWindow = (await listRuns(home)).filter((record) => record.workflow !== REPORT_RUNS).filter((record) => {
+export async function composeReport(home: string, recipient: Recipient, previous: string, slot: string, damaged?: OnDamaged): Promise<string> {
+  const inWindow = (await listRuns(home, undefined, damaged)).filter((record) => record.workflow !== REPORT_RUNS).filter((record) => {
     const at = record.trigger.scheduled_for ?? record.started_at;
     return at > previous && at <= slot;
   });
@@ -129,12 +129,12 @@ async function deliverReport(home: string, now: () => string, recipient: Recipie
   }
 }
 
-async function sendReport(home: string, now: () => string, recipient: Recipient, key: string, slot: string, previous: string): Promise<RunRecord | null> {
+async function sendReport(home: string, now: () => string, recipient: Recipient, key: string, slot: string, previous: string, damaged?: OnDamaged): Promise<RunRecord | null> {
   const start: RunRecord = { workflow: REPORT_RUNS, run_id: runIdFor(key, slot), key, trigger: { kind: "report", scheduled_for: slot }, version: 1, status: "running", started_at: now(), sandbox: false, pid: process.pid, actions: 0, needs_human: 0 };
   if (!(await claimRun(home, start))) return null;
   let done: RunRecord;
   try {
-    const note = await deliverReport(home, now, recipient, await composeReport(home, recipient, previous, slot));
+    const note = await deliverReport(home, now, recipient, await composeReport(home, recipient, previous, slot, damaged));
     done = { ...start, status: "completed", finished_at: now(), actions: 1, ...(note ? { reason: note } : {}) };
   } catch (error) {
     if (!isDomainError(error)) throw error;
@@ -146,7 +146,7 @@ async function sendReport(home: string, now: () => string, recipient: Recipient,
 }
 
 /** Called by the tick: each recipient's slots since the last heartbeat; sent when on time, missed otherwise. */
-export async function dueReports(home: string, now: () => string, at: string, last: string | null): Promise<{ sent: RunRecord[]; missed: RunRecord[] }> {
+export async function dueReports(home: string, now: () => string, at: string, last: string | null, damaged?: OnDamaged): Promise<{ sent: RunRecord[]; missed: RunRecord[] }> {
   const config = await loadReportConfig(home);
   const result = { sent: [] as RunRecord[], missed: [] as RunRecord[] };
   if (!config) return result;
@@ -162,7 +162,7 @@ export async function dueReports(home: string, now: () => string, at: string, la
         continue;
       }
       const previous = reportSlots(config, recipient, new Date(Date.parse(slot) - 2 * 24 * 60 * MINUTE_MS).toISOString(), new Date(Date.parse(slot) - MINUTE_MS).toISOString()).at(-1) ?? slot;
-      const sent = await sendReport(home, now, recipient, key, slot, previous);
+      const sent = await sendReport(home, now, recipient, key, slot, previous, damaged);
       if (sent) result.sent.push(sent);
     }
   }

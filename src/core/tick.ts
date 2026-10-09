@@ -11,7 +11,7 @@ import { ActionFailure } from "./failure.js";
 import { listInbox, type InboxItem } from "./inbox.js";
 import { InputError } from "./inputs.js";
 import { resumeRun, startRun } from "./runner.js";
-import { listRuns, recordMissed, runForKey, type RunRecord } from "./runs.js";
+import { listRuns, recordMissed, runForKey, type OnDamaged, type RunRecord } from "./runs.js";
 import { loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { invokeTool, toolContext } from "./tools.js";
@@ -151,15 +151,15 @@ async function events(tick: Tick, loaded: readonly Workflow[]): Promise<void> {
   }
 }
 
-/** A damaged run record is skipped, audited and named in the tick's errors; the other runs still resume. */
-async function damagedRun(tick: Tick, error: Error, workflow: string, runId: string): Promise<void> {
+/** A damaged run record is skipped, audited and named in the tick's errors; the other runs still resume or report. */
+const damagedRun = (tick: Tick, pass: string): OnDamaged => async (error, workflow, runId) => {
   await appendAudit(tick.home, { ts: tick.at, actor: "engine", event: "run.damaged", ref: `run:${workflow}/${runId}`, payload: { error: error.message } });
-  tick.result.errors.push(`resume: ${error.message}`);
-}
+  tick.result.errors.push(`${pass}: ${error.message}`);
+};
 
 /** Runs waiting for an approval, or left `running` by a process that is gone, continue (§10.7). */
 async function resumable(tick: Tick, loaded: readonly Workflow[]): Promise<void> {
-  for (const record of await listRuns(tick.home, undefined, (error, workflow, runId) => damagedRun(tick, error, workflow, runId))) {
+  for (const record of await listRuns(tick.home, undefined, damagedRun(tick, "resume"))) {
     const stuck = record.status === "waiting" || (record.status === "running" && !isAlive(record.pid));
     const workflow = loaded.find((entry) => entry.id === record.workflow);
     if (!stuck || !workflow) continue;
@@ -190,7 +190,7 @@ export async function tick(home: string, now: () => string = () => new Date().to
     const loaded = await workflows(state);
     for (const workflow of loaded) await guard(state, workflow.id, () => scheduled(state, workflow, last));
     await guard(state, "report", async () => {
-      const reports = await dueReports(home, now, state.at, last);
+      const reports = await dueReports(home, now, state.at, last, damagedRun(state, "report"));
       result.started.push(...reports.sent.map(label));
       result.missed.push(...reports.missed.map(label));
     });
