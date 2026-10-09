@@ -13,10 +13,11 @@ import { smtpSend, type MailAccount } from "../../src/core/smtp.js";
 import type { MailSecurity } from "../../src/core/wire.js";
 
 const env = (name: string): string => process.env[name] ?? "";
-const NAMES = ["ADDRESS", "APP_PASSWORD", "IMAP_HOST", "IMAP_PORT", "IMAP_SECURITY", "IMAP_USER", "SMTP_HOST", "SMTP_PORT", "SMTP_SECURITY", "SMTP_USER"];
+/** The USER names are optional: empty means the sign-in name is the address, as the email channel itself does. */
+const NAMES = ["ADDRESS", "APP_PASSWORD", "IMAP_HOST", "IMAP_PORT", "IMAP_SECURITY", "SMTP_HOST", "SMTP_PORT", "SMTP_SECURITY"];
 const missing = NAMES.some((name) => env(`TEST_EMAIL_${name}`) === "");
 const account = (kind: "IMAP" | "SMTP"): MailAccount => ({
-  host: env(`TEST_EMAIL_${kind}_HOST`), port: Number(env(`TEST_EMAIL_${kind}_PORT`)), security: env(`TEST_EMAIL_${kind}_SECURITY`) as MailSecurity, user: env(`TEST_EMAIL_${kind}_USER`),
+  host: env(`TEST_EMAIL_${kind}_HOST`), port: Number(env(`TEST_EMAIL_${kind}_PORT`)), security: env(`TEST_EMAIL_${kind}_SECURITY`) as MailSecurity, user: env(`TEST_EMAIL_${kind}_USER`) || env("TEST_EMAIL_ADDRESS"),
 });
 /** No test certificate, whatever the shell has set: the live test checks the provider's real one. */
 const NO_OVERRIDE = {};
