@@ -3,6 +3,9 @@ import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
+import { saveChannel } from "../../src/core/channels.js";
+import { dryrunCommand } from "../../src/core/lifecycle.js";
+import { createInvite, joinWithCode } from "../../src/core/members.js";
 import { getSecret, setSecret } from "../../src/core/keychain.js";
 import { usesSkillswiki } from "../../src/core/skillswiki.js";
 import { installerCliPath } from "../../src/core/register.js";
@@ -10,6 +13,7 @@ import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
+import { BOT_TOKEN } from "../helpers/fake-telegram.js";
 import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { STARTER_REF, operate, starterScript } from "../operator/scripted-operator.js";
@@ -39,6 +43,8 @@ describe("INSTALL.md", () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
     expect(starter.steps[0]?.auto).toEqual({ action: "probe_runtime", args: {} });
     expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "brain.key", "brain.register", "brain.combo", "brain.probe-mcp", "data.google", "data.connect", "data.map"]));
+    expect(starter.steps.map((step) => step.phase)).toEqual(expect.arrayContaining(["CHANNELS", "WORKFLOWS", "DRY_RUN", "ACTIVATE"]));
+    expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
     expect(usesSkillswiki(starter)).toBe(true);
   });
@@ -46,10 +52,43 @@ describe("INSTALL.md", () => {
 
 describe("starter install, operated the way INSTALL.md says", () => {
   const servers: (FakeMcp | FakeGoogle)[] = [];
+  const installs: { home: string; env: Record<string, string> }[] = [];
 
   afterEach(() => {
+    installs.splice(0).forEach(({ home, env }) => runCli(["gateway", "stop"], { home, env }));
     servers.splice(0).forEach((fake) => fake.stop());
   });
+
+  /**
+   * CHANNELS to ACTIVATE (D98): the person stores the bot token, the channel is checked (written directly here: the
+   * one test connector server is the fake Google), the decision maker joins, a suggested workflow is added, dry-run
+   * and confirmed in the person's terminal, and the OS scheduler's first tick is simulated with 'installer tick'.
+   */
+  function lifecycleSteps(keychain: Record<string, string>, env: Record<string, string>) {
+    const cli = (args: string[]) => async (home: string): Promise<void> => {
+      const result = runCli(args, { home, env });
+      if (result.code !== 0) throw new Error(`installer ${args.join(" ")} failed: ${result.stderr}`);
+    };
+    const now = (): string => new Date().toISOString();
+    return {
+      "channels.telegram-key": () => setSecret("telegram", BOT_TOKEN, keychain),
+      "channels.telegram": (home: string) => saveChannel(home, { channel: "telegram", bot: { id: 999, username: "desk_test_bot" }, verified_at: now() }),
+      "channels.join": async (home: string) => {
+        const { code } = await createInvite(home, "Owner", { decision_maker: "Owner" }, now());
+        await joinWithCode(home, code, { channel: "telegram", address: "1002" }, now());
+      },
+      "workflows.choose": cli(["workflow", "add", "contacts-summary"]),
+      "dryrun.run": cli(["dryrun"]),
+      "dryrun.confirm": async (home: string) => void (await dryrunCommand(home, "confirm", "contacts-summary", { interactive: true, as: "Owner" }, now)),
+      "activate.schedule": cli(["tick"]),
+    };
+  }
+
+  /** The agent's calls in the dry run of contacts-summary: read the contacts and the members, tell the decision maker. */
+  const AGENT_CALLS = JSON.stringify([
+    { tool: "records.find", args: { entity: "contact" } }, { tool: "channel.list", args: {} },
+    { tool: "channel.notify", args: { member: "Owner", text: "0 contacts" } }, { tool: "done", summary: "Told Owner" },
+  ]);
 
   /** The agent's DATA actions as INSTALL.md section 6 says: the person signs in, the agent connects a new sheet and maps it. */
   function dataSteps(keychain: Record<string, string>, env: Record<string, string>) {
@@ -71,14 +110,15 @@ describe("starter install, operated the way INSTALL.md says", () => {
     servers.push(fake, google);
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const agentHome = await makeTempHome();
-    const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: agentHome, ...extraEnv };
-    const script = starterScript(() => setSecret("skillswiki", fake.key, keychain), dataSteps(keychain, env));
+    const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: agentHome, FAKE_AGENT_JUDGE: AGENT_CALLS, ...extraEnv };
+    const script = starterScript(() => setSecret("skillswiki", fake.key, keychain), { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) });
     return { fake, env, keychain, script, registration: join(agentHome, "mcp", "skillswiki.json") };
   }
 
   it("ends READY at level 3 with Skills Wiki registered in the agent; disconnect then removes it all", async () => {
     const { fake, env, keychain, script, registration } = await setup();
     const home = await makeTempHome();
+    installs.push({ home, env });
     const run = await operate({ home, solutionRef: STARTER_REF, script, startArgs: ["--url", fake.url], env });
     expect(run.final.status).toBe("complete");
     expect(await loadState(home)).toMatchObject({
@@ -86,7 +126,10 @@ describe("starter install, operated the way INSTALL.md says", () => {
       runtime: { profile: "fake-agent", c6_mcp: true, support_level: 3, notes: [] },
     });
     const report = runCli(["report"], { home, env }).stdout;
-    expect(report).toContain("✅ READY  (14 of 14 steps done) · fixture-starter@1.0.0");
+    expect(report).toContain("✅ READY  (25 of 25 steps done) · fixture-starter@1.0.0");
+    expect(runCli(["sandbox"], { home, env }).json).toEqual({ mode: expect.objectContaining({ on: false, by: "engine" }), workflows: [{ workflow: "contacts-summary", sandbox: false }] });
+    expect(runCli(["gateway", "status"], { home, env }).json).toMatchObject({ status: "running" });
+    expect(runCli(["sandbox", "outbox"], { home, env }).json).toMatchObject({ outbox: expect.arrayContaining([expect.objectContaining({ to: "1002", text: "0 contacts", run: expect.stringMatching(/^contacts-summary\//) })]) });
     expect(report).toContain("🤖 Agent      fake-agent 9.9.9 — level 3 of 3");
     expect(JSON.parse(await readFile(registration, "utf8"))).toMatchObject({ type: "http", url: fake.url, headersHelper: expect.stringMatching(/mcp-headers skillswiki$/) });
     const tools = JSON.parse(await readFile(join(dirname(registration), "installer.json"), "utf8"));
@@ -110,10 +153,11 @@ describe("starter install, operated the way INSTALL.md says", () => {
   it("without workspace trust ends READY WITH LIMITS and names the folder (D52, Review Focus 2)", async () => {
     const { fake, env, script } = await setup({ FAKE_AGENT_DROP: "trust" });
     const home = await makeTempHome();
+    installs.push({ home, env });
     const run = await operate({ home, solutionRef: STARTER_REF, script, startArgs: ["--url", fake.url], env });
     expect(run.final.status).toBe("complete");
     expect((await loadState(home))?.runtime).toMatchObject({ c6_mcp: false, support_level: 2, notes: [expect.stringContaining("workspace trust may be missing in ")] });
-    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (14 of 14 steps done)");
+    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (25 of 25 steps done)");
     expect(runCli(["report"], { home, env }).stdout).toContain("level 2 of 3 (no MCP client; Skills Wiki content is inlined)");
   });
 

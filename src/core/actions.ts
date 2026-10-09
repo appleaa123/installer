@@ -172,6 +172,15 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
   mapping_present: async (home, args) => mappingCheck(home, stringArg(args, "entity")),
   /** §6.2 CHANNELS: the agent set the channel up with `installer channel <id>`, which checked it live (D73). */
   channel_verified: async (home, args) => channelCheck(home, stringArg(args, "channel")),
+  /** §6.2 CHANNELS: the decision maker joined from a channel (D77), so approvals and urgent alerts reach them. */
+  decision_maker_joined: async (home, _args, state) => {
+    const name = state?.roles?.decision_maker.trim().toLowerCase();
+    const members = await (await import("./members.js")).listMembers(home, now());
+    if (name && members.some((member) => member.status === "joined" && member.name.toLowerCase() === name)) return { ok: true };
+    return { ok: false, hint: "The decision maker has not joined yet: they run 'installer invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
+  },
+  /** §6.2 ACTIVATE: the gateway runs, so messages arrive and approvals are announced (D72). */
+  gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'installer gateway start', then 'installer resume'" }),
   /** §6.2 WORKFLOWS: at least one workflow was added (D98). */
   workflows_present: async (home) => ((await (await lifecycle()).lifecycleStatus(home)).length > 0 ? { ok: true } : { ok: false, hint: "No workflow yet: run 'installer workflow suggestions', then 'installer workflow add <id>' for the ones the person chooses" }),
   /** §6.2 DRY RUN: every workflow's current version had a dry run that did not fail. */
