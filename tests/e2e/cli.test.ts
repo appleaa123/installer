@@ -106,7 +106,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url, --as, --reason, --sheet`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url, --as, --reason, --sheet, --sandbox`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
