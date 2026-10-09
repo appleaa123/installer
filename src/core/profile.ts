@@ -22,9 +22,15 @@ export interface RuntimeProfile {
     /** Appended to every headless call except the C6 probe, which uses allow_tool instead (D52, D54). */
     readonly tools_off?: readonly string[];
     readonly allow_tool?: readonly string[];
+    /** `jsonl`: one JSON event per line (Codex `exec --json`); the paths are read line by line. Default `json`. */
+    readonly output?: "json" | "jsonl";
+    /** JSON Lines only: the answer is in the last line whose `path` equals `equals` (for example an agent message). */
+    readonly result_line?: { readonly path: string; readonly equals: string };
   };
+  /** `{schema_json}` passes the schema inline; `{schema_file}` names a file the engine writes for the call. */
   readonly schema?: { readonly flag: readonly string[]; readonly result_path: string };
-  readonly resume?: { readonly flag: readonly string[] };
+  /** `flag` is appended to the headless command; `cmd` replaces it when a session is resumed (Codex `exec resume`). */
+  readonly resume?: { readonly flag: readonly string[] } | { readonly cmd: readonly string[] };
   /** Run by the engine, never by the agent, to add or remove an MCP server (D46, D52). */
   readonly mcp_register?: { readonly cmd: readonly string[] };
   readonly mcp_remove?: { readonly cmd: readonly string[] };
@@ -52,8 +58,9 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "headless.cmd": ["profile_dir", "prompt"],
   "headless.tools_off": [],
   "headless.allow_tool": ["tool"],
-  "schema.flag": ["schema_json"],
+  "schema.flag": ["schema_json", "schema_file"],
   "resume.flag": ["session_id"],
+  "resume.cmd": ["profile_dir", "prompt", "session_id"],
   "mcp_register.cmd": ["profile_dir", "name", "config_json"],
   "mcp_remove.cmd": ["profile_dir", "name"],
 };
@@ -75,6 +82,15 @@ function obj(value: unknown, where: string): Raw {
   return value;
 }
 
+function outputParts(headless: Raw): Pick<RuntimeProfile["headless"], "output" | "result_line"> {
+  if (headless.output !== undefined && headless.output !== "json" && headless.output !== "jsonl") throw new ProfileError("Profile headless.output must be json or jsonl");
+  const line = headless.result_line === undefined ? undefined : obj(headless.result_line, "headless.result_line");
+  return {
+    ...(headless.output === undefined ? {} : { output: headless.output }),
+    ...(line ? { result_line: { path: str(line.path, "headless.result_line.path"), equals: str(line.equals, "headless.result_line.equals") } } : {}),
+  };
+}
+
 function headlessPart(raw: Raw): RuntimeProfile["headless"] {
   const headless = obj(raw.headless, "headless");
   return {
@@ -84,6 +100,7 @@ function headlessPart(raw: Raw): RuntimeProfile["headless"] {
     ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
     ...(headless.tools_off === undefined ? {} : { tools_off: argv(headless.tools_off, "headless.tools_off") }),
     ...(headless.allow_tool === undefined ? {} : { allow_tool: argv(headless.allow_tool, "headless.allow_tool", "{tool}") }),
+    ...outputParts(headless),
   };
 }
 
@@ -95,12 +112,23 @@ function mcpParts(raw: Raw): Pick<RuntimeProfile, "mcp_register" | "mcp_remove">
     ...(remove ? { mcp_remove: { cmd: argv(remove.cmd, "mcp_remove.cmd", "{name}") } } : {}),
   };
 }
+function schemaFlag(value: unknown): readonly string[] {
+  const flag = argv(value, "schema.flag");
+  if (!flag.some((part) => part.includes("{schema_json}") || part.includes("{schema_file}"))) throw new ProfileError("Profile schema.flag must contain {schema_json} or {schema_file}");
+  return flag;
+}
+
+function resumePart(resume: Raw): NonNullable<RuntimeProfile["resume"]> {
+  if ((resume.flag === undefined) === (resume.cmd === undefined)) throw new ProfileError("Profile resume has either a flag or a cmd");
+  return resume.cmd === undefined ? { flag: argv(resume.flag, "resume.flag", "{session_id}") } : { cmd: argv(resume.cmd, "resume.cmd", "{session_id}", "{prompt}") };
+}
+
 function optionalParts(raw: Raw): Pick<RuntimeProfile, "schema" | "resume"> {
   const schema = raw.schema === undefined ? undefined : obj(raw.schema, "schema");
   const resume = raw.resume === undefined ? undefined : obj(raw.resume, "resume");
   return {
-    ...(schema ? { schema: { flag: argv(schema.flag, "schema.flag", "{schema_json}"), result_path: str(schema.result_path, "schema.result_path") } } : {}),
-    ...(resume ? { resume: { flag: argv(resume.flag, "resume.flag", "{session_id}") } } : {}),
+    ...(schema ? { schema: { flag: schemaFlag(schema.flag), result_path: str(schema.result_path, "schema.result_path") } } : {}),
+    ...(resume ? { resume: resumePart(resume) } : {}),
   };
 }
 

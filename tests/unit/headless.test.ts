@@ -1,11 +1,12 @@
-import { readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { access, readFile, readdir } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildArgv, fillTemplate, runHeadless, runProcess } from "../../src/core/headless.js";
-import { ProfileError, loadProfile } from "../../src/core/profile.js";
+import { ProfileError, loadProfile, parseProfile } from "../../src/core/profile.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const FAKE = resolve("tests/fixtures/profiles/fake-agent.json");
+const CODEX = resolve("tests/fixtures/profiles/fake-codex.json");
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -91,5 +92,48 @@ describe("runHeadless against the fake agent", () => {
     const result = await runHeadless(await loadProfile(FAKE), { prompt: `Reply with exactly this word: ${word}` }, { cwd });
     expect(result).toMatchObject({ ok: true, text: word });
     expect((await readdir(cwd)).filter((name) => name.startsWith("pwned"))).toEqual([]);
+  });
+});
+
+describe("Codex-shaped headless calls: JSON Lines, a schema file, a resume command (O1)", () => {
+  it("resumes with the profile's resume command, the tools-off flags after it", async () => {
+    const argv = buildArgv(await loadProfile(CODEX), { prompt: "hi", sessionId: "t1" });
+    expect(argv.slice(2)).toEqual(["exec", "resume", "--json", "--skip-git-repo-check", "t1", "hi", "--sandbox", "read-only"]);
+  });
+
+  it("names the schema file in {schema_file}", async () => {
+    const argv = buildArgv(await loadProfile(CODEX), { prompt: "hi", schema: { type: "object" } }, "/tmp/schema.json");
+    expect(argv.slice(2)).toEqual(["exec", "--json", "--skip-git-repo-check", "hi", "--sandbox", "read-only", "--output-schema", "/tmp/schema.json"]);
+  });
+
+  it("reads the answer from the last agent message line, not the reasoning, and the thread id as the session", async () => {
+    const result = await runHeadless(await loadProfile(CODEX), { prompt: "Reply with exactly this word: alpha" }, { cwd: await makeTempHome() });
+    expect(result).toEqual({ ok: true, text: "alpha", sessionId: expect.any(String) });
+  });
+
+  it("writes the schema to a file of its own for the call, parses the JSON answer, then deletes the file", async () => {
+    const store = await makeTempHome();
+    vi.stubEnv("FAKE_AGENT_HOME", store);
+    const result = await runHeadless(await loadProfile(CODEX), { prompt: "Put this word in the field word: beta", schema: { type: "object" } }, { cwd: await makeTempHome() });
+    expect(result).toMatchObject({ ok: true, structured: { word: "beta" } });
+    const call = JSON.parse((await readFile(join(store, "calls.jsonl"), "utf8")).trim()) as string[];
+    const file = call[call.indexOf("--output-schema") + 1] ?? "";
+    await expect(access(dirname(file))).rejects.toThrow();
+  });
+
+  it("resumes a thread: the same thread id, and the word it was asked to remember", async () => {
+    const profile = await loadProfile(CODEX);
+    const cwd = await makeTempHome();
+    const first = await runHeadless(profile, { prompt: "Remember this word: gamma. Reply OK." }, { cwd });
+    if (!first.ok || !first.sessionId) throw new Error("first call failed");
+    const second = await runHeadless(profile, { prompt: "What word did I ask you to remember?", sessionId: first.sessionId }, { cwd });
+    expect(second).toEqual({ ok: true, text: "gamma", sessionId: first.sessionId });
+  });
+
+  it("reports JSON Lines without a matching answer line as a failure", async () => {
+    const raw = JSON.parse(await readFile(CODEX, "utf8")) as { headless: Record<string, unknown> };
+    const profile = parseProfile({ ...raw, headless: { ...raw.headless, result_line: { path: "item.type", equals: "final_answer" } } }, dirname(CODEX));
+    const result = await runHeadless(profile, { prompt: "Reply with exactly this word: x" }, { cwd: await makeTempHome() });
+    expect(result).toEqual({ ok: false, error: "printed no text at 'item.text'" });
   });
 });

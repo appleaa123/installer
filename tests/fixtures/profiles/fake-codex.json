@@ -1,0 +1,17 @@
+{
+  "id": "fake-codex",
+  "name": "Fake Codex",
+  "min_version": "1.0.0",
+  "detect": { "cmd": ["node", "{profile_dir}/../../fakes/fake-codex.mjs", "--version"], "match": "codex-cli" },
+  "headless": {
+    "cmd": ["node", "{profile_dir}/../../fakes/fake-codex.mjs", "exec", "--json", "--skip-git-repo-check", "{prompt}"],
+    "output": "jsonl",
+    "result_path": "item.text",
+    "result_line": { "path": "item.type", "equals": "agent_message" },
+    "session_path": "thread_id",
+    "tools_off": ["--sandbox", "read-only"]
+  },
+  "schema": { "flag": ["--output-schema", "{schema_file}"], "result_path": "item.text" },
+  "resume": { "cmd": ["node", "{profile_dir}/../../fakes/fake-codex.mjs", "exec", "resume", "--json", "--skip-git-repo-check", "{session_id}", "{prompt}"] },
+  "tos_review": { "status": "ok", "note": "Test double used only by the test suite." }
+}
