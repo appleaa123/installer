@@ -56,6 +56,13 @@ describe("SMTP over SSL and STARTTLS (D75)", () => {
     expect(fake.logins).toEqual([]);
   });
 
+  it("refuses plain-text bytes sent after STARTTLS's go-ahead, before any password (RFC 3207 §4.2)", async () => {
+    fake = await startFakeSmtp("starttls", { beforeTls: "250 AUTH PLAIN" });
+    const refused = smtpVerify(account(fake, "starttls"), MAIL_PASSWORD, TEST_TLS_ENV);
+    await expect(refused).rejects.toThrow(new ActionFailure("The mail server 127.0.0.1 sent data before the TLS handshake; nothing was sent"));
+    expect(fake.logins).toEqual([]);
+  });
+
   it("does not trust a certificate the system does not trust", async () => {
     fake = await startFakeSmtp("ssl");
     await expect(smtpVerify(account(fake, "ssl"), MAIL_PASSWORD, {})).rejects.toThrow("is not trusted");

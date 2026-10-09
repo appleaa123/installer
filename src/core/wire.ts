@@ -75,6 +75,7 @@ function lineBuffer(endpoint: Endpoint) {
     return head;
   };
   return {
+    pending: (): number => buffer.length,
     onData: (chunk: Buffer): void => {
       buffer = Buffer.concat([buffer, chunk]);
       wake();
@@ -98,20 +99,23 @@ export async function openWire(endpoint: Endpoint, env: Env = process.env): Prom
   const options = tlsOptions(endpoint.host, env);
   let socket: Socket = endpoint.security === "ssl" ? tlsConnect({ ...options, port: endpoint.port }) : netConnect({ host: endpoint.host, port: endpoint.port });
   await waitFor(socket, endpoint.security === "ssl" ? "secureConnect" : "connect", endpoint);
-  const reader = lineBuffer(endpoint);
+  let reader = lineBuffer(endpoint);
   const attach = (target: Socket): void => {
     target.setTimeout(WIRE_TIMEOUT_MS, () => target.destroy(Object.assign(new Error("timed out"), { code: "ETIMEDOUT" })));
     target.on("data", reader.onData).on("error", reader.onEnd).on("close", () => reader.onEnd());
   };
   attach(socket);
   return {
-    readLine: reader.readLine,
-    readBytes: reader.readBytes,
+    readLine: () => reader.readLine(),
+    readBytes: (count) => reader.readBytes(count),
     write: (text) => new Promise((done, fail) => socket.write(text, (error) => (error ? fail(failure(endpoint, error)) : done()))),
+    /** RFC 3207 §4.2: nothing read in plain text may count after the upgrade, so unread bytes end the connection. */
     startTls: async () => {
+      if (reader.pending() > 0) throw new ActionFailure(`The mail server ${endpoint.host} sent data before the TLS handshake; nothing was sent`);
       socket.removeAllListeners("data").removeAllListeners("error").removeAllListeners("close").setTimeout(0);
       socket = tlsConnect({ ...options, socket });
       await waitFor(socket, "secureConnect", endpoint);
+      reader = lineBuffer(endpoint);
       attach(socket);
     },
     close: () => {

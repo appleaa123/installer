@@ -97,7 +97,8 @@ export interface FakeSmtp extends FakeServer {
 }
 
 /** SMTP: EHLO, STARTTLS (when `starttls`), AUTH PLAIN, MAIL, RCPT, DATA, QUIT. */
-export async function startFakeSmtp(security: Security, options: { offerStartTls?: boolean } = {}): Promise<FakeSmtp> {
+/** `beforeTls`: a line sent in plain text right after "220 go ahead", in the same write, as an attacker on the path could. */
+export async function startFakeSmtp(security: Security, options: { offerStartTls?: boolean; beforeTls?: string } = {}): Promise<FakeSmtp> {
   const received: ReceivedMail[] = [];
   const logins: FakeSmtp["logins"] = [];
   const server = await lineServer(security, (session) => {
@@ -118,7 +119,7 @@ export async function startFakeSmtp(security: Security, options: { offerStartTls
           return ["250-fake.test", ...tls, "250 AUTH PLAIN LOGIN"].forEach((reply) => session.send(reply));
         }
         case "STARTTLS":
-          session.send("220 2.0.0 go ahead");
+          session.send(options.beforeTls === undefined ? "220 2.0.0 go ahead" : `220 2.0.0 go ahead\r\n${options.beforeTls}`);
           return session.upgrade();
         case "AUTH": {
           const [, user = "", password = ""] = Buffer.from(arg.replace(/^PLAIN /i, ""), "base64").toString("utf8").split("\u0000");
