@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit, canonicalJson } from "./audit.js";
@@ -134,6 +134,12 @@ export async function claimRun(home: string, record: RunRecord): Promise<boolean
 }
 
 export const saveStep = (home: string, record: RunRecord, log: StepLog): Promise<void> => writeConfig(home, stepFile(record, log.step), log);
+
+/** Retention (D102): the key goes first, then the folder, so a crash in between never leaves a claim without its run. */
+export async function removeRun(home: string, record: RunRecord): Promise<void> {
+  await rm(await confinedPath(home, keyFile(record.key)), { force: true });
+  await rm(await confinedPath(home, join(RUNS_DIR, record.workflow, record.run_id)), { recursive: true, force: true });
+}
 
 export async function loadStep(home: string, record: RunRecord, step: string): Promise<StepLog | null> {
   const raw = await readConfig(home, stepFile(record, step));
