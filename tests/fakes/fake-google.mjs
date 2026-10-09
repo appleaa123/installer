@@ -96,8 +96,22 @@ function values(res, method, sheet, rangeText, body) {
     rows[range.fromRow - 1] = row;
     return send(res, 200, { updatedRange: `'${name}'!${rangeText}`, updatedRows: 1 });
   }
-  rows.push(row);
-  return send(res, 200, { updates: { updatedRange: `'${name}'!A${rows.length}`, updatedRows: 1 } });
+  rows.push(...(body.values ?? []));
+  return send(res, 200, { updates: { updatedRange: `'${name}'!A${rows.length}`, updatedRows: (body.values ?? []).length } });
+}
+
+/** values.batchUpdate: every range is one row written in place. */
+function batchUpdate(res, sheet, body) {
+  if (!sheet) return googleError(res, 404, "Requested entity was not found.", "NOT_FOUND");
+  if (body.valueInputOption !== "RAW") return googleError(res, 400, "valueInputOption is required", "INVALID_ARGUMENT");
+  for (const entry of body.data ?? []) {
+    const range = parseRange(entry.range);
+    const found = range ? tabRows(sheet, range.tab) : null;
+    if (!range || !found) return googleError(res, 400, `Unable to parse range: ${entry.range}`, "INVALID_ARGUMENT");
+    while (found.rows.length < range.fromRow - 1) found.rows.push([]);
+    found.rows[range.fromRow - 1] = entry.values?.[0] ?? [];
+  }
+  return send(res, 200, { totalUpdatedRows: (body.data ?? []).length });
 }
 
 function sheetsApi(req, res, url, body) {
@@ -107,6 +121,8 @@ function sheetsApi(req, res, url, body) {
     return googleError(res, failing.status, "The service is currently unavailable.", "UNAVAILABLE");
   }
   if (req.method === "POST" && url.pathname === "/v4/spreadsheets") return createSpreadsheet(res, JSON.parse(body || "{}"));
+  const batch = /^\/v4\/spreadsheets\/([^/]+)\/values:batchUpdate$/.exec(url.pathname);
+  if (req.method === "POST" && batch) return batchUpdate(res, sheets.get(decodeURIComponent(batch[1])), JSON.parse(body || "{}"));
   const match = /^\/v4\/spreadsheets\/([^/]+)\/values\/([^/]+?)(:append)?$/.exec(url.pathname);
   if (!match) return googleError(res, 404, "Not found", "NOT_FOUND");
   const sheet = sheets.get(decodeURIComponent(match[1]));

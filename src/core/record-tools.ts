@@ -38,7 +38,7 @@ function matches(table: Table, where: Readonly<Record<string, unknown>>): Record
 }
 
 /** Values checked against the contract and the mapping: every field written must have a column. */
-function checkedWrite(table: Table, values: unknown, mode: "create" | "update"): RecordValues {
+export function checkedWrite(table: Table, values: unknown, mode: "create" | "update"): RecordValues {
   const checked = checkValues(table.entityName, table.entity, values, mode);
   const unmapped = Object.keys(checked).find((field) => !Object.hasOwn(table.columns, field));
   if (unmapped !== undefined) throw new InputError(`${table.entityName}.${unmapped} has no column in the sheet: map it with 'installer map ${table.entityName}' first`);

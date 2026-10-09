@@ -155,14 +155,14 @@ describe("the default tool set", () => {
   it("offers no way to decide an approval: deciding is for a person at the terminal (D61)", () => {
     expect([...DEFAULT_TOOLS.keys()]).toEqual([
       "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
-      "records.find", "records.get", "records.create", "records.update",
+      "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
     ]);
   });
 
   it("adds an optional approval_token to every gated tool's schema, and to no approvals tool", () => {
     const listed = describeTools(DEFAULT_TOOLS);
     const withToken = listed.filter((tool) => JSON.stringify(tool.inputSchema).includes('"approval_token"')).map((tool) => tool.name);
-    expect(withToken).toEqual(["memo.list", "memo.add", "memo.edit", "memo.delete", "records.find", "records.get", "records.create", "records.update"]);
+    expect(withToken).toEqual(["memo.list", "memo.add", "memo.edit", "memo.delete", "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import"]);
   });
 
   it("refuses a registry with a duplicate or badly named tool", () => {

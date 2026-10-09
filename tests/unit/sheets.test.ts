@@ -50,6 +50,13 @@ describe("the Sheets API v4 client (D67)", () => {
     expect((await tabsOf("s-write")).Sheet1).toEqual([["name", "email"], ["Ada L.", "ada@example.com"], ["Grace", "=1+1"]]);
   });
 
+  it("appends several rows in one call and rewrites several rows with one batch update", async () => {
+    await seed("s-batch", { Sheet1: [["name"], ["a"], ["b"]] });
+    await sheets.appendRows({ spreadsheet_id: "s-batch" }, [["c"], ["d"]]);
+    await sheets.writeRows({ spreadsheet_id: "s-batch" }, [{ row: 2, cells: ["A"] }, { row: 5, cells: ["D"] }]);
+    expect((await tabsOf("s-batch")).Sheet1).toEqual([["name"], ["A"], ["b"], ["c"], ["D"]]);
+  });
+
   it("creates a spreadsheet with one tab and its header row", async () => {
     const created = await sheets.createSpreadsheet("Contacts", "Contacts", ["name", "email", "notes"]);
     expect(created.spreadsheet_id).toMatch(/^sheet-\d+$/);

@@ -28,6 +28,8 @@ export interface ToolDef {
   /** Declared level (connector `risk.actions[tool].level` later); none means L2 (§11.4). */
   readonly level?: Level;
   readonly categories?: readonly FloorCategory[];
+  /** Floor categories that depend on the call: its arguments and the live expected values (D71: an import that overwrites). */
+  readonly floor?: (args: ToolArgs, expected: ToolArgs) => readonly FloorCategory[];
   /** Approval bookkeeping (approvals.*): fixed L0, never raised, never gated. */
   readonly meta?: boolean;
   /** Checks and normalises the arguments; unknown keys are refused, so the model can never pass a level. */
@@ -87,7 +89,8 @@ export function idArg(args: ToolArgs, key: string, tool: string): number {
 export async function prepareAction(ctx: ToolContext, tool: ToolDef, args: ToolArgs): Promise<PreparedAction> {
   const parsed = tool.parse(args);
   const expected = tool.expected ? await tool.expected(ctx, parsed) : {};
-  const facts = { tool: tool.name, categories: tool.categories ?? [], writes: tool.writes?.(parsed) ?? [], ...(tool.level ? { level: tool.level } : {}) };
+  const categories = [...(tool.categories ?? []), ...(tool.floor?.(parsed, expected) ?? [])];
+  const facts = { tool: tool.name, categories, writes: tool.writes?.(parsed) ?? [], ...(tool.level ? { level: tool.level } : {}) };
   const { level, reasons } = tool.meta ? { level: "L0" as const, reasons: ["approval bookkeeping (fixed L0)"] } : deriveLevel(facts, ctx.tags, ctx.rules);
   return { tool: tool.name, args: parsed, expected_values: expected, level, reasons, action_hash: actionHash(tool.name, parsed, expected) };
 }

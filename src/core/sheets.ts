@@ -12,6 +12,11 @@ export interface SheetLocation {
   readonly tab?: string;
 }
 
+export interface RowUpdate {
+  readonly row: number;
+  readonly cells: readonly string[];
+}
+
 export interface CreatedSheet {
   readonly spreadsheet_id: string;
   readonly url: string;
@@ -21,8 +26,12 @@ export interface SheetsClient {
   /** Every row of the sheet, header first, each cell as text; trailing empty cells may be missing. */
   readonly readRows: (location: SheetLocation) => Promise<string[][]>;
   readonly appendRow: (location: SheetLocation, row: readonly string[]) => Promise<void>;
+  /** Appends several rows in one call. */
+  readonly appendRows: (location: SheetLocation, rows: readonly (readonly string[])[]) => Promise<void>;
   /** Replaces row `rowNumber` (1 = the header row) from column A, as wide as `row`. */
   readonly writeRow: (location: SheetLocation, rowNumber: number, row: readonly string[]) => Promise<void>;
+  /** Rewrites several rows in one `values.batchUpdate` call. */
+  readonly writeRows: (location: SheetLocation, updates: readonly RowUpdate[]) => Promise<void>;
   /** `spreadsheets.create` in the signed-in account, then the header row on its one tab (§9.1 default store). */
   readonly createSpreadsheet: (title: string, tab: string, header: readonly string[]) => Promise<CreatedSheet>;
 }
@@ -76,6 +85,8 @@ async function callSheets(def: ConnectorDef, tokens: AccessTokenSource, call: Ca
   throw failureFor(response.status, message, call.location, def.auth.secret_id);
 }
 
+const rowRange = (location: SheetLocation, update: RowUpdate): string => a1Range(location, `A${update.row}:${columnLetter(Math.max(update.cells.length, 1))}${update.row}`);
+
 const valuesPath = (location: SheetLocation, range: string): string => `/spreadsheets/${encodeURIComponent(location.spreadsheet_id)}/values/${encodeURIComponent(range)}`;
 
 const asRows = (values: unknown): string[][] => (Array.isArray(values) ? values.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : [])) : []);
@@ -83,16 +94,22 @@ const asRows = (values: unknown): string[][] => (Array.isArray(values) ? values.
 export function sheetsClient(def: ConnectorDef, tokens: AccessTokenSource, env: Env = process.env): SheetsClient {
   const call = (request: Call): Promise<Raw> => callSheets(def, tokens, request, env);
   const writeRow = async (location: SheetLocation, rowNumber: number, row: readonly string[]): Promise<void> => {
-    const range = a1Range(location, `A${rowNumber}:${columnLetter(Math.max(row.length, 1))}${rowNumber}`);
+    const range = rowRange(location, { row: rowNumber, cells: row });
     await call({ method: "PUT", path: `${valuesPath(location, range)}?valueInputOption=RAW`, body: { values: [row] }, location });
+  };
+  const appendRows = async (location: SheetLocation, rows: readonly (readonly string[])[]): Promise<void> => {
+    const path = `${valuesPath(location, a1Range(location, `A1:${LAST_COLUMN}`))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+    await call({ method: "POST", path, body: { values: rows }, location });
   };
   return {
     readRows: async (location) => asRows((await call({ method: "GET", path: valuesPath(location, a1Range(location, `A1:${LAST_COLUMN}`)), location })).values),
-    appendRow: async (location, row) => {
-      const path = `${valuesPath(location, a1Range(location, `A1:${LAST_COLUMN}`))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-      await call({ method: "POST", path, body: { values: [row] }, location });
-    },
+    appendRow: (location, row) => appendRows(location, [row]),
+    appendRows,
     writeRow,
+    writeRows: async (location, updates) => {
+      const data = updates.map((update) => ({ range: rowRange(location, update), values: [update.cells] }));
+      await call({ method: "POST", path: `/spreadsheets/${encodeURIComponent(location.spreadsheet_id)}/values:batchUpdate`, body: { valueInputOption: "RAW", data }, location });
+    },
     createSpreadsheet: async (title, tab, header) => {
       const created = await call({ method: "POST", path: "/spreadsheets", body: { properties: { title }, sheets: [{ properties: { title: tab } }] }, location: null });
       const id = created.spreadsheetId;
