@@ -29,6 +29,16 @@ describe("runtime profiles", () => {
     expect((await listBundledProfiles()).map((profile) => profile.id)).toEqual(["claude-code"]);
   });
 
+  it("bundles Codex from its documented exec flags, terms pending, so it is used only when named (D32, O1, O2)", async () => {
+    const profile = await loadProfile("codex");
+    expect(profile).toMatchObject({ id: "codex", detect: { cmd: ["codex", "--version"], match: "codex-cli" }, tos_review: { status: "pending" } });
+    expect(profile.headless).toMatchObject({ cmd: ["codex", "exec", "--json", "--skip-git-repo-check", "{prompt}"], output: "jsonl", session_path: "thread_id", tools_off: ["--sandbox", "read-only"] });
+    expect(profile.schema).toEqual({ flag: ["--output-schema", "{schema_file}"], result_path: "item.text" });
+    expect(profile.resume).toEqual({ cmd: ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "{session_id}", "{prompt}"] });
+    expect(profile.mcp_register).toBeUndefined();
+    expect((await listBundledProfiles()).map((listed) => listed.id)).not.toContain("codex");
+  });
+
   it("loads a profile by path and remembers its folder", async () => {
     const profile = await loadProfile(FAKE);
     expect(profile.id).toBe("fake-agent");

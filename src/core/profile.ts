@@ -193,9 +193,14 @@ export async function loadProfileById(id: string): Promise<RuntimeProfile> {
   return loadProfile(id);
 }
 
+/**
+ * The bundled profiles the engine may pick by itself (the probe without a named profile, disconnect): only those
+ * whose vendor terms were reviewed (D32). A profile still under review (Codex, O2) is used only when named.
+ */
 export async function listBundledProfiles(): Promise<RuntimeProfile[]> {
   const names = (await readdir(PROFILES_DIR)).filter((name) => name.endsWith(".json")).sort();
-  return Promise.all(names.map((name) => loadProfile(join(PROFILES_DIR, name))));
+  const profiles = await Promise.all(names.map((name) => loadProfile(join(PROFILES_DIR, name))));
+  return profiles.filter((profile) => profile.tos_review.status === "ok");
 }
 
 export function versionAtLeast(actual: string, min: string): boolean {

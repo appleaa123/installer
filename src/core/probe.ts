@@ -104,15 +104,17 @@ export async function runProbe(options: ProbeOptions): Promise<CapabilityMap> {
   const schema = headless.ok && profile.schema ? await checkSchema(run) : skipped;
   const resume = headless.ok && profile.resume ? await checkResume(run) : skipped;
   const versionOk = version !== null && versionAtLeast(version, profile.min_version);
+  const reviewed = profile.tos_review.status === "ok";
   const notes = [
     ...(versionOk ? [] : [`${profile.name} ${version ?? "(unknown version)"} is older than the supported ${profile.min_version}`]),
+    ...(reviewed ? [] : [`${profile.name}'s terms of service are not reviewed yet (tos_review: ${profile.tos_review.status}), so its tier stays unknown (D32)`]),
     ...[headless, schema, resume].flatMap((check) => (check.note ? [check.note] : [])),
   ];
   return {
     profile: profile.id, agent_version: version, c2_shell: true,
     c4_headless: headless.ok, c4_schema: schema.ok, c5_resume: resume.ok, c6_mcp: "not_probed",
     support_level: [headless.ok, resume.ok].filter(Boolean).length,
-    tier: headless.ok && versionOk ? "compatible" : "unknown",
+    tier: headless.ok && versionOk && reviewed ? "compatible" : "unknown",
     notes,
   };
 }

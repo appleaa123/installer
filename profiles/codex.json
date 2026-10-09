@@ -1,0 +1,17 @@
+{
+  "id": "codex",
+  "name": "Codex CLI",
+  "min_version": "0.46.0",
+  "detect": { "cmd": ["codex", "--version"], "match": "codex-cli" },
+  "headless": {
+    "cmd": ["codex", "exec", "--json", "--skip-git-repo-check", "{prompt}"],
+    "output": "jsonl",
+    "result_path": "item.text",
+    "result_line": { "path": "item.type", "equals": "agent_message" },
+    "session_path": "thread_id",
+    "tools_off": ["--sandbox", "read-only"]
+  },
+  "schema": { "flag": ["--output-schema", "{schema_file}"], "result_path": "item.text" },
+  "resume": { "cmd": ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "{session_id}", "{prompt}"] },
+  "tos_review": { "status": "pending", "note": "Not reviewed yet (O2): read OpenAI's terms for running the Codex CLI from another program before certifying. Flags written from Codex's documentation and not yet run (O1); tier Unknown until a person runs installer certify with it." }
+}
