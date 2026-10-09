@@ -151,9 +151,15 @@ async function events(tick: Tick, loaded: readonly Workflow[]): Promise<void> {
   }
 }
 
+/** A damaged run record is skipped, audited and named in the tick's errors; the other runs still resume. */
+async function damagedRun(tick: Tick, error: Error, workflow: string, runId: string): Promise<void> {
+  await appendAudit(tick.home, { ts: tick.at, actor: "engine", event: "run.damaged", ref: `run:${workflow}/${runId}`, payload: { error: error.message } });
+  tick.result.errors.push(`resume: ${error.message}`);
+}
+
 /** Runs waiting for an approval, or left `running` by a process that is gone, continue (§10.7). */
 async function resumable(tick: Tick, loaded: readonly Workflow[]): Promise<void> {
-  for (const record of await listRuns(tick.home)) {
+  for (const record of await listRuns(tick.home, undefined, (error, workflow, runId) => damagedRun(tick, error, workflow, runId))) {
     const stuck = record.status === "waiting" || (record.status === "running" && !isAlive(record.pid));
     const workflow = loaded.find((entry) => entry.id === record.workflow);
     if (!stuck || !workflow) continue;
@@ -186,6 +192,8 @@ export async function tick(home: string, now: () => string = () => new Date().to
       result.missed.push(...reports.missed.map(label));
     });
     if (last !== null && Date.parse(state.at) - Date.parse(last) > BACK_ONLINE_GAP_MS) await backOnline(state, last);
+    // Written before the parts that can still fail, so a failing tick never sends the back-online notice twice.
+    await writeConfig(home, HEARTBEAT_FILE, { last: state.at, pid: process.pid });
     await guard(state, "events", () => events(state, loaded));
     await guard(state, "resume", () => resumable(state, loaded));
     await writeConfig(home, HEARTBEAT_FILE, { last: state.at, pid: process.pid });

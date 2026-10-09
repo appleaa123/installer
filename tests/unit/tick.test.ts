@@ -7,8 +7,8 @@ import { writeConfig } from "../../src/core/data-source.js";
 import { normalizeInbound } from "../../src/core/envelope.js";
 import { storeInbound } from "../../src/core/inbox.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
-import { listRuns } from "../../src/core/runs.js";
-import { HEARTBEAT_FILE, TICK_LOCK, tick } from "../../src/core/tick.js";
+import { RUNS_DIR, listRuns } from "../../src/core/runs.js";
+import { EVENTS_CURSOR, HEARTBEAT_FILE, TICK_LOCK, tick } from "../../src/core/tick.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { channelHome, useFakeTelegram } from "../helpers/channel-home.js";
@@ -108,6 +108,16 @@ describe("host back online (D38, D84)", () => {
     expect(await tick(home, clock("2026-10-08T14:00:00.000Z"))).toMatchObject({ back_online: true, missed: [expect.any(String)] });
     expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"runner.back_online"');
   });
+
+  it("sends the notice once per gap even when a later part of the tick keeps failing", async () => {
+    const home = await morningHome();
+    await heartbeat(home, "2026-10-08T10:00:00.000Z");
+    await mkdir(join(home, "state", "runner"), { recursive: true });
+    await writeFile(join(home, EVENTS_CURSOR), "{not json");
+    await expect(tick(home, clock("2026-10-08T14:00:00.000Z"))).rejects.toThrow("not valid JSON");
+    await expect(tick(home, clock("2026-10-08T14:01:00.000Z"))).rejects.toThrow("not valid JSON");
+    expect(await audited(home, "runner.back_online")).toBe(1);
+  });
 });
 
 describe("event triggers (§10.3, D88)", () => {
@@ -137,6 +147,21 @@ describe("resumption (§10.7)", () => {
     expect((await tick(home, clock("2026-10-08T12:01:20.000Z"))).resumed).toEqual([]);
     await approveItem(home, 1, { name: "Owner", role: "decision_maker" }, "2026-10-08T12:01:30.000Z");
     expect((await tick(home, clock("2026-10-08T12:02:20.000Z"))).resumed).toEqual([expect.stringContaining("(completed)")]);
+    expect(await memos(home)).toEqual(["Final"]);
+  });
+
+  it("skips a damaged run record, says so, and still resumes the others", async () => {
+    const home = await runnerHome();
+    await invokeTool(await toolContext(home, "cli", DEFAULT_TOOLS), "memo.add", { text: "Draft" });
+    await writeWorkflow(home, { ...MORNING, steps: [{ id: "fix", approve: { tool: "memo.edit", args: { id: 1, text: "Final" }, why: "The morning check" } }] });
+    expect((await tick(home, clock("2026-10-08T12:00:20.000Z"))).started).toEqual([expect.stringContaining("(waiting)")]);
+    await mkdir(join(home, RUNS_DIR, "morning", "damaged"), { recursive: true });
+    await writeFile(join(home, RUNS_DIR, "morning", "damaged", "run.json"), "{}");
+    await approveItem(home, 1, { name: "Owner", role: "decision_maker" }, "2026-10-08T12:01:30.000Z");
+    const result = await tick(home, clock("2026-10-08T12:02:20.000Z"));
+    expect(result.resumed).toEqual([expect.stringContaining("(completed)")]);
+    expect(result.errors).toEqual([expect.stringContaining("runs/morning/damaged/run.json")]);
+    expect(await audited(home, "run.damaged")).toBe(1);
     expect(await memos(home)).toEqual(["Final"]);
   });
 });

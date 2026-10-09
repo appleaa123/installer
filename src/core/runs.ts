@@ -139,13 +139,26 @@ async function folderNames(home: string, relative: string): Promise<string[]> {
   }
 }
 
-/** Every run (of one workflow, or of all), oldest first by scheduled time or start. */
-export async function listRuns(home: string, workflow?: string): Promise<RunRecord[]> {
+/** Called with a damaged run record's error instead of throwing it, so one damaged file does not stop the rest. */
+export type OnDamaged = (error: StateCorruptError, workflow: string, runId: string) => Promise<void>;
+
+async function loadRunOrSkip(home: string, workflow: string, runId: string, damaged?: OnDamaged): Promise<RunRecord | null> {
+  try {
+    return await loadRun(home, workflow, runId);
+  } catch (error) {
+    if (!damaged || !(error instanceof StateCorruptError)) throw error;
+    await damaged(error, workflow, runId);
+    return null;
+  }
+}
+
+/** Every run (of one workflow, or of all), oldest first by scheduled time or start; `damaged` skips bad records. */
+export async function listRuns(home: string, workflow?: string, damaged?: OnDamaged): Promise<RunRecord[]> {
   const workflows = workflow === undefined ? await folderNames(home, RUNS_DIR) : [workflow];
   const runs: RunRecord[] = [];
   for (const name of workflows) {
     for (const runId of await folderNames(home, join(RUNS_DIR, name))) {
-      const record = await loadRun(home, name, runId);
+      const record = await loadRunOrSkip(home, name, runId, damaged);
       if (record) runs.push(record);
     }
   }
