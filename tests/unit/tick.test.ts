@@ -23,6 +23,11 @@ const INTAKE = { workflow: "intake", version: 1, trigger: { event: "message.rece
 const TEAM = { workflow: "team", version: 1, trigger: { event: "message.received", from: "member", channel: "telegram" }, steps: [{ id: "keep", tool: "memo.add", args: { text: "member said ${event.text}" } }] };
 const THU_0800 = "2026-10-08T12:00:00.000Z";
 const clock = (iso: string) => () => iso;
+/** A tick that starts at `start` and whose later reads of the clock (its runs, its end) see `end`. */
+const slowClock = (start: string, end: string) => {
+  let first = true;
+  return () => (first ? ((first = false), start) : end);
+};
 let fake: FakeTelegram;
 beforeAll(async () => {
   fake = await startFakeTelegram();
@@ -107,6 +112,30 @@ describe("host back online (D38, D84)", () => {
     await heartbeat(home, "2026-10-08T10:00:00.000Z");
     expect(await tick(home, clock("2026-10-08T14:00:00.000Z"))).toMatchObject({ back_online: true, missed: [expect.any(String)] });
     expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"runner.back_online"');
+  });
+
+  it("does not take a slow tick for downtime: the heartbeat marks its end too", async () => {
+    const home = await runnerHome();
+    await heartbeat(home, "2026-10-08T11:59:00.000Z");
+    expect(await tick(home, slowClock("2026-10-08T12:00:00.000Z", "2026-10-08T12:07:00.000Z"))).toMatchObject({ back_online: false });
+    expect(JSON.parse(await readFile(join(home, HEARTBEAT_FILE), "utf8"))).toMatchObject({ last: "2026-10-08T12:00:00.000Z", alive: "2026-10-08T12:07:00.000Z" });
+    expect(await tick(home, clock("2026-10-08T12:08:00.000Z"))).toMatchObject({ back_online: false, missed: [] });
+  });
+
+  it("does not count a tick that finds another one running as downtime", async () => {
+    const home = await morningHome();
+    await heartbeat(home, "2026-10-08T10:00:00.000Z");
+    await mkdir(join(home, "runtime", "runner"), { recursive: true });
+    await writeFile(join(home, TICK_LOCK), String(process.pid));
+    expect(await tick(home, clock("2026-10-08T14:00:00.000Z"))).toMatchObject({ status: "busy", back_online: false, missed: [] });
+    expect(await listRuns(home)).toEqual([]);
+  });
+
+  it("still records a slot that fell due during a slow tick as missed, without a notice (D38)", async () => {
+    const home = await morningHome();
+    await heartbeat(home, "2026-10-08T11:57:00.000Z");
+    await tick(home, slowClock("2026-10-08T11:58:00.000Z", "2026-10-08T12:10:00.000Z"));
+    expect(await tick(home, clock("2026-10-08T12:11:00.000Z"))).toMatchObject({ back_online: false, missed: [expect.stringMatching(/^morning .* \(missed\)$/)] });
   });
 
   it("sends the notice once per gap even when a later part of the tick keeps failing", async () => {

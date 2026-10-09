@@ -22,8 +22,10 @@ import { loadWorkflow, workflowIds, type Workflow } from "./workflow.js";
  * a lock so two never overlap: starts each cron run that fell due within its tolerance, records every one that did
  * not as `missed` (D38: never run late), sends one host-back-online notice when the last heartbeat is more than
  * five minutes old, starts the event-triggered runs for new inbox messages, resumes runs whose approval was decided
- * or whose process died, and writes the heartbeat (the time this tick started). The runner decides by the clock,
- * not by how often the OS fired it, so a scheduler that coalesces or drops firings during sleep (O14) changes nothing.
+ * or whose process died, and writes the heartbeat: `last`, the time this tick started (where the next tick's cron
+ * slots begin), and `alive`, the last time a tick was running (where downtime begins), so a slow tick is not downtime.
+ * The runner decides by the clock, not by how often the OS fired it, so a scheduler that coalesces or drops firings
+ * during sleep (O14) changes nothing.
  */
 export const RUNNER_DIR = join("state", "runner");
 export const HEARTBEAT_FILE = join(RUNNER_DIR, "heartbeat.json");
@@ -45,6 +47,11 @@ export interface TickResult {
 
 /** What one tick did, filled in as it goes and returned at the end. */
 type Tally = { -readonly [K in keyof TickResult]: TickResult[K] };
+
+interface Heartbeat {
+  readonly last?: string;
+  readonly alive?: string;
+}
 
 interface Tick {
   readonly home: string;
@@ -183,7 +190,10 @@ export async function tick(home: string, now: () => string = () => new Date().to
   if (lock === null) return { ...result, status: "busy" };
   try {
     const state: Tick = { home, now, at: now(), ...(env ? { env } : {}), result };
-    const last = ((await readConfig(home, HEARTBEAT_FILE)) as { last?: string } | null)?.last ?? null;
+    const beat = ((await readConfig(home, HEARTBEAT_FILE)) as Heartbeat | null) ?? {};
+    const last = beat.last ?? null;
+    const alive = beat.alive ?? last;
+    await writeConfig(home, HEARTBEAT_FILE, { ...beat, alive: state.at, pid: process.pid });
     const loaded = await workflows(state);
     for (const workflow of loaded) await guard(state, workflow.id, () => scheduled(state, workflow, last));
     await guard(state, "report", async () => {
@@ -191,12 +201,12 @@ export async function tick(home: string, now: () => string = () => new Date().to
       result.started.push(...reports.sent.map(label));
       result.missed.push(...reports.missed.map(label));
     });
-    if (last !== null && Date.parse(state.at) - Date.parse(last) > BACK_ONLINE_GAP_MS) await backOnline(state, last);
+    if (alive !== null && Date.parse(state.at) - Date.parse(alive) > BACK_ONLINE_GAP_MS) await backOnline(state, alive);
     // Written before the parts that can still fail, so a failing tick never sends the back-online notice twice.
-    await writeConfig(home, HEARTBEAT_FILE, { last: state.at, pid: process.pid });
+    await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: state.at, pid: process.pid });
     await guard(state, "events", () => events(state, loaded));
     await guard(state, "resume", () => resumable(state, loaded));
-    await writeConfig(home, HEARTBEAT_FILE, { last: state.at, pid: process.pid });
+    await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: now(), pid: process.pid });
     return { ...result };
   } finally {
     await rm(lock, { force: true });
