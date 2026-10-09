@@ -52,6 +52,8 @@ export interface DoctorContext {
   readonly freeBytes: (path: string) => Promise<number>;
   /** Reads the OS settings of host readiness (D104); null where host checks are switched off. */
   readonly host: HostProbe | null;
+  /** Whether a new pack version is tried in shadow here; the daily doctor from the tick only compares the pins. */
+  readonly shadow: boolean;
 }
 
 export interface DoctorCheckDef {
@@ -235,11 +237,12 @@ async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
 /** §14.3, D107, D108: a new version of a pinned pack is found, tried in shadow, and left for the decision maker. */
 async function packsCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
   if (Object.keys(await loadPacks(ctx.home)).length === 0) return null;
-  for (const update of await checkPacks(ctx.home, ctx.state?.skillswiki?.url, ctx.now)) await shadowPack(ctx.home, update.pack, () => ctx.now);
+  const updates = await checkPacks(ctx.home, ctx.state?.skillswiki?.url, ctx.now);
+  if (ctx.shadow) for (const update of updates) await shadowPack(ctx.home, update.pack, () => ctx.now);
   const waiting = Object.entries(await loadPacks(ctx.home)).filter(([, pin]) => pin.candidate !== undefined);
   if (waiting.length === 0) return ok("packs", "every pinned pack is what Skills Wiki serves");
   const states = waiting.map(([pack, pin]) => `${pack}: a new version, shadow ${pin.candidate?.shadow ? (pin.candidate.shadow.passed ? "passed" : "did not pass") : "not run"}`);
-  return { id: "packs", status: "warn", detail: states.join("; "), fix: "The decision maker reads 'installer packs list' and switches with 'installer packs switch <pack> --as <name>' in their own terminal" };
+  return { id: "packs", status: "warn", detail: states.join("; "), fix: "'installer packs shadow <pack>' tries a version not run yet; the decision maker reads 'installer packs list' and switches with 'installer packs switch <pack> --as <name>' in their own terminal" };
 }
 
 export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { AuditCorruptError, appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
+import { ActionFailure } from "./failure.js";
 import { DOCTOR_CHECKS, defaultFreeBytes, isDomainError, type DoctorCheck, type DoctorCheckDef, type DoctorContext } from "./doctor-checks.js";
 import { systemProbe, type HostProbe } from "./host.js";
 import { InputError } from "./inputs.js";
@@ -20,6 +21,8 @@ export const DOCTOR_DIR = join("state", "doctor");
 export const DOCTOR_FILE = join(DOCTOR_DIR, "last.json");
 export const DOCTOR_NEXT = join(DOCTOR_DIR, "next.json");
 export const DOCTOR_EVERY_MS = 24 * 60 * 60 * 1000;
+/** A check run from the tick that takes longer becomes a `fail` finding, so the tick (and its lock) is never held for long. */
+export const DAILY_CHECK_TIMEOUT_MS = 20_000;
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -35,11 +38,21 @@ export interface DoctorOptions {
   readonly freeBytes?: (path: string) => Promise<number>;
   /** The OS settings reader for host readiness; by default the real one, unless INSTALLER_HOST_CHECKS=none. */
   readonly host?: HostProbe | null;
+  /** Try new pack versions in shadow (D108); true unless the daily doctor runs from the tick. */
+  readonly shadow?: boolean;
+  /** How long one check may take; no limit unless set. */
+  readonly timeoutMs?: number;
+}
+
+/** What the tick's daily doctor runs: the checks, and how long each may take. */
+export interface DailyOptions {
+  readonly checks?: readonly DoctorCheckDef[];
+  readonly timeoutMs?: number;
 }
 
 async function contextOf(home: string, options: DoctorOptions): Promise<DoctorContext> {
   const env = options.env ?? process.env;
-  const base = { home, now: options.now(), env, freeBytes: options.freeBytes ?? defaultFreeBytes, host: options.host === undefined ? systemProbe(env) : options.host };
+  const base = { home, now: options.now(), env, freeBytes: options.freeBytes ?? defaultFreeBytes, host: options.host === undefined ? systemProbe(env) : options.host, shadow: options.shadow ?? true };
   let state: InstallState | null;
   try {
     state = await loadState(home);
@@ -51,9 +64,23 @@ async function contextOf(home: string, options: DoctorOptions): Promise<DoctorCo
   return { ...base, state };
 }
 
-async function runOne(check: DoctorCheckDef, ctx: DoctorContext): Promise<DoctorCheck[]> {
+/** The check's result, or an ActionFailure once `ms` have passed (the check itself cannot be cancelled). */
+async function within<T>(work: Promise<T>, ms: number | undefined): Promise<T> {
+  if (ms === undefined) return work;
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ActionFailure(`did not finish within ${ms / 1000} s`)), ms);
+  });
   try {
-    const found = await check.run(ctx);
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runOne(check: DoctorCheckDef, ctx: DoctorContext, timeoutMs?: number): Promise<DoctorCheck[]> {
+  try {
+    const found = await within(check.run(ctx), timeoutMs);
     return found === null ? [] : Array.isArray(found) ? [...found] : [found as DoctorCheck];
   } catch (error) {
     if (!isDomainError(error) && !(error instanceof AuditCorruptError) && !(error instanceof SolutionError)) throw error;
@@ -67,7 +94,7 @@ const overall = (checks: readonly DoctorCheck[]): DoctorReport["status"] =>
 export async function runDoctor(home: string, options: DoctorOptions, checks: readonly DoctorCheckDef[] = DOCTOR_CHECKS): Promise<DoctorReport> {
   const ctx = await contextOf(home, options);
   const found: DoctorCheck[] = [];
-  for (const check of checks) found.push(...(await runOne(check, ctx)));
+  for (const check of checks) found.push(...(await runOne(check, ctx, options.timeoutMs)));
   const report: DoctorReport = { status: overall(found), checked_at: ctx.now, checks: found };
   await writeConfig(home, DOCTOR_FILE, report);
   // A damaged audit gets no new line; the finding itself says what to do.
@@ -98,13 +125,13 @@ async function tellFailures(home: string, now: () => string, report: DoctorRepor
 }
 
 /** Run by the tick: once every DOCTOR_EVERY_MS; the first call only sets the time. Returns the report when it ran. */
-export async function dailyDoctor(home: string, now: () => string, env?: Env): Promise<DoctorReport | null> {
+export async function dailyDoctor(home: string, now: () => string, env?: Env, daily: DailyOptions = {}): Promise<DoctorReport | null> {
   const at = now();
   const next = ((await readConfig(home, DOCTOR_NEXT)) as { at?: string } | null)?.at;
   if (next !== undefined && at < next) return null;
   await writeConfig(home, DOCTOR_NEXT, { at: new Date(Date.parse(at) + DOCTOR_EVERY_MS).toISOString() });
   if (next === undefined) return null;
-  const report = await runDoctor(home, { now, ...(env ? { env } : {}) });
+  const report = await runDoctor(home, { now, shadow: false, timeoutMs: daily.timeoutMs ?? DAILY_CHECK_TIMEOUT_MS, ...(env ? { env } : {}) }, daily.checks);
   if (report.status === "fail") await tellFailures(home, now, report);
   return report;
 }

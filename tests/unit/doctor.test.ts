@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AUDIT_FILE, appendAudit } from "../../src/core/audit.js";
 import { writeConfig } from "../../src/core/data-source.js";
-import { DOCTOR_FILE, dailyDoctor, loadDoctorReport, runDoctor } from "../../src/core/doctor.js";
+import { DAILY_CHECK_TIMEOUT_MS, DOCTOR_FILE, DOCTOR_NEXT, dailyDoctor, loadDoctorReport, runDoctor } from "../../src/core/doctor.js";
 import { PID_FILE, claimPid } from "../../src/core/gateway-process.js";
 import { deleteSecret, setSecret } from "../../src/core/keychain.js";
 import { startRun } from "../../src/core/runner.js";
@@ -128,6 +128,18 @@ describe("installer doctor (§16.1, D103)", () => {
     expect((await fake.sent()).filter((message) => message.chat_id === OWNER.address).map((message) => message.text)).toContainEqual(expect.stringContaining("Daily check:"));
     expect(await events(home)).toContain("doctor.notified");
     await access(join(home, DOCTOR_FILE));
+  });
+});
+
+describe("the daily doctor's time limit", () => {
+  it("turns a check from the tick that never finishes into a fail finding, and goes on with the next one", async () => {
+    const home = await healthyHome();
+    await writeConfig(home, DOCTOR_NEXT, { at: AT });
+    const stuck = { id: "stuck", run: () => new Promise<never>(() => undefined) };
+    const after = { id: "after", run: async () => ({ id: "after", status: "ok" as const, detail: "ran" }) };
+    const report = await dailyDoctor(home, () => AT, undefined, { checks: [stuck, after], timeoutMs: 50 });
+    expect(report?.checks).toEqual([{ id: "stuck", status: "fail", detail: "did not finish within 0.05 s" }, { id: "after", status: "ok", detail: "ran" }]);
+    expect(DAILY_CHECK_TIMEOUT_MS).toBe(20_000);
   });
 });
 

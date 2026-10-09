@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { writeConfig } from "../../src/core/data-source.js";
-import { runDoctor } from "../../src/core/doctor.js";
+import { DOCTOR_NEXT, dailyDoctor, runDoctor } from "../../src/core/doctor.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { checkPacks, loadPacks } from "../../src/core/packs.js";
 import { startRun } from "../../src/core/runner.js";
+import { listRuns } from "../../src/core/runs.js";
 import { packsCommand, shadowPack, switchPack } from "../../src/core/shadow.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { HEARTBEAT_FILE } from "../../src/core/tick.js";
@@ -102,5 +103,16 @@ describe("the shadow upgrade (§14.3, D108)", () => {
     expect(report.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow passed", fix: expect.stringContaining("installer packs switch <pack>") });
     expect(await packsCommand(home, "list", undefined, OWNER_ROLES, { interactive: false }, () => AT)).toMatchObject({ packs: [{ pack: "demo", candidate: { shadow: { passed: true } } }] });
     await expect(packsCommand(home, "shadow", undefined, OWNER_ROLES, { interactive: false }, () => AT)).rejects.toThrow("packs takes:");
+  });
+
+  it("is not started by the daily doctor from the tick, which only compares the pins; 'installer packs shadow' runs it", async () => {
+    const home = await updatedHome();
+    await writeConfig(home, HEARTBEAT_FILE, { last: AT, alive: AT, pid: 1 });
+    await writeConfig(home, DOCTOR_NEXT, { at: AT });
+    const report = await dailyDoctor(home, () => AT);
+    expect(report?.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow not run", fix: expect.stringContaining("installer packs shadow <pack>") });
+    expect((await loadPacks(home)).demo?.candidate).toBeDefined();
+    expect((await loadPacks(home)).demo?.candidate?.shadow).toBeUndefined();
+    expect(await listRuns(home)).toHaveLength(1);
   });
 });
