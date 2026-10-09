@@ -100,15 +100,33 @@ Each task says why it is needed and what to do, step by step.
 4. Paste each test's output to Claude. If an output differs from the guide, Claude fixes the code or the guide.
 5. The guide's last test stops the gateway, deletes the token and the app password from the keychain and removes the test home.
 
+### 10. Run the Plan 7 live test, and install the runner's schedule on your Mac
+
+**Why:** the automated tests use a fake agent, a fake model server and generated scheduler files they never install. This checks one real judge call through your own Claude Code (it uses your subscription, a few small calls), and the runner's once-a-minute schedule on your own machine, including what happens when the Mac sleeps through a scheduled run (open item O14). The installer only prints the scheduler commands; you run them. The guide's expected outputs are predictions: they have not been run yet.
+
+1. Open `docs/testing/2026-10-08-plan-7-live-test.md` and follow it in one terminal, in order.
+2. Run the `launchctl` and `cp` commands that `installer schedule install` prints yourself; the guide says when.
+3. For Test 6, put the Mac to sleep across a scheduled minute for at least ten minutes (close the lid, or Apple menu → Sleep), then wake it.
+4. Paste each test's output to Claude. If an output differs from the guide, Claude fixes the code or the guide.
+5. The guide's last test removes the LaunchAgent with the commands `installer schedule remove` prints, and deletes the test home.
+
 ## Optional
 
-### 10. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 11. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 
 1. Read Antigravity's current terms of service and find the section on automated or third-party use.
 2. Tell Claude what it says. Claude will record the outcome as a decision.
 
+### 12. Check the crontab entry on a Linux host (only if a client will run on Linux)
+
+**Why:** on Linux the runner's minute is a crontab line (D82). It was only checked as text on macOS.
+
+1. On the Linux host, after `installer start`, run `installer schedule install` and run the one command it prints.
+2. `crontab -l` shows a line that ends with `# com.installer.tick.<8 characters>`; after two minutes `installer schedule list` shows a `last_tick` from the last minute.
+3. Suspend the host across a scheduled run of a test workflow for ten minutes, resume it, and check that the run is listed as `missed` within a minute and that one back-online notice appears in the audit (`grep runner.back_online <home>/audit/audit.jsonl`).
+4. Remove it with the command `installer schedule remove` prints. Tell Claude what you saw.
 ## Done
 
 - 2026-10-08: Plan 1 live test (14 of 14 passed).

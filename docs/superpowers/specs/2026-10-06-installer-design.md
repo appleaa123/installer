@@ -138,7 +138,7 @@ or any other business uses the same engine with a different recipe.
   connectors/<id>/<version>/       # pinned, checksummed packages (v1: shipped in the
                                    # installer package and pinned in the engine, D65)
   workflows/<id>/
-    workflow.yaml                  # current version (typed steps)
+    workflow.json                  # current version (typed steps; JSON, Plan 7, D81)
     WORKFLOW.md                    # plain-language description (agentic mode)
     versions/<n>/                  # previous versions + replay results
   state/
@@ -154,8 +154,12 @@ or any other business uses the same engine with a different recipe.
   data/inbox/<id>.json             # inbound envelopes with their route (Plan 6, D76)
   data/channels/opt-outs/<id>.json # do-not-contact entries (Plan 6, D80)
   runtime/probe/                   # working folder for headless probe calls (Plan 2)
-  ops.sqlite                       # runs, idempotency, sessions, autonomy stats,
-                                   # pending events (store decided in Plan 7, D57)
+  state/runner/                    # heartbeat, event cursor, keys/<sha256> idempotency claims (Plan 7, D84, D86, D88)
+  runtime/runner/tick.lock         # one tick at a time (Plan 7, D82)
+  runtime/schedule/                # the generated launchd plist or crontab line, tick.log (Plan 7, D82)
+  runtime/judge/                   # working folder for headless judge calls (Plan 7, D83)
+  config/model.json                # direct-model fallback: provider and model, no key (Plan 7, D85)
+  config/report.json               # twice-daily report recipients (Plan 7, D89)
   audit/audit.lock                 # one audit writer at a time (Plan 4, D57)
   runs/<workflow>/<run_id>/        # per-run artifacts (§10.6)
   audit/audit.jsonl                # hash-chained (§11.8)
@@ -395,7 +399,10 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer channel [telegram \| email --value <json>]` | Check a channel live and save it, or list the channels (§12.2, D73) |
 | `installer invite <name>` | Create a member's one-time join code, in a person's terminal only; the member sends it to a channel, which binds their identity to a role (§11.9, D77). Personal sign-ins later |
 | `installer members [remove <id>]` | List the members, or remove one (terminal only, D77) |
-| `installer run <workflow> [--sandbox]` | Run a workflow now |
+| `installer run <workflow> [--sandbox]` | Run a workflow now, with its own idempotency key; `--sandbox` records every outbound message of the run in `sandbox/outbox/` (D90; dry runs are Plan 8) |
+| `installer tick` | Run by the OS scheduler every minute: starts the runs that are due, records missed ones, sends the back-online notice, starts event runs, resumes decided runs, sends the twice-daily report (D82, D84, D88, D89) |
+| `installer schedule list \| install \| remove \| report [--value <json>]` | Show the workflows' next runs and the last tick; write the launchd or crontab entry under the home and print the commands the person runs (never run by the installer); remove it; set the report's recipients (D82, D89) |
+| `installer model [--value <json>]` | Show or save the direct-model fallback for judges (provider, model; the key through `installer secret model`) (D85) |
 | `installer harden <workflow>` | Review and apply hardening proposals (§10.8) |
 | `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4); prints the tool's result, exits 2 on a refusal (D63) |
 | `installer approvals list \| approve <id> \| edit <id> --value <json> \| reject <id>` | Decide approval items in a person's own terminal (`--as <name>`, `--reason`; D60, D61) |
@@ -714,6 +721,20 @@ steps:
     tool: channel.send           { audience: internal, to: decision_maker, body: ${report} }
 ```
 
+Plan 7 (D81): the file is `workflows/<id>/workflow.json`, the same content as JSON; tools take `args` objects, a
+judge names its `instructions`, an inline `schema` and an `input`, and `foreach` / `when` use the §10.2 language:
+
+```json
+{ "workflow": "morning-inbox-scan", "version": 3, "mode": "typed",
+  "trigger": { "cron": "0 8 * * 1-5", "tz": "America/Toronto" },
+  "steps": [
+    { "id": "find", "tool": "records.find", "args": { "entity": "contact" } },
+    { "id": "classify", "foreach": "${find.records}",
+      "judge": { "instructions": "…", "input": "${item}", "schema": { "type": "object" }, "skill": "skillswiki:<pack>/<skill>/SKILL.md" } },
+    { "id": "send", "when": "len(classify) > 0", "tool": "channel.notify", "args": { "member": "<decision maker>", "text": "${classify}" } }
+  ] }
+```
+
 ### 10.2 Step types (D14)
 
 | Type | Behaviour | Model | May change state |
@@ -733,7 +754,7 @@ Rule: **judges think, tools act, humans approve.**
 
 | Trigger | Source |
 |---|---|
-| `cron` + `tz` | OS scheduler entry calling `installer run <workflow>` (launchd / systemd timer / cron) |
+| `cron` + `tz` | One OS scheduler entry per home runs `installer tick` every minute (launchd / cron; systemd later); the runner starts each run that is due in the workflow's own time zone (Plan 7, D82) |
 | `event` | Gateway events, e.g. `{ event: message.received, from: external, filter: {...} }` |
 | `manual` | `installer run`, or a team-channel command |
 
@@ -742,9 +763,9 @@ Schedules never live in the host agent's own scheduler (D12).
 **Missed and late runs (D38).** A scheduled run never executes late:
 - If a run would start later than `scheduled_time + tolerance` (default
   5 minutes, configurable per workflow), it is **skipped** and recorded as
-  `missed` in `ops.sqlite` and the audit trail. This covers host asleep or
+  `missed` in the run log and the audit trail. This covers host asleep or
   off, runner crashed, engine paused, or OS scheduler delay.
-- The runner writes a heartbeat (default every minute) to `ops.sqlite`. On
+- The runner writes a heartbeat (every minute, `state/runner/heartbeat.json`). On
   startup or wake, it compares the cron schedule against the heartbeat gap
   and the run log, records every missed run, and sends the human a
   **"host back online"** notice: downtime window and the list of missed
@@ -801,6 +822,13 @@ poisoned learning. File and shell tools are disabled (Claude Code:
 `--restricted` plus `--strict-mcp-config` with a judge-only MCP config).
 Context-tool calls and results are recorded (§10.6).
 
+Plan 7 (D83): the judge call has every tool off. The step's `context_tools`
+(L0 only, at most `max_tool_calls`) are called by the runner itself, through
+the gate, with the arguments the workflow binds, and their results are
+inlined as untrusted data; the model choosing among them is left for later.
+A `skillswiki:` skill is always inlined by the engine. When the agent cannot
+be called headless, the direct model answers instead (§7.4, D85).
+
 Validation (D16): the runner validates output against the schema
 regardless of runtime support. Failure → one retry including the
 validation error → `needs_human`.
@@ -825,6 +853,10 @@ validation error → `needs_human`.
   context-tool calls + recorded responses.
 
 Each step transition also appends to `audit.jsonl` (§11.8).
+
+Plan 7 (D86): `run_id` is `<date>-<8 hex of the idempotency key>`; the keys
+are claimed in `state/runner/keys/`, so no `ops.sqlite` is needed; `usage` is
+not recorded yet.
 
 Retention (D34): raw run folders default 90 days, configurable; audit kept
 per client policy.
@@ -1320,7 +1352,7 @@ Same engine, same phases, same contracts.
 | O10 | Whether Skills Wiki `enterprise` routes support team seats; v1 runs helper and keychain as the agent's OS user (D50) | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
 | O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
-| O14 | Verify per-OS scheduler behaviour after sleep (cron skips, launchd may coalesce missed fires into one late fire) so the D38 tolerance check catches it | §10.3 |
+| O14 | Approach resolved by D82 and D84 (the runner decides by the clock, so a coalesced or skipped firing changes nothing); still to verify on a real macOS and Linux host after sleep (human task 10) | §10.3 |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
 ---
@@ -1336,7 +1368,7 @@ Same engine, same phases, same contracts.
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34, D65–D67 |
 | §9 | D28, D29, D64, D68–D71 |
-| §10 | D10–D19, D38–D40 |
+| §10 | D10–D19, D38–D40, D81–D90 |
 | §11 | D23–D26, D35, D77, D78 |
 | §12 | D30, D72–D80 |
 | §13 | D1, D6, D8, D19 |
