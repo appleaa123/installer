@@ -14,9 +14,11 @@ import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { RUNNER_ALIVE_MS } from "./lifecycle.js";
 import { MODEL_SECRET_ID, loadModelConfig } from "./model.js";
+import { checkPacks, loadPacks } from "./packs.js";
 import { loadPause } from "./pause.js";
 import { pruneOld } from "./retention.js";
 import { REPORT_RUNS, clearClaim, listRuns, orphanClaims, type RunRecord } from "./runs.js";
+import { shadowPack } from "./shadow.js";
 import { SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
 import { StateCorruptError, isInstallState, statePath } from "./state.js";
 import { HEARTBEAT_FILE } from "./tick.js";
@@ -230,12 +232,23 @@ async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}`, fix: "'installer host' prints each fix; a person with administrator rights runs them in their own terminal" };
 }
 
+/** §14.3, D107, D108: a new version of a pinned pack is found, tried in shadow, and left for the decision maker. */
+async function packsCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
+  if (Object.keys(await loadPacks(ctx.home)).length === 0) return null;
+  for (const update of await checkPacks(ctx.home, ctx.state?.skillswiki?.url, ctx.now)) await shadowPack(ctx.home, update.pack, () => ctx.now);
+  const waiting = Object.entries(await loadPacks(ctx.home)).filter(([, pin]) => pin.candidate !== undefined);
+  if (waiting.length === 0) return ok("packs", "every pinned pack is what Skills Wiki serves");
+  const states = waiting.map(([pack, pin]) => `${pack}: a new version, shadow ${pin.candidate?.shadow ? (pin.candidate.shadow.passed ? "passed" : "did not pass") : "not run"}`);
+  return { id: "packs", status: "warn", detail: states.join("; "), fix: "The decision maker reads 'installer packs list' and switches with 'installer packs switch <pack> --as <name>' in their own terminal" };
+}
+
 export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "state", run: stateCheck },
   { id: "audit", run: auditCheck },
   { id: "pause", run: pauseCheck },
   { id: "secrets", run: secretsCheck },
   { id: "skillswiki", run: skillswikiCheck },
+  { id: "packs", run: packsCheck },
   { id: "channels", run: channelsCheck },
   { id: "runner", run: runnerCheck },
   { id: "gateway", run: gatewayCheck },

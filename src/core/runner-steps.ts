@@ -96,8 +96,8 @@ const declaredFields = ({ properties: declared }: Readonly<Record<string, unknow
 export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "judge" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.judge;
   const backend = await exec.backend();
-  // D107: the pinned copy of the skill file, never whatever Skills Wiki serves today.
-  const skill = spec.skill ? await pinnedSkill(exec.home, exec.state?.skillswiki?.url, spec.skill, now(exec)) : null;
+  // D107: the pinned copy of the skill file, never whatever Skills Wiki serves today (a shadow run reads the candidate, D108).
+  const skill = spec.skill ? await pinnedSkill(exec.home, exec.state?.skillswiki?.url, spec.skill, now(exec), record.shadow) : null;
   const hidden = protectedFields(exec.contract);
   const [outputs, calls, needs, inputs]: [unknown[], ContextCall[], { index: number; reason: string }[], unknown[]] = [[], [], [], []];
   for (const [index, item] of items(step, scope).entries()) {

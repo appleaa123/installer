@@ -34,6 +34,8 @@ export interface RunRequest {
   readonly trigger: RunTrigger;
   readonly now: () => string;
   readonly sandbox?: boolean;
+  /** A shadow run of this pack's candidate version (D108); always a sandbox run. */
+  readonly shadow?: string;
   readonly env?: Env;
 }
 
@@ -165,7 +167,8 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
   const at = request.trigger.scheduled_for ?? request.now();
   const record: RunRecord = {
     workflow: request.workflow.id, run_id: runIdFor(request.key, at), key: request.key, trigger: request.trigger, version: request.workflow.version,
-    status: "running", started_at: request.now(), sandbox: request.sandbox === true || (await runsInSandbox(request.home, request.workflow.id)), pid: process.pid, actions: 0, needs_human: 0,
+    status: "running", started_at: request.now(), sandbox: request.sandbox === true || request.shadow !== undefined || (await runsInSandbox(request.home, request.workflow.id)), pid: process.pid, actions: 0, needs_human: 0,
+    ...(request.shadow ? { shadow: request.shadow } : {}),
   };
   if (!(await claimRun(request.home, record))) {
     // Another process claimed the key first and runs it; this one never starts or resumes that run.

@@ -5,6 +5,7 @@ import { confinedPath } from "./actions.js";
 import { appendAudit, canonicalJson } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { ActionFailure } from "./failure.js";
+import type { ShadowResult } from "./shadow.js";
 import { fetchSkillswikiSolution, parseSkillswikiRef, skillswikiTarget } from "./skillswiki.js";
 import { StateCorruptError } from "./state.js";
 
@@ -27,6 +28,8 @@ export interface Candidate {
   readonly version: string;
   readonly files: PackFiles;
   readonly found_at: string;
+  /** The last shadow of this candidate (D108); the decision maker can switch only after it passed. */
+  readonly shadow?: ShadowResult;
 }
 
 export interface PackPin {

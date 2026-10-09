@@ -53,6 +53,8 @@ export interface RunRecord {
   readonly fallback_from?: { readonly step: string; readonly error: string };
   /** A judge flagged something urgent (§11.7): approvals go first and are reminded often, and no grant approves them. */
   readonly urgent?: boolean;
+  /** A shadow run (D108): a sandbox run whose judges read this pack's candidate version instead of the pinned one. */
+  readonly shadow?: string;
 }
 
 export const STEP_STATUSES = ["done", "waiting", "rejected", "failed"] as const;
