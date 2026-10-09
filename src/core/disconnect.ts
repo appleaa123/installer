@@ -41,14 +41,14 @@ async function candidateProfiles(profileId: string | null | undefined): Promise<
 }
 
 /** The registration is user-wide (D52), so it is removed whatever home this runs from; a failure never keeps the key. */
-async function unregisterEverywhere(home: string, profileId: string | null | undefined): Promise<{ readonly unregistered: boolean; readonly note?: string }> {
+export async function unregisterEverywhere(home: string, profileId: string | null | undefined, name: string = SKILLSWIKI_MCP_NAME): Promise<{ readonly unregistered: boolean; readonly note?: string }> {
   try {
     const profiles = (await candidateProfiles(profileId)).filter((profile) => profile.mcp_remove);
     let unregistered = false;
-    for (const profile of profiles) unregistered = (await unregisterMcp(profile, SKILLSWIKI_MCP_NAME, home)) || unregistered;
+    for (const profile of profiles) unregistered = (await unregisterMcp(profile, name, home)) || unregistered;
     return { unregistered };
   } catch (error) {
-    return { unregistered: false, note: `Could not remove the agent's Skills Wiki registration (${(error as Error).message})` };
+    return { unregistered: false, note: `Could not remove the agent's '${name}' registration (${(error as Error).message})` };
   }
 }
 
