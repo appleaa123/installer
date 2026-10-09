@@ -78,6 +78,19 @@ describe("urgent alerts (§11.7, D95)", () => {
     expect(text).not.toContain("A98");
   });
 
+  it("keep one open alert per workflow: more urgent judgments count on it instead of sending again", async () => {
+    const at = await home();
+    const before = (await sentTo("1002", "URGENT (alert")).length;
+    for (let index = 0; index < 4; index += 1) await urgentRun(at, { urgent: true, why: `flood ${index}` });
+    expect((await alertsCommand(at, "list", undefined, { interactive: false }, () => AT)).alerts).toEqual([expect.objectContaining({ id: 1, sends: 1, count: 4 })]);
+    expect((await sentTo("1002", "URGENT (alert")).length - before).toBe(1);
+    await repeatAlerts(await toolContext(at, "runner", DEFAULT_TOOLS, () => later(10)), OWNER_ROLES);
+    expect((await sentTo("1002", "URGENT (alert 1)")).at(-1)).toContain("4 urgent judgments so far");
+    await alertsCommand(at, "ack", "1", { interactive: true, as: "Owner" }, () => AT);
+    await urgentRun(at, { urgent: true });
+    expect((await alertsCommand(at, "list", undefined, { interactive: false }, () => AT)).alerts).toHaveLength(2);
+  });
+
   it("are raised only for a field the recipe's schema declares", async () => {
     const at = await home();
     const run = await urgentRun(at, { urgent: true }, { type: "object", properties: { why: { type: "string" } } });

@@ -37,6 +37,8 @@ export type Alert = {
   readonly text: string;
   readonly created_at: string;
   readonly sends: number;
+  /** Urgent judgments of the workflow this open alert stands for: while it is open, more count here and send nothing. */
+  readonly count: number;
   readonly last_sent: string;
   readonly acknowledged_by?: string;
   readonly acknowledged_at?: string;
@@ -73,21 +75,35 @@ function modelSays(fields: readonly string[], answers: readonly unknown[]): stri
 }
 
 async function sendAlert(ctx: ToolContext, roles: Roles | undefined, alert: Alert): Promise<Alert> {
-  const error = await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (alert ${alert.id}): ${where(alert)} Reply K${alert.id} to acknowledge, or run 'installer alerts ack ${alert.id}'.${saying(alert.text)}`);
+  const counted = alert.count > 1 ? ` (${alert.count} urgent judgments so far)` : "";
+  const error = await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (alert ${alert.id}): ${where(alert)}${counted} Reply K${alert.id} to acknowledge, or run 'installer alerts ack ${alert.id}'.${saying(alert.text)}`);
   const sent: Alert = { ...alert, sends: alert.sends + 1, last_sent: ctx.now() };
   await replaceRecord(ctx.home, ALERTS_DIR, sent);
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "engine", event: "alert.sent", ref: `alert:${alert.id}`, payload: { run: `${alert.workflow}/${alert.run_id}`, sends: sent.sends, delivered: error === null, ...(error ? { error } : {}) } });
   return sent;
 }
 
-/** An urgent judgement: the decision maker hears of it now. In a sandbox run the message is recorded and nothing repeats. */
+/** Another urgent judgment while the workflow's alert is still open: counted on that alert, never sent again (D95). */
+async function countOn(ctx: ToolContext, open: Alert, ref: AlertRef): Promise<void> {
+  const counted: Alert = { ...open, count: open.count + 1 };
+  await replaceRecord(ctx.home, ALERTS_DIR, counted);
+  await appendAudit(ctx.home, { ts: ctx.now(), actor: "engine", event: "alert.counted", ref: `alert:${open.id}`, payload: { run: `${ref.workflow}/${ref.run_id}`, count: counted.count } });
+}
+
+/**
+ * An urgent judgement: the decision maker hears of it now, unless the workflow's last alert is still unacknowledged
+ * (then it is counted there, so outside senders cannot flood them). In a sandbox run the message is recorded and
+ * nothing repeats.
+ */
 export async function raiseAlert(ctx: ToolContext, roles: Roles | undefined, ref: AlertRef, said: { fields: readonly string[]; answers: readonly unknown[] }): Promise<void> {
   const text = modelSays(said.fields, said.answers);
   if (ctx.sandbox) {
     await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (sandbox): ${where(ref)}${saying(text)}`);
     return;
   }
-  const alert = await createRecord<Alert>(ctx.home, ALERTS_DIR, (id) => ({ id, ...ref, text, created_at: ctx.now(), sends: 0, last_sent: ctx.now() }));
+  const open = (await listRecords(ctx.home, ALERTS_DIR, isAlert)).find((alert) => alert.workflow === ref.workflow && !alert.acknowledged_at);
+  if (open) return countOn(ctx, open, ref);
+  const alert = await createRecord<Alert>(ctx.home, ALERTS_DIR, (id) => ({ id, ...ref, text, created_at: ctx.now(), sends: 0, count: 1, last_sent: ctx.now() }));
   await sendAlert(ctx, roles, alert);
 }
 
