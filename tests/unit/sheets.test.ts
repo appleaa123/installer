@@ -84,7 +84,7 @@ describe("the Sheets API v4 client (D67)", () => {
   });
 
   it("reports an unreachable server as a fixable failure", async () => {
-    const offline = sheetsClient(def, { accessToken: async () => "x" }, { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9" });
+    const offline = sheetsClient(def, { accessToken: async () => "x" }, { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9", INSTALLER_KEYCHAIN: "file" });
     await expect(offline.readRows({ spreadsheet_id: "s-read" })).rejects.toThrow("Cannot reach Google Sheets");
   });
 });

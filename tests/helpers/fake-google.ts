@@ -28,7 +28,7 @@ export function startFakeGoogle(): Promise<FakeGoogle> {
         const init = body === undefined ? {} : { method: path.startsWith("/debug/sheets/") ? "PUT" : "POST", body: JSON.stringify(body) };
         return (await fetch(`${url}${path}`, init)).json();
       };
-      done({ url, env: { INSTALLER_CONNECTOR_SERVER: url }, debug, stop: () => void child.kill("SIGKILL") });
+      done({ url, env: { INSTALLER_CONNECTOR_SERVER: url, INSTALLER_KEYCHAIN: "file" }, debug, stop: () => void child.kill("SIGKILL") });
     });
     child.once("exit", (code) => fail(new Error(`fake Google server exited with ${code}`)));
     child.once("error", fail);

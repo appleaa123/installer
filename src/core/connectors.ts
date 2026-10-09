@@ -118,20 +118,27 @@ export async function loadConnector(id: string, version: string, root: string = 
   return parseConnector(text, id, version, found);
 }
 
+/** Which keychain item each pinned connector signs in with, known without reading any connector file (review finding 3). */
+export const CONNECTOR_SECRETS: Readonly<Record<string, string>> = { "google-sheets": "google" };
+
+export function newestVersion(id: string): string | undefined {
+  return Object.keys(CONNECTOR_PINS[id] ?? {}).sort((a, b) => Number(b) - Number(a))[0];
+}
+
 /** The newest pinned connector that signs in with this keychain item over OAuth, or null when none does. */
 export async function oauthConnectorFor(secretId: string): Promise<ConnectorDef | null> {
-  for (const [id, versions] of Object.entries(CONNECTOR_PINS)) {
-    const newest = Object.keys(versions).sort((a, b) => Number(b) - Number(a))[0];
-    const def = newest === undefined ? null : await loadConnector(id, newest);
-    if (def?.auth.secret_id === secretId) return def;
-  }
-  return null;
+  const id = Object.keys(CONNECTOR_SECRETS).find((name) => CONNECTOR_SECRETS[name] === secretId);
+  const version = id === undefined ? undefined : newestVersion(id);
+  return id === undefined || version === undefined ? null : loadConnector(id, version);
 }
 
 /** Tests point every connector URL at one loopback fake server; nothing else can redirect them. */
 export function connectorUrl(url: string, env: Env = process.env): string {
   const server = env[SERVER_ENV];
   if (!server) return url;
+  if (env.INSTALLER_KEYCHAIN !== "file") {
+    throw new InputError(`${SERVER_ENV} is only for tests with the throwaway file keychain (INSTALLER_KEYCHAIN=file); real sign-ins only ever go to Google (D67)`);
+  }
   if (!LOOPBACK.test(server)) throw new InputError(`${SERVER_ENV} must be http://127.0.0.1:<port> (a test server on this machine), got '${server}'`);
   return `${server}${new URL(url).pathname}`;
 }

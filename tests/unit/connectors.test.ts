@@ -75,14 +75,21 @@ describe("loadConnector refuses what is not pinned (§14.2 supply chain)", () =>
   });
 });
 
+describe("connectorUrl with the real keychain (review finding 1)", () => {
+  it("refuses the test server override unless the throwaway file keychain is in use", () => {
+    expect(() => connectorUrl("https://sheets.googleapis.com/v4/x", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9" })).toThrow(/only for tests/);
+    expect(connectorUrl("https://sheets.googleapis.com/v4/x", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9", INSTALLER_KEYCHAIN: "file" })).toBe("http://127.0.0.1:9/v4/x");
+  });
+});
+
 describe("connectorUrl", () => {
   it("keeps the definition's URL unless a loopback test server is named", () => {
     expect(connectorUrl("https://sheets.googleapis.com/v4", {})).toBe("https://sheets.googleapis.com/v4");
-    expect(connectorUrl("https://sheets.googleapis.com/v4", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:5123" })).toBe("http://127.0.0.1:5123/v4");
-    expect(connectorUrl("https://oauth2.googleapis.com/token", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:5123" })).toBe("http://127.0.0.1:5123/token");
+    expect(connectorUrl("https://sheets.googleapis.com/v4", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:5123", INSTALLER_KEYCHAIN: "file" })).toBe("http://127.0.0.1:5123/v4");
+    expect(connectorUrl("https://oauth2.googleapis.com/token", { INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:5123", INSTALLER_KEYCHAIN: "file" })).toBe("http://127.0.0.1:5123/token");
   });
 
   it("refuses a test server that is not on this machine's loopback", () => {
-    expect(() => connectorUrl("https://sheets.googleapis.com/v4", { INSTALLER_CONNECTOR_SERVER: "http://example.com" })).toThrow("INSTALLER_CONNECTOR_SERVER must be http://127.0.0.1:<port>");
+    expect(() => connectorUrl("https://sheets.googleapis.com/v4", { INSTALLER_CONNECTOR_SERVER: "http://example.com", INSTALLER_KEYCHAIN: "file" })).toThrow("INSTALLER_CONNECTOR_SERVER must be http://127.0.0.1:<port>");
   });
 });

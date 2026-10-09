@@ -57,7 +57,7 @@ describe("connectorTokens (D66: the client's own OAuth app)", () => {
   });
 
   it("reports an unreachable sign-in service as a fixable failure", async () => {
-    const tokens = await connectorTokens(def, { ...(await env(SIGNED_IN)), INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9" });
+    const tokens = await connectorTokens(def, { ...(await env(SIGNED_IN)), INSTALLER_CONNECTOR_SERVER: "http://127.0.0.1:9", INSTALLER_KEYCHAIN: "file" });
     await expect(tokens.accessToken()).rejects.toThrow(ActionFailure);
     await expect(tokens.accessToken()).rejects.toThrow("Cannot reach Google's sign-in service");
   });
