@@ -1,6 +1,7 @@
 import { appendAudit } from "./audit.js";
 import type { EntityDef } from "./contract.js";
-import { SHEETS_CONNECTOR, contractEntity, loadSource, mappingProblem, openSheets, removeMapping, saveMapping, saveSource, type DataSource } from "./data-source.js";
+import { FLOOR_TAGS } from "./levels.js";
+import { SHEETS_CONNECTOR, contractEntity, loadMapping, loadSource, mappingProblem, openSheets, removeMapping, saveMapping, saveSource, type DataSource } from "./data-source.js";
 import { InputError } from "./inputs.js";
 
 /**
@@ -70,7 +71,22 @@ function columnProblem(header: readonly string[], columns: Readonly<Record<strin
   return null;
 }
 
-export async function mapEntity(home: string, entityName: string, value: string | undefined, now: () => string, env: Env = process.env): Promise<unknown> {
+const hasFloorField = (entity: EntityDef): boolean => Object.values(entity.fields).some((field) => (field.tags ?? []).some((tag) => FLOOR_TAGS.includes(tag)));
+
+/**
+ * Re-pointing a field at another column can move a financial column under an untagged field and lower the level
+ * of every later write (review finding 2): for an entity with floor-tagged fields, only a person at their own
+ * terminal may change an existing mapping (D61). The first mapping is part of the install the person watches (D68).
+ */
+async function guardRemap(home: string, entityName: string, entity: EntityDef, columns: Readonly<Record<string, string>>, interactive: boolean, now: () => string): Promise<void> {
+  const existing = await loadMapping(home, entityName);
+  const changed = existing !== null && JSON.stringify(existing.columns) !== JSON.stringify(columns);
+  if (!changed || interactive || !hasFloorField(entity)) return;
+  await audit(home, now(), "data.map_refused", entityName, { columns });
+  throw new InputError(`'${entityName}' has financial or protected fields, so a changed mapping must be confirmed by a person in their own terminal: run 'installer map ${entityName} --value …' there`);
+}
+
+export async function mapEntity(home: string, entityName: string, value: string | undefined, now: () => string, env: Env = process.env, interactive = false): Promise<unknown> {
   const { entity } = await contractEntity(home, entityName);
   const source = await loadSource(home, entityName);
   if (!source) throw new InputError(`Connect '${entityName}' first: installer connect ${entityName} --sheet <link of the Google Sheet> (or --sheet new)`);
@@ -87,6 +103,7 @@ export async function mapEntity(home: string, entityName: string, value: string 
   const columns = Object.fromEntries(Object.entries(parseColumns(value)).map(([field, column]) => [field, column.trim()]));
   const problem = mappingProblem(entity, columns) ?? columnProblem(header, columns);
   if (problem) throw new InputError(`Cannot map ${entityName}: ${problem}`);
+  await guardRemap(home, entityName, entity, columns, interactive, now);
   await saveMapping(home, { entity: entityName, columns });
   await audit(home, now(), "data.mapped", entityName, { columns });
   return { status: "mapped", entity: entityName, columns };

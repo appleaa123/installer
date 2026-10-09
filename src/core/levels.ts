@@ -14,7 +14,7 @@ export type FloorCategory = (typeof FLOOR_CATEGORIES)[number];
 /** Field tags (spec §9.3), assigned by the data contract (src/core/contract.ts). */
 export const FIELD_TAGS = ["financial", "protected_ground", "personal"] as const;
 export type FieldTag = (typeof FIELD_TAGS)[number];
-const FLOOR_TAGS: readonly FieldTag[] = ["financial", "protected_ground"];
+export const FLOOR_TAGS: readonly FieldTag[] = ["financial", "protected_ground"];
 
 /** A tool that declares no level is an ordinary write (§11.4). */
 export const DEFAULT_LEVEL: Level = "L2";

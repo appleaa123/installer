@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { loadMapping } from "../../src/core/data-source.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { runCli } from "../helpers/cli.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
@@ -31,6 +32,16 @@ describe("installer connect and installer map (D68)", () => {
     expect(runCli(["map", "contact"], { home, env }).json).toMatchObject({ columns: ["name", "email", "notes", "balance"], sample: [] });
     const mapped = runCli(["map", "contact", "--value", '{"name":"name","email":"email","notes":"notes","balance":"balance"}'], { home, env });
     expect(mapped).toMatchObject({ code: 0, json: { status: "mapped", entity: "contact" } });
+  });
+
+  it("refuses to change the mapping of an entity with a financial field from the agent's shell (review finding 2)", async () => {
+    const home = await installed();
+    runCli(["connect", "contact", "--sheet", "new"], { home, env });
+    expect(runCli(["map", "contact", "--value", '{"name":"name","email":"email","notes":"notes","balance":"balance"}'], { home, env }).code).toBe(0);
+    const changed = runCli(["map", "contact", "--value", '{"name":"name","email":"email","notes":"balance","balance":"notes"}'], { home, env });
+    expect(changed.code).toBe(2);
+    expect(changed.json).toMatchObject({ error: expect.stringContaining("in their own terminal") });
+    await expect(loadMapping(home, "contact")).resolves.toMatchObject({ columns: { notes: "notes", balance: "balance" } });
   });
 
   it.each([
