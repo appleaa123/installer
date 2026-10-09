@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, open } from "node:fs/promises";
+import { access, mkdir, open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
@@ -13,7 +13,7 @@ import { decideByReply } from "./reply-codes.js";
 import { invokeTool, type ToolContext } from "./tools.js";
 
 /**
- * The inbound pipeline (spec §12.4, D76): normalise and mark → drop a message seen before → opt-out → join code →
+ * The inbound pipeline (spec §12.4, D76): normalise and mark → drop a message handled before → opt-out → join code →
  * identify the sender → a member's reply code decides an approval, a member's other text is a conversation, anyone
  * else's text is an event (the hook for Plan 7's `message.received` triggers). Nothing in a message's text is obeyed:
  * only the three command shapes are read, and only a joined member's reply code can decide anything.
@@ -22,17 +22,28 @@ export const SEEN_DIR = join("state", "gateway", "seen");
 
 export type Outcome = "duplicate" | "opted_out" | "joined" | "join_refused" | "decided" | "refused" | Route;
 
-/** True the first time a channel's message id is seen; an exclusive create, so a restarted gateway skips it. */
-export async function firstSight(home: string, envelope: InboundEnvelope): Promise<boolean> {
-  const name = createHash("sha256").update(`${envelope.channel}:${envelope.message_id}`).digest("hex");
-  const path = await confinedPath(home, join(SEEN_DIR, name));
+const seenPath = (home: string, envelope: InboundEnvelope): Promise<string> =>
+  confinedPath(home, join(SEEN_DIR, createHash("sha256").update(`${envelope.channel}:${envelope.message_id}`).digest("hex")));
+
+/** True when the message was handled to the end before (a restarted gateway reads the same round again). */
+export async function seenBefore(home: string, envelope: InboundEnvelope): Promise<boolean> {
+  try {
+    await access(await seenPath(home, envelope));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** Written last, once the message is stored and handled, so a crash before it means the message is read again. */
+async function markSeen(home: string, envelope: InboundEnvelope): Promise<void> {
+  const path = await seenPath(home, envelope);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   try {
     await (await open(path, "wx", 0o600)).close();
-    return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
 }
 
@@ -63,9 +74,16 @@ async function strangerCode(ctx: ToolContext, envelope: InboundEnvelope): Promis
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "human", event: "approval.refused", ref: `approval:${code.id}`, payload: { id: code.id, by: `unknown ${envelope.channel} sender`, reason: "not a joined member" } });
 }
 
+/** Drops a message handled before; otherwise routes it and only then marks it seen (storing is idempotent). */
 export async function handleInbound(ctx: ToolContext, raw: RawInbound): Promise<Outcome> {
   const envelope = normalizeInbound(raw, ctx.now());
-  if (!(await firstSight(ctx.home, envelope))) return "duplicate";
+  if (await seenBefore(ctx.home, envelope)) return "duplicate";
+  const outcome = await routeInbound(ctx, envelope);
+  await markSeen(ctx.home, envelope);
+  return outcome;
+}
+
+async function routeInbound(ctx: ToolContext, envelope: InboundEnvelope): Promise<Outcome> {
   const identity = { channel: envelope.channel, address: envelope.from };
   const policy = (await loadPinnedSolution(ctx.home)).solution.channel_policy ?? DEFAULT_POLICY;
   if (isOptOut(envelope.text, policy.opt_out_keywords)) {

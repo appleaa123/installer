@@ -23,7 +23,10 @@ export type InboxItem = InboundEnvelope & {
 const isItem = (value: unknown): value is InboxItem =>
   typeof value === "object" && value !== null && typeof (value as InboxItem).id === "number" && typeof (value as InboxItem).channel === "string" && (value as InboxItem).untrusted === true;
 
-export function storeInbound(home: string, envelope: InboundEnvelope, route: Route, member?: string): Promise<InboxItem> {
+/** Idempotent on the channel's message id: a message read again after a crash is kept once. */
+export async function storeInbound(home: string, envelope: InboundEnvelope, route: Route, member?: string): Promise<InboxItem> {
+  const stored = (await listRecords(home, INBOX_DIR, isItem)).find((item) => item.channel === envelope.channel && item.message_id === envelope.message_id);
+  if (stored) return stored;
   return createRecord<InboxItem>(home, INBOX_DIR, (id) => ({ ...envelope, id, route, ...(member ? { member } : {}) }));
 }
 

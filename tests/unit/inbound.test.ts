@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { readdir } from "node:fs/promises";
+import { chmod, mkdir, readdir } from "node:fs/promises";
 import { getApproval } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { isOptedOut } from "../../src/core/channel-policy.js";
 import { saveChannel } from "../../src/core/channels.js";
-import { handleInbound } from "../../src/core/inbound.js";
-import { listInbox } from "../../src/core/inbox.js";
+import { SEEN_DIR, handleInbound } from "../../src/core/inbound.js";
+import { INBOX_DIR, listInbox } from "../../src/core/inbox.js";
 import { createInvite, joinWithCode, memberFor, removeMember } from "../../src/core/members.js";
 import { isClaimed } from "../../src/core/numbered.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -54,6 +54,31 @@ describe("routing (§12.4, D76)", () => {
   it("drops a message it has seen before, as after a gateway restart", async () => {
     const ctx = await gateway(false);
     const message = from("5005", "hello");
+    expect(await handleInbound(ctx, message)).toBe("event");
+    expect(await handleInbound(ctx, message)).toBe("duplicate");
+    expect(await listInbox(ctx.home)).toHaveLength(1);
+  });
+
+  it("honours an opt-out that failed before it was stored when the message comes again", async () => {
+    const ctx = await gateway(true);
+    const inbox = join(ctx.home, INBOX_DIR);
+    await mkdir(inbox, { recursive: true, mode: 0o700 });
+    await chmod(inbox, 0o500);
+    const message = from("6008", "STOP");
+    await expect(handleInbound(ctx, message)).rejects.toThrow();
+    await chmod(inbox, 0o700);
+    expect(await handleInbound(ctx, message)).toBe("opted_out");
+    expect(await isOptedOut(ctx.home, { channel: "telegram", address: "6008" })).toBe(true);
+  });
+
+  it("stores a message once when it comes again after it was stored but not yet marked seen", async () => {
+    const ctx = await gateway(true);
+    const seen = join(ctx.home, SEEN_DIR);
+    await mkdir(seen, { recursive: true, mode: 0o700 });
+    await chmod(seen, 0o500);
+    const message = from("5006", "hello");
+    await expect(handleInbound(ctx, message)).rejects.toThrow();
+    await chmod(seen, 0o700);
     expect(await handleInbound(ctx, message)).toBe("event");
     expect(await handleInbound(ctx, message)).toBe("duplicate");
     expect(await listInbox(ctx.home)).toHaveLength(1);
