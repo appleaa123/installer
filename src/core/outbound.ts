@@ -34,9 +34,11 @@ export async function outboundBlock(home: string): Promise<string | null> {
   return overall === "ready" || overall === "ready_with_limits" ? null : "the install is not finished, so messages are recorded, not sent (R6)";
 }
 
-export async function deliver(home: string, channel: ChannelId, message: OutboundMessage, now: string, env: Env = process.env): Promise<Delivery> {
+export const SANDBOX_REASON = "a sandbox run: messages are recorded, never sent (D90)";
+
+export async function deliver(home: string, channel: ChannelId, message: OutboundMessage, now: string, env: Env = process.env, sandbox = false): Promise<Delivery> {
   if (!(await loadChannel(home, channel))) throw new InputError(`The ${channel} channel is not set up: run 'installer channel ${channel}' first`);
-  const reason = await outboundBlock(home);
+  const reason = sandbox ? SANDBOX_REASON : await outboundBlock(home);
   if (reason !== null) {
     const recorded = await createRecord<Recorded>(home, OUTBOX_DIR, (id) => ({ id, channel, ...message, at: now, reason }));
     await appendAudit(home, { ts: now, actor: "engine", event: "channel.recorded", ref: channel, payload: { outbox_id: recorded.id, reason } });

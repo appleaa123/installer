@@ -83,7 +83,7 @@ async function notify(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs> {
   for (const { identity } of targets) {
     if (!identity) continue;
     const channel = requireChannelId(identity.channel);
-    const delivery = (await isOptedOut(ctx.home, identity)) ? { status: "opted_out" } : await deliver(ctx.home, channel, { to: identity.address, text: args.text as string, subject: "A message from your assistant" }, ctx.now());
+    const delivery = (await isOptedOut(ctx.home, identity)) ? { status: "opted_out" } : await deliver(ctx.home, channel, { to: identity.address, text: args.text as string, subject: "A message from your assistant" }, ctx.now(), process.env, ctx.sandbox);
     deliveries.push({ channel, ...delivery });
   }
   return { member: targets[0]?.name, deliveries };
@@ -138,7 +138,7 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
     parse: parseSend, expected: sendExpected, ready: sendReady,
     run: async (ctx, args) => {
       const message = { to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}) };
-      return { channel: args.channel, to: args.to, ...(await deliver(ctx.home, args.channel as ChannelId, message, ctx.now())) };
+      return { channel: args.channel, to: args.to, ...(await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox)) };
     },
   },
 ];

@@ -16,6 +16,8 @@ export interface ToolContext {
   readonly registry: ToolRegistry;
   readonly tags: TagSource;
   readonly rules: ClientRules;
+  /** `installer run --sandbox` (D90): every outbound message is recorded in sandbox/outbox, never sent. */
+  readonly sandbox?: boolean;
 }
 
 /** One tool. Plans 5–6 add `records.*` and `channel.*` as more entries of this shape (D63). */

@@ -1,0 +1,166 @@
+import { createHash } from "node:crypto";
+import { mkdir, open, readdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { confinedPath } from "./actions.js";
+import { appendAudit, canonicalJson } from "./audit.js";
+import { readConfig, writeConfig } from "./data-source.js";
+import { StateCorruptError } from "./state.js";
+
+/**
+ * The run log (spec §10.6, D86): `runs/<workflow>/<run_id>/run.json` and `steps/<step_id>.json`, JSON files under
+ * the engine home like every other store (D57: no `ops.sqlite`). Idempotency (§10.7, D17): every run has a key
+ * (`<workflow>:<scheduled time>` for cron, `<workflow>:inbox:<id>` for an event, a fresh one for a manual run);
+ * `state/runner/keys/<sha256(key)>` is created exclusively, so a key is claimed once, by one process, forever.
+ * A claimed key that already has a run is never started again: a finished run is skipped, an unfinished one resumes
+ * from its last completed step. Each start, step and finish is also an audit line (§11.8).
+ */
+export const RUNS_DIR = "runs";
+export const KEYS_DIR = join("state", "runner", "keys");
+export const RUN_STATUSES = ["running", "waiting", "completed", "partial", "failed", "missed"] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+export const FINISHED: readonly RunStatus[] = ["completed", "partial", "failed", "missed"];
+/** Run folders that are not workflows (the twice-daily report, D89); a workflow id cannot start with `_`. */
+export const REPORT_RUNS = "_report";
+
+export interface RunTrigger {
+  readonly kind: "cron" | "event" | "manual" | "report";
+  readonly scheduled_for?: string;
+  readonly inbox_id?: number;
+}
+
+export interface RunRecord {
+  readonly workflow: string;
+  readonly run_id: string;
+  readonly key: string;
+  readonly trigger: RunTrigger;
+  readonly version: number;
+  readonly status: RunStatus;
+  readonly started_at: string;
+  readonly finished_at?: string;
+  readonly sandbox: boolean;
+  readonly pid: number;
+  /** Tool calls that changed something (L1 and up). */
+  readonly actions: number;
+  /** Judge answers that need a person (§10.9 uncertainty). */
+  readonly needs_human: number;
+  /** The approval item the run waits for. */
+  readonly waiting_on?: number;
+  readonly reason?: string;
+}
+
+export const STEP_STATUSES = ["done", "waiting", "rejected", "failed"] as const;
+
+export interface StepLog {
+  readonly step: string;
+  readonly status: (typeof STEP_STATUSES)[number];
+  readonly started_at: string;
+  readonly finished_at: string;
+  readonly duration_ms: number;
+  readonly input_fingerprint: string;
+  readonly output?: unknown;
+  readonly skipped?: boolean;
+  readonly approval?: number;
+  readonly context_calls?: readonly unknown[];
+  readonly needs_human?: readonly { readonly index: number; readonly reason: string }[];
+  readonly error?: string;
+}
+
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+type Raw = Record<string, unknown>;
+const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** `sha256:` of the canonical JSON: what a step was given, without keeping it twice. */
+export const fingerprint = (value: unknown): string => `sha256:${sha256(canonicalJson(value ?? null))}`;
+
+/** `<date of the scheduled time or the start>-<8 hex of the key>`, for example 2026-10-08-1a2b3c4d. */
+export const runIdFor = (key: string, at: string): string => `${at.slice(0, 10)}-${sha256(key).slice(0, 8)}`;
+
+const runFile = (workflow: string, runId: string): string => join(RUNS_DIR, workflow, runId, "run.json");
+const stepFile = (record: RunRecord, step: string): string => join(RUNS_DIR, record.workflow, record.run_id, "steps", `${step}.json`);
+const keyFile = (key: string): string => join(KEYS_DIR, sha256(key));
+
+function isRun(value: unknown): value is RunRecord {
+  return isRecord(value) && typeof value.workflow === "string" && typeof value.run_id === "string" && typeof value.key === "string" && (RUN_STATUSES as readonly unknown[]).includes(value.status);
+}
+
+export async function loadRun(home: string, workflow: string, runId: string): Promise<RunRecord | null> {
+  const raw = await readConfig(home, runFile(workflow, runId));
+  if (raw === null) return null;
+  if (!isRun(raw)) throw new StateCorruptError(`${runFile(workflow, runId)} has an unexpected shape; it was not changed`);
+  return raw;
+}
+
+export const saveRun = (home: string, record: RunRecord): Promise<void> => writeConfig(home, runFile(record.workflow, record.run_id), record);
+
+export async function auditRun(home: string, now: string, event: string, record: RunRecord, extra: Raw = {}): Promise<void> {
+  await appendAudit(home, { ts: now, actor: "engine", event, ref: `run:${record.workflow}/${record.run_id}`, payload: { key: record.key, status: record.status, ...extra } });
+}
+
+/** The run a key was claimed for, or null when the key is free. */
+export async function runForKey(home: string, key: string): Promise<RunRecord | null> {
+  const claimed = await readConfig(home, keyFile(key));
+  if (claimed === null) return null;
+  if (!isRecord(claimed) || typeof claimed.workflow !== "string" || typeof claimed.run_id !== "string") throw new StateCorruptError(`${keyFile(key)} has an unexpected shape`);
+  return loadRun(home, claimed.workflow, claimed.run_id);
+}
+
+/** Claims the record's key (exclusive create) and writes its run.json; false when the key was claimed before. */
+export async function claimRun(home: string, record: RunRecord): Promise<boolean> {
+  const path = await confinedPath(home, keyFile(record.key));
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  try {
+    const handle = await open(path, "wx", 0o600);
+    await handle.writeFile(JSON.stringify({ workflow: record.workflow, run_id: record.run_id }), "utf8");
+    await handle.sync();
+    await handle.close();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+  await saveRun(home, record);
+  return true;
+}
+
+export const saveStep = (home: string, record: RunRecord, log: StepLog): Promise<void> => writeConfig(home, stepFile(record, log.step), log);
+
+export async function loadStep(home: string, record: RunRecord, step: string): Promise<StepLog | null> {
+  const raw = await readConfig(home, stepFile(record, step));
+  if (raw === null) return null;
+  if (!isRecord(raw) || raw.step !== step || !(STEP_STATUSES as readonly unknown[]).includes(raw.status)) throw new StateCorruptError(`${stepFile(record, step)} has an unexpected shape`);
+  return raw as unknown as StepLog;
+}
+
+async function folderNames(home: string, relative: string): Promise<string[]> {
+  try {
+    return (await readdir(await confinedPath(home, relative), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+/** Every run (of one workflow, or of all), oldest first by scheduled time or start. */
+export async function listRuns(home: string, workflow?: string): Promise<RunRecord[]> {
+  const workflows = workflow === undefined ? await folderNames(home, RUNS_DIR) : [workflow];
+  const runs: RunRecord[] = [];
+  for (const name of workflows) {
+    for (const runId of await folderNames(home, join(RUNS_DIR, name))) {
+      const record = await loadRun(home, name, runId);
+      if (record) runs.push(record);
+    }
+  }
+  const at = (record: RunRecord): string => record.trigger.scheduled_for ?? record.started_at;
+  return runs.sort((a, b) => at(a).localeCompare(at(b)) || a.run_id.localeCompare(b.run_id));
+}
+
+/** D38: a scheduled run that cannot start within its tolerance is recorded as missed, once, and never run. */
+export async function recordMissed(home: string, workflow: string, version: number, key: string, scheduledFor: string, now: string): Promise<RunRecord | null> {
+  const kind = workflow === REPORT_RUNS ? "report" : "cron";
+  const record: RunRecord = {
+    workflow, run_id: runIdFor(key, scheduledFor), key, trigger: { kind, scheduled_for: scheduledFor }, version, status: "missed",
+    started_at: now, finished_at: now, sandbox: false, pid: process.pid, actions: 0, needs_human: 0, reason: "the host or the runner was not running at the scheduled time",
+  };
+  if (!(await claimRun(home, record))) return null;
+  await auditRun(home, now, "run.missed", record, { scheduled_for: scheduledFor });
+  return record;
+}
