@@ -11,6 +11,7 @@ import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { disconnect } from "./core/disconnect.js";
+import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
@@ -33,7 +34,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -279,6 +280,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now),
   invite: async ({ state, deps }, _flags, arg) => inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now),
   members: async ({ deps }, _flags, arg, extra) => membersCommand(deps.home, { sub: arg, id: extra, interactive: process.stdin.isTTY === true }, deps.now),
+  gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {
@@ -288,6 +290,7 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
   if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
   if (command === "mcp-serve") return mcpServeCommand(home);
+  if (command === "gateway-serve") return serveGateway(home);
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;
