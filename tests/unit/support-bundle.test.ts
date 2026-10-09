@@ -53,6 +53,7 @@ async function personalHome(): Promise<string> {
   await invokeTool(ctx, "approvals.request", { tool: "memo.edit", args: { id: 1, text: "SENTINEL-APPROVAL" }, why: "Fix it." });
   await saveSource(home, { entity: "contact", connector: { id: "google-sheets", version: "1", sha256: "pinned" }, spreadsheet_id: "1SENTINELsheetid" });
   await log(home, LOG_FILE, JSON.stringify({ ts: AT, level: "error", loop: "telegram", error: "send to zed@example.org failed for Quillon Vexmoor (+1 416 555 0199)" }));
+  await log(home, LOG_FILE, JSON.stringify({ ts: AT, level: "error", loop: "telegram", error: `reply to ${OUTSIDE} (chat ${SHORT_ID}) failed` }));
   await log(home, TICK_LOG, JSON.stringify({ status: "ran", errors: ["No joined member is called 'Marisol Okafor'", `events: ${NO_MEMBER}`, `resume: ${NOT_FIRST}`] }));
   await saveRun(home, { workflow: "outreach", run_id: "r1", key: "outreach:1", trigger: { kind: "manual" }, version: 1, status: "failed", started_at: AT, finished_at: AT, sandbox: false, pid: 1, actions: 0, needs_human: 0, reason: NOT_FIRST });
   await writeConfig(home, DOCTOR_FILE, { status: "warn", checked_at: AT, checks: [{ id: "recent_runs", status: "warn", detail: `in the last 24 hours: outreach r1 failed; report r2: ${NO_MEMBER}` }] });
@@ -73,7 +74,8 @@ describe("installer support bundle (§16.5, D110)", () => {
     expect(bundle.counts).toMatchObject({ approvals: { pending: 1 }, members: { "member joined": 2, "decision_maker joined": 1 }, inbox: 1 });
     expect(bundle.secrets_present).toMatchObject({ telegram: true, model: true, skillswiki: false });
     expect(bundle.audit.check).toMatchObject({ ok: true });
-    expect(bundle.logs.gateway).toHaveLength(1);
+    expect(bundle.logs.gateway).toHaveLength(2);
+    for (const line of bundle.logs.gateway as string[]) expect(JSON.parse(line)).toMatchObject({ level: "error", loop: "telegram", error: "error" });
     expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"support.bundle_written"');
   });
 
@@ -82,7 +84,6 @@ describe("installer support bundle (§16.5, D110)", () => {
     const text = await readFile((await supportBundle(home, () => AT)).file as string, "utf8");
     for (const secret of [BOT_TOKEN, MODEL_KEY, "SENTINEL", "zed@example.org", "416 555", "Vexmoor", "Marisol", "Quince", "Theodora", homedir()]) expect(text).not.toContain(secret);
     for (const word of [/\bAda\b/, /\bOwner\b/, /\b1001\b/, /\b1002\b/, /\b7123456\b/, /\b5005\b/, /\b55555\b/, /desk_test_bot/]) expect(text).not.toMatch(word);
-    expect(text).toContain("[redacted]");
     expect(text).toContain(AT);
   });
 

@@ -102,8 +102,8 @@ export function errorCategory(text: string): string {
   return text.includes(":") && TICK_PASSES.has(pass) ? pass : "error";
 }
 
-/** A tick log line (the tick's JSON result, or its error) with each error message replaced by its category. */
-function tickLine(line: string): string {
+/** A gateway or tick log line (JSON) with each error message replaced by its category: error text can name an outside contact. */
+function logLine(line: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line);
@@ -171,7 +171,7 @@ async function bundleOf(home: string, state: InstallState, now: string): Promise
     format: 1, created_at: now, versions: { node: process.version, platform: `${process.platform} ${process.arch}` },
     state: stateView(state), report: buildReport(solution, state), doctor: await doctorView(home), readiness: await readConfig(home, READINESS_FILE),
     runs: await runsView(home), settings: await settings(home), counts: await counts(home, now), audit: await auditView(home, state),
-    secrets_present: secrets, logs: { gateway: await tail(home, LOG_FILE), tick: (await tail(home, TICK_LOG)).map(tickLine) },
+    secrets_present: secrets, logs: { gateway: (await tail(home, LOG_FILE)).map(logLine), tick: (await tail(home, TICK_LOG)).map(logLine) },
   };
 }
 
