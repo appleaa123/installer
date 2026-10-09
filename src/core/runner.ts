@@ -143,9 +143,10 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
     status: "running", started_at: request.now(), sandbox: request.sandbox === true, pid: process.pid, actions: 0, needs_human: 0,
   };
   if (!(await claimRun(request.home, record))) {
+    // Another process claimed the key first and runs it; this one never starts or resumes that run.
     const raced = await runForKey(request.home, request.key);
-    if (raced) return FINISHED.includes(raced.status) ? raced : resumeRun(request, raced);
-    await saveRun(request.home, record);
+    if (!raced) throw new ActionFailure(`The run for '${request.key}' is busy: another process claimed it a moment ago; it is not started twice`);
+    return raced;
   }
   const exec = await prepare(request, record.sandbox);
   await auditRun(request.home, request.now(), "run.started", record, { trigger: record.trigger.kind, version: record.version, sandbox: record.sandbox });

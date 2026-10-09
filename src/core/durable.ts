@@ -1,4 +1,4 @@
-import { open, readdir, rm } from "node:fs/promises";
+import { link, open, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 const IGNORED_DIR_SYNC_CODES = ["EISDIR", "EPERM", "EINVAL", "EBADF"];
@@ -29,6 +29,21 @@ export async function writeSynced(path: string, text: string): Promise<void> {
     await handle.sync();
   } finally {
     await handle.close();
+  }
+}
+
+/** Creates `path` holding `text`, or returns false when it exists; written aside and linked, so never seen empty. */
+export async function createExclusive(path: string, text: string): Promise<boolean> {
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeSynced(temp, text);
+  try {
+    await link(temp, path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  } finally {
+    await rm(temp, { force: true });
   }
 }
 

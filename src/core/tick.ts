@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { ToolRefusal } from "./approvals.js";
@@ -6,7 +6,7 @@ import { appendAudit } from "./audit.js";
 import { MINUTE_MS, cronTimes } from "./cron.js";
 import { dueReports } from "./daily-report.js";
 import { readConfig, writeConfig } from "./data-source.js";
-import { isAlive } from "./durable.js";
+import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { listInbox, type InboxItem } from "./inbox.js";
 import { InputError } from "./inputs.js";
@@ -68,17 +68,10 @@ async function lockTick(home: string): Promise<string | null> {
   const path = await confinedPath(home, TICK_LOCK);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const handle = await open(path, "wx", 0o600);
-      await handle.writeFile(String(process.pid), "utf8");
-      await handle.close();
-      return path;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const holder = Number(await readFile(path, "utf8").catch(() => "0"));
-      if (Number.isInteger(holder) && holder > 0 && isAlive(holder)) return null;
-      await rm(path, { force: true });
-    }
+    if (await createExclusive(path, String(process.pid))) return path;
+    const holder = Number(await readFile(path, "utf8").catch(() => "0"));
+    if (Number.isInteger(holder) && holder > 0 && isAlive(holder)) return null;
+    await rm(path, { force: true });
   }
   return null;
 }

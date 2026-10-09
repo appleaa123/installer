@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit, canonicalJson } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
+import { createExclusive } from "./durable.js";
 import { StateCorruptError } from "./state.js";
 
 /**
@@ -108,15 +109,7 @@ export async function runForKey(home: string, key: string): Promise<RunRecord | 
 export async function claimRun(home: string, record: RunRecord): Promise<boolean> {
   const path = await confinedPath(home, keyFile(record.key));
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  try {
-    const handle = await open(path, "wx", 0o600);
-    await handle.writeFile(JSON.stringify({ workflow: record.workflow, run_id: record.run_id }), "utf8");
-    await handle.sync();
-    await handle.close();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
-    throw error;
-  }
+  if (!(await createExclusive(path, JSON.stringify({ workflow: record.workflow, run_id: record.run_id })))) return false;
   await saveRun(home, record);
   return true;
 }
