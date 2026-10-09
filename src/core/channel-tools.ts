@@ -83,7 +83,7 @@ async function notify(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs> {
   for (const { identity } of targets) {
     if (!identity) continue;
     const channel = requireChannelId(identity.channel);
-    const delivery = (await isOptedOut(ctx.home, identity)) ? { status: "opted_out" } : await deliver(ctx.home, channel, { to: identity.address, text: args.text as string, subject: "A message from your assistant" }, ctx.now(), process.env, ctx.sandbox);
+    const delivery = (await isOptedOut(ctx.home, identity)) ? { status: "opted_out" } : await deliver(ctx.home, channel, { to: identity.address, text: args.text as string, subject: "A message from your assistant" }, ctx.now(), process.env, ctx.sandbox, ctx.run);
     deliveries.push({ channel, ...delivery });
   }
   return { member: targets[0]?.name, deliveries };
@@ -123,7 +123,7 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
     },
   },
   {
-    name: "channel.notify", description: "Send an internal message to a member of the team who joined with 'installer invite' (logged, no approval). Optional channel: only there.", level: "L1",
+    name: "channel.notify", description: "Send an internal message to a member of the team who joined with 'installer invite' (logged, no approval). Optional channel: only there.", level: "L1", outbound: true,
     fields: { member: { type: "string" }, text: TEXT, channel: CHANNEL }, required: ["member", "text"],
     parse: (args) => {
       onlyKeys(args, ["member", "text", "channel"], "channel.notify");
@@ -135,10 +135,10 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
   {
     name: "channel.send", description: "Send a message to an outside contact. A person approves the exact message first (L2); opt-outs, consent and quiet hours are enforced.",
     fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT } }, required: ["channel", "to", "text"],
-    parse: parseSend, expected: sendExpected, ready: sendReady,
+    parse: parseSend, expected: sendExpected, ready: sendReady, outbound: true,
     run: async (ctx, args) => {
       const message = { to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}) };
-      return { channel: args.channel, to: args.to, ...(await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox)) };
+      return { channel: args.channel, to: args.to, ...(await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox, ctx.run)) };
     },
   },
 ];

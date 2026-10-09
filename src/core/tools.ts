@@ -2,6 +2,7 @@ import { appendAudit } from "./audit.js";
 import { contractTags } from "./contract.js";
 import { ToolRefusal, actionHash, redeemToken, type PreparedAction, type Via } from "./approvals.js";
 import { InputError } from "./inputs.js";
+import { recordAction } from "./outbound.js";
 import { loadPinnedContract } from "./pin.js";
 import { NO_TAGS, deriveLevel, loadClientRules, needsApproval, type ClientRules, type FieldRef, type FloorCategory, type Level, type TagSource } from "./levels.js";
 
@@ -16,8 +17,10 @@ export interface ToolContext {
   readonly registry: ToolRegistry;
   readonly tags: TagSource;
   readonly rules: ClientRules;
-  /** `installer run --sandbox` (D90): every outbound message is recorded in sandbox/outbox, never sent. */
+  /** A sandbox run (D90, D91): every message and every other action above L0 is recorded in sandbox/outbox, never run. */
   readonly sandbox?: boolean;
+  /** The workflow run making the call (`<workflow>/<run_id>`), kept with what a sandbox run records. */
+  readonly run?: string;
 }
 
 /** One tool. Plans 5–6 add `records.*` and `channel.*` as more entries of this shape (D63). */
@@ -41,6 +44,8 @@ export interface ToolDef {
   readonly expected?: (ctx: ToolContext, args: ToolArgs) => Promise<ToolArgs>;
   /** Why the call cannot run right now (quiet hours, D80), or null; checked before a token is spent, never at the request. */
   readonly ready?: (ctx: ToolContext, args: ToolArgs) => Promise<string | null>;
+  /** Sends a message through `deliver`, which records it in a sandbox run instead of sending it (D91). */
+  readonly outbound?: boolean;
   readonly run: (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 }
 
@@ -132,6 +137,11 @@ async function refuseUnlessReady(ctx: ToolContext, tool: ToolDef, prepared: Prep
   const reason = (await tool.ready?.(ctx, prepared.args)) ?? null;
   if (reason !== null) await refuse(ctx, prepared, reason);
 }
+/** D91: a sandbox run never acts: a message tool runs into the recording sink, any other action is recorded as it would run. */
+async function sandboxCall(ctx: ToolContext, tool: ToolDef, prepared: PreparedAction): Promise<ToolResult> {
+  if (tool.outbound) return tool.run(ctx, prepared.args);
+  return recordAction(ctx.home, { tool: prepared.tool, args: prepared.args }, prepared.level, ctx.now(), ctx.run);
+}
 
 /** The gate (§11.1): L2 and L3 need a token for exactly this action; the same path for MCP and the CLI. */
 export async function invokeTool(ctx: ToolContext, name: string, rawArgs: unknown): Promise<ToolResult> {
@@ -139,6 +149,7 @@ export async function invokeTool(ctx: ToolContext, name: string, rawArgs: unknow
   const { [TOKEN_ARG]: token, ...args } = argsOf(rawArgs);
   if (tool.meta && token !== undefined) throw new InputError(`${name} takes no ${TOKEN_ARG}`);
   const prepared = await prepareAction(ctx, tool, args);
+  if (ctx.sandbox && prepared.level !== "L0" && token === undefined) return sandboxCall(ctx, tool, prepared);
   if (!needsApproval(prepared.level)) {
     await refuseUnlessReady(ctx, tool, prepared);
     return runLogged(ctx, tool, prepared, null);

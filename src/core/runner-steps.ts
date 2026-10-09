@@ -66,7 +66,7 @@ export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep 
   for (const item of list) {
     const args = argsFor(step.args, { ...scope, item }, step.id);
     const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
-    if (needsApproval(prepared.level)) {
+    if (needsApproval(prepared.level) && !exec.ctx.sandbox) {
       if (step.foreach !== undefined) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs an approval for each item; approve one call with an approve step instead`);
       return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: false, startedAt });
     }
@@ -103,6 +103,11 @@ export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowSt
   const args = argsFor(step.args, scope, step.id);
   const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
   if (!needsApproval(prepared.level)) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs no approval; make it a tool step`);
+  if (exec.ctx.sandbox) {
+    const output = await invokeTool(exec.ctx, step.tool, args);
+    await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output });
+    return { kind: "done", output, actions: 1, needs_human: 0 };
+  }
   return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent, startedAt });
 }
 

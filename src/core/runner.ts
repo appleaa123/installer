@@ -8,6 +8,7 @@ import { judgeBackend } from "./model.js";
 import { loadPinnedContract } from "./pin.js";
 import { checkApproval, runApprove, runJudge, runTool, type Exec, type StepOutcome } from "./runner-steps.js";
 import { FINISHED, auditRun, claimRun, fingerprint, loadStep, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
+import { runsInSandbox } from "./sandbox.js";
 import { loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { invokeTool, toolContext } from "./tools.js";
@@ -33,8 +34,8 @@ export interface RunRequest {
   readonly env?: Env;
 }
 
-async function prepare(request: RunRequest, sandbox: boolean): Promise<Exec> {
-  const ctx = { ...(await toolContext(request.home, "runner", DEFAULT_TOOLS, request.now)), sandbox };
+async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
+  const ctx = { ...(await toolContext(request.home, "runner", DEFAULT_TOOLS, request.now)), sandbox: record.sandbox, run: `${record.workflow}/${record.run_id}` };
   const state = (await loadState(request.home)) ?? undefined;
   let backend: Promise<JudgeBackend> | undefined;
   return { home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)) };
@@ -127,7 +128,7 @@ async function execute(exec: Exec, workflow: Workflow, start: RunRecord): Promis
 export async function resumeRun(request: RunRequest, record: RunRecord): Promise<RunRecord> {
   if (FINISHED.includes(record.status)) return record;
   if (record.status === "waiting" && record.waiting_on !== undefined && (await getApproval(request.home, record.waiting_on, request.now())).status === "pending") return record;
-  const exec = await prepare(request, record.sandbox);
+  const exec = await prepare(request, record);
   const running: RunRecord = { ...record, status: "running", pid: process.pid };
   await saveRun(request.home, running);
   return execute(exec, request.workflow, running);
@@ -140,7 +141,7 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
   const at = request.trigger.scheduled_for ?? request.now();
   const record: RunRecord = {
     workflow: request.workflow.id, run_id: runIdFor(request.key, at), key: request.key, trigger: request.trigger, version: request.workflow.version,
-    status: "running", started_at: request.now(), sandbox: request.sandbox === true, pid: process.pid, actions: 0, needs_human: 0,
+    status: "running", started_at: request.now(), sandbox: request.sandbox === true || (await runsInSandbox(request.home, request.workflow.id)), pid: process.pid, actions: 0, needs_human: 0,
   };
   if (!(await claimRun(request.home, record))) {
     // Another process claimed the key first and runs it; this one never starts or resumes that run.
@@ -148,7 +149,7 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
     if (!raced) throw new ActionFailure(`The run for '${request.key}' is busy: another process claimed it a moment ago; it is not started twice`);
     return raced;
   }
-  const exec = await prepare(request, record.sandbox);
+  const exec = await prepare(request, record);
   await auditRun(request.home, request.now(), "run.started", record, { trigger: record.trigger.kind, version: record.version, sandbox: record.sandbox });
   return execute(exec, request.workflow, record);
 }
