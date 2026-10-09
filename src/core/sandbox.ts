@@ -52,7 +52,8 @@ export const sandboxMode = async (home: string): Promise<boolean> => (await load
 export async function setSandboxMode(home: string, on: boolean, by: string, now: string): Promise<SandboxMode> {
   const mode: SandboxMode = { on, at: now, by };
   await writeConfig(home, SANDBOX_FILE, mode);
-  await appendAudit(home, { ts: now, actor: by === "engine" ? "engine" : "human", event: on ? "sandbox.on" : "sandbox.off", ref: SANDBOX_FILE, payload: mode });
+  const actor = by === "engine" || by === "agent" ? by : "human";
+  await appendAudit(home, { ts: now, actor, event: on ? "sandbox.on" : "sandbox.off", ref: SANDBOX_FILE, payload: mode });
   return mode;
 }
 

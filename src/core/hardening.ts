@@ -183,7 +183,7 @@ export async function rollbackWorkflow(home: string, workflow: Workflow, version
   return { status: "rolled_back", workflow: workflow.id, restored: version, version: next.version };
 }
 
-/** `installer harden <workflow> [apply | rollback <n>]`: shows the proposal and its replay; changes need a terminal. */
+/** `installer harden <workflow> [apply | rollback --value <n>]`: shows the proposal and its replay; changes need a terminal. */
 export async function hardenCommand(home: string, id: string | undefined, sub: string | undefined, extra: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   const workflow = await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS);
   if (sub === undefined) {
@@ -195,5 +195,5 @@ export async function hardenCommand(home: string, id: string | undefined, sub: s
   const by = person.as?.trim() || "terminal";
   if (sub === "apply") return applyHardening(home, workflow, by, now());
   if (sub === "rollback" && extra !== undefined && /^[1-9]\d*$/.test(extra)) return rollbackWorkflow(home, workflow, Number(extra), by, now());
-  throw new InputError("harden takes: installer harden <workflow> [apply | rollback <version>]");
+  throw new InputError("harden takes: installer harden <workflow> [apply | rollback --value <version>]");
 }

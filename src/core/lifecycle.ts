@@ -6,7 +6,7 @@ import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
 import { startRun } from "./runner.js";
 import { loadStep } from "./runs.js";
-import { loadWorkflowState, saveWorkflowState, type WorkflowState } from "./sandbox.js";
+import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
@@ -116,6 +116,15 @@ export async function dryrunCommand(home: string, sub: string | undefined, id: s
   const runs = [];
   for (const workflowId of ids) runs.push(await dryRun(home, await loadWorkflow(home, workflowId, DEFAULT_TOOLS), now));
   return { dry_runs: runs };
+}
+/** `installer sandbox [status | on | off | outbox]`: `off` sends real messages again, so only a person runs it, in a terminal. */
+export async function sandboxCommand(home: string, sub: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
+  if (sub === undefined || sub === "status") return { mode: (await loadSandboxMode(home)) ?? { on: false }, workflows: (await describeAll(home)).map(({ workflow, sandbox }) => ({ workflow, sandbox })) };
+  if (sub === "outbox") return { outbox: await listOutbox(home) };
+  if (sub === "on") return { status: "on", mode: await setSandboxMode(home, true, person.interactive ? person.as?.trim() || "terminal" : "agent", now()) };
+  if (sub !== "off") throw new InputError("sandbox takes: status, on, off, outbox");
+  if (!person.interactive) throw new InputError("Leaving sandbox sends real messages again: the person runs 'installer sandbox off' in their own terminal");
+  return { status: "off", mode: await setSandboxMode(home, false, person.as?.trim() || "terminal", now()) };
 }
 
 /** For the phase checks: each workflow and whether its current version was dry-run, and confirmed. */
