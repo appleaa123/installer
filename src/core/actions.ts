@@ -1,5 +1,6 @@
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
+import { mappingCheck, sourceCheck } from "./data-source.js";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
@@ -134,6 +135,10 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     if (await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url))) return { ok: true };
     return { ok: false, hint: typeof args.hint === "string" ? args.hint : "No combo is active yet: activate one in your Skills Wiki dashboard, then run the verify again" };
   },
+  /** §9.4: the agent connected the entity with `installer connect` (D68). */
+  source_present: async (home, args) => sourceCheck(home, stringArg(args, "entity")),
+  /** §9.4: the person confirmed a mapping that `installer map` checked against the sheet (D68). */
+  mapping_present: async (home, args) => mappingCheck(home, stringArg(args, "entity")),
 };
 
 export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);

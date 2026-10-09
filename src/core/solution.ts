@@ -158,6 +158,18 @@ function checkSecretSteps(steps: readonly StepDef[]): void {
     }
   }
 }
+/** source_present and mapping_present name an entity of the solution's own data contract (§9.4). */
+function checkDataSteps(steps: readonly StepDef[], contract: DataContract | undefined): void {
+  for (const step of steps) {
+    const check = step.verify?.check;
+    if (check !== "source_present" && check !== "mapping_present") continue;
+    const entity = step.verify?.args?.entity;
+    if (typeof entity !== "string" || !contract || !Object.hasOwn(contract.entities, entity)) {
+      throw new SolutionError(`Step '${step.step_id}': ${check} needs args.entity, an entity of the solution's data_contract`);
+    }
+  }
+}
+
 function parseDataContract(value: unknown): DataContract | undefined {
   if (value === undefined) return undefined;
   try {
@@ -188,6 +200,7 @@ export function parseSolution(raw: unknown): Solution {
   checkSecretSteps(steps);
   checkBrainOrder(steps);
   const contract = parseDataContract(raw.data_contract);
+  checkDataSteps(steps, contract);
   return { id, version, steps, ...(contract ? { data_contract: contract } : {}) };
 }
 
