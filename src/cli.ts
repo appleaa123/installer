@@ -299,7 +299,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   schedule: async ({ deps }, flags, arg) => scheduleCommand(deps.home, arg, flags.value, deps.now),
   model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now, process.stdin.isTTY === true),
   workflow: async ({ deps }, flags, arg, extra) => workflowCommand(deps.home, arg, extra, flags.value, deps.now),
-  dryrun: async ({ deps }, flags, arg, extra) => dryrunCommand(deps.home, arg, extra, person(flags), deps.now),
+  dryrun: async ({ deps }, flags, arg, extra) => dryrunCommand(deps.home, arg, extra, person(flags), deps.now, flags.value),
   sandbox: async ({ deps }, flags, arg) => sandboxCommand(deps.home, arg, person(flags), deps.now),
   harden: async ({ deps }, flags, arg, extra) => hardenCommand(deps.home, arg, extra, flags.value, person(flags), deps.now),
   autonomy: async ({ state, deps }, flags, arg, extra) => autonomyCommand(deps.home, state.roles, { sub: arg, arg: extra, as: flags.as, reason: flags.reason, interactive: process.stdin.isTTY === true }, deps.now),

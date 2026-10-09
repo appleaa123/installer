@@ -19,11 +19,14 @@ export interface SandboxMode {
   readonly at: string;
   readonly by: string;
 }
+export type DrySample = { readonly inbox_id: number } | { readonly synthetic: Readonly<Record<string, unknown>> };
 /** The last dry run of a workflow (§6.2 DRY RUN, D98): a sandbox run a person read and confirmed. */
 export interface DryRun {
   readonly version: number;
   readonly run_id: string;
   readonly status: string;
+  /** The message an event-triggered workflow's dry run was given: a stored one, or the person's synthetic sample. */
+  readonly sample?: DrySample;
   readonly confirmed_by?: string;
   readonly confirmed_at?: string;
 }

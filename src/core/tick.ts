@@ -135,7 +135,7 @@ async function backOnline(tick: Tick, last: string): Promise<void> {
   tick.result.back_online = true;
 }
 
-function wants(workflow: Workflow, item: InboxItem): boolean {
+export function wants(workflow: Workflow, item: InboxItem): boolean {
   if (workflow.trigger.kind !== "event") return false;
   const route = workflow.trigger.from === "external" ? "event" : "conversation";
   return item.route === route && (workflow.trigger.channel === undefined || workflow.trigger.channel === item.channel);

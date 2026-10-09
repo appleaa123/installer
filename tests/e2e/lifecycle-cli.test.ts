@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { writePinnedSolution } from "../../src/core/pin.js";
 import { runCli } from "../helpers/cli.js";
 import { runnerHome } from "../helpers/runner-home.js";
+import { writeWorkflow } from "../helpers/workflow-home.js";
 
 /** The runner home's solution (fixture-runner@1.0.0), pinned, with one suggested workflow. */
 const SOLUTION = {
@@ -26,6 +27,14 @@ describe("installer workflow, dryrun, sandbox, harden, autonomy, alerts and lear
     expect(dry.json).toMatchObject({ dry_runs: [{ workflow: "note", status: "completed", would_have: [{ action: { tool: "memo.add" }, level: "L1" }] }] });
     expect(runCli(["dryrun", "confirm", "note"], { home: dir }).json).toEqual({ error: expect.stringContaining("in their own terminal"), code: 2 });
     expect(runCli(["workflow", "list"], { home: dir }).json).toMatchObject({ workflows: [{ workflow: "note", sandbox: true, dry_run: { version: 1, status: "completed" } }] });
+  });
+
+  it("dry-runs a workflow that starts on a message with a sample, and refuses without one (exit 2)", async () => {
+    const dir = await home();
+    await writeWorkflow(dir, { workflow: "greet", version: 1, trigger: { event: "message.received", from: "external" }, steps: [{ id: "add", tool: "memo.add", args: { text: "Got: ${event.text}" } }] });
+    expect(runCli(["dryrun", "greet"], { home: dir })).toMatchObject({ code: 2, json: { error: expect.stringContaining("--value '<sample event json>'") } });
+    const dry = runCli(["dryrun", "greet", "--value", '{"text":"hi"}'], { home: dir });
+    expect(dry).toMatchObject({ code: 0, json: { dry_runs: [{ status: "completed", sample: { synthetic: { text: "hi" } }, would_have: [{ action: { args: { text: "Got: hi" } } }] }] } });
   });
 
   it("lets the agent turn sandbox on, never off", async () => {

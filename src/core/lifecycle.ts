@@ -5,9 +5,10 @@ import { InputError } from "./inputs.js";
 import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
 import { startRun } from "./runner.js";
-import { loadStep } from "./runs.js";
-import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type WorkflowState } from "./sandbox.js";
-import { HEARTBEAT_FILE } from "./tick.js";
+import { listInbox } from "./inbox.js";
+import { loadStep, type RunTrigger } from "./runs.js";
+import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
+import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
 
@@ -80,10 +81,29 @@ export async function workflowCommand(home: string, sub: string | undefined, id:
   throw new InputError("workflow takes: list, suggestions, add <id> [--value <json>]");
 }
 
+/**
+ * The message an event-triggered workflow's dry run is given (D88): the latest stored one its trigger matches, else
+ * the person's sample from `--value`, bound with `synthetic: true` (and untrusted, like every message).
+ */
+async function sampleFor(home: string, workflow: Workflow, value: string | undefined): Promise<{ trigger: RunTrigger; sample?: DrySample }> {
+  if (workflow.trigger.kind !== "event") return { trigger: { kind: "manual" } };
+  const stored = (await listInbox(home)).find((item) => wants(workflow, item));
+  if (stored) return { trigger: { kind: "manual", inbox_id: stored.id }, sample: { inbox_id: stored.id } };
+  let sample: unknown;
+  try {
+    sample = value === undefined ? undefined : JSON.parse(value);
+  } catch {
+    sample = undefined;
+  }
+  if (!isRecord(sample)) throw new InputError(`Workflow '${workflow.id}' starts on a message and no stored message matches its trigger yet: give it a sample with 'installer dryrun ${workflow.id} --value '<sample event json>'', for example '{"channel":"telegram","from":"sample","text":"<a message it should handle>"}'`);
+  return { trigger: { kind: "manual", sample_event: { ...sample, untrusted: true, synthetic: true } }, sample: { synthetic: sample } };
+}
+
 /** One sandbox run of the current version, and what it would have done. */
-async function dryRun(home: string, workflow: Workflow, now: () => string): Promise<Record<string, unknown>> {
-  const record = await startRun({ home, workflow, key: `${workflow.id}:dryrun:${workflow.version}:${now()}`, trigger: { kind: "manual" }, now, sandbox: true });
-  const state: WorkflowState = { ...((await loadWorkflowState(home, workflow.id)) ?? { workflow: workflow.id, sandbox: true }), dry_run: { version: workflow.version, run_id: record.run_id, status: record.status } };
+async function dryRun(home: string, workflow: Workflow, now: () => string, value: string | undefined): Promise<Record<string, unknown>> {
+  const { trigger, sample } = await sampleFor(home, workflow, value);
+  const record = await startRun({ home, workflow, key: `${workflow.id}:dryrun:${workflow.version}:${now()}`, trigger, now, sandbox: true });
+  const state: WorkflowState = { ...((await loadWorkflowState(home, workflow.id)) ?? { workflow: workflow.id, sandbox: true }), dry_run: { version: workflow.version, run_id: record.run_id, status: record.status, ...(sample ? { sample } : {}) } };
   await saveWorkflowState(home, state);
   const steps = [];
   for (const step of workflow.steps) {
@@ -91,7 +111,7 @@ async function dryRun(home: string, workflow: Workflow, now: () => string): Prom
     steps.push({ step: step.id, status: log?.status ?? "not_run", output: log?.output ?? null, ...(log?.error ? { error: log.error } : {}), ...(log?.turns ? { calls: log.turns.length } : {}) });
   }
   const would = await listOutbox(home, `${workflow.id}/${record.run_id}`);
-  return { workflow: workflow.id, version: workflow.version, run_id: record.run_id, status: record.status, ...(record.reason ? { reason: record.reason } : {}), steps, would_have: would, note: "Nothing was sent or changed: these are recordings (sandbox). Show them to the person." };
+  return { workflow: workflow.id, version: workflow.version, run_id: record.run_id, status: record.status, ...(record.reason ? { reason: record.reason } : {}), ...(sample ? { sample } : {}), steps, would_have: would, note: "Nothing was sent or changed: these are recordings (sandbox). Show them to the person." };
 }
 
 async function confirm(home: string, id: string, by: string, now: string): Promise<Record<string, unknown>> {
@@ -105,8 +125,11 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };
 }
 
-/** `installer dryrun [<id>] | confirm <id>`: confirming is the person's own reading of the output, in their terminal. */
-export async function dryrunCommand(home: string, sub: string | undefined, id: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
+/**
+ * `installer dryrun [<id> [--value <sample event json>]] | confirm <id>`: confirming is the person's own reading of the
+ * output, in their terminal.
+ */
+export async function dryrunCommand(home: string, sub: string | undefined, id: string | undefined, person: { interactive: boolean; as?: string }, now: () => string, value?: string): Promise<Record<string, unknown>> {
   if (sub === "confirm") {
     if (!person.interactive) throw new InputError("A dry run is confirmed by the person who read it, in their own terminal: 'installer dryrun confirm <workflow>'");
     return confirm(home, requireWorkflowId(id), person.as?.trim() || "terminal", now());
@@ -114,7 +137,7 @@ export async function dryrunCommand(home: string, sub: string | undefined, id: s
   const ids = sub === undefined ? await workflowIds(home) : [requireWorkflowId(sub)];
   if (ids.length === 0) throw new InputError("No workflows yet: add one with 'installer workflow add <id>'");
   const runs = [];
-  for (const workflowId of ids) runs.push(await dryRun(home, await loadWorkflow(home, workflowId, DEFAULT_TOOLS), now));
+  for (const workflowId of ids) runs.push(await dryRun(home, await loadWorkflow(home, workflowId, DEFAULT_TOOLS), now, value));
   return { dry_runs: runs };
 }
 /** `installer sandbox [status | on | off | outbox]`: `off` sends real messages again, so only a person runs it, in a terminal. */

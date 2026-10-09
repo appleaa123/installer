@@ -46,6 +46,7 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
 /** The data a run starts from: `run`, and `event` (the inbox message, untrusted) for an event trigger. */
 async function scopeOf(home: string, record: RunRecord): Promise<Record<string, unknown>> {
   const run = { id: record.run_id, key: record.key, trigger: record.trigger.kind, scheduled_for: record.trigger.scheduled_for ?? null };
+  if (record.trigger.sample_event !== undefined) return { run, event: record.trigger.sample_event };
   if (record.trigger.inbox_id === undefined) return { run };
   const event = (await listInbox(home)).find((item) => item.id === record.trigger.inbox_id);
   return { run, event: event ?? null };

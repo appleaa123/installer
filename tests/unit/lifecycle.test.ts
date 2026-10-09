@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAction, runCheck } from "../../src/core/actions.js";
 import { writeConfig } from "../../src/core/data-source.js";
+import { normalizeInbound } from "../../src/core/envelope.js";
 import { ActionFailure } from "../../src/core/failure.js";
+import { storeInbound, type Route } from "../../src/core/inbox.js";
+import { InputError } from "../../src/core/inputs.js";
 import { dryrunCommand, workflowCommand } from "../../src/core/lifecycle.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
 import { loadWorkflowState, sandboxMode } from "../../src/core/sandbox.js";
@@ -76,6 +79,42 @@ describe("DRY RUN: a sandbox run the person reads and confirms (§6.2, D98)", ()
     await dryrunCommand(at, "confirm", "note", PERSON, () => AT);
     await writeWorkflow(at, { ...NOTE, version: 2 });
     expect(await check(at, "dry_runs_confirmed")).toMatchObject({ ok: false });
+  });
+});
+
+describe("DRY RUN of a workflow that starts on a message (D88, D98)", () => {
+  const GREET = { workflow: "greet", version: 1, trigger: { event: "message.received", from: "external" }, steps: [{ id: "add", tool: "memo.add", args: { text: "Got: ${event.text}" } }] };
+  const message = (at: string, text: string, route: Route) => storeInbound(at, normalizeInbound({ channel: "telegram", from: "7007", thread: "7007", text, message_id: text }, AT), route);
+  const noted = (shown: Record<string, unknown>) => (shown.dry_runs as { would_have: { action: { args: { text: string } } }[] }[])[0]?.would_have.map((entry) => entry.action.args.text);
+
+  it("binds the latest stored message that matches the trigger as the event, and says so", async () => {
+    const at = await home();
+    await writeWorkflow(at, GREET);
+    await message(at, "first", "event");
+    const latest = await message(at, "latest", "event");
+    await message(at, "from a member", "conversation");
+    const shown = await dryrunCommand(at, "greet", undefined, PERSON, () => AT);
+    expect(shown.dry_runs).toEqual([expect.objectContaining({ status: "completed", sample: { inbox_id: latest.id } })]);
+    expect(noted(shown)).toEqual(["Got: latest"]);
+    expect((await loadWorkflowState(at, "greet"))?.dry_run).toMatchObject({ status: "completed", sample: { inbox_id: latest.id } });
+  });
+
+  it("binds a synthetic sample from --value when no message matches, labelled as one", async () => {
+    const at = await home();
+    await writeWorkflow(at, GREET);
+    const shown = await dryrunCommand(at, "greet", undefined, PERSON, () => AT, JSON.stringify({ text: "a sample" }));
+    expect(shown.dry_runs).toEqual([expect.objectContaining({ status: "completed", sample: { synthetic: { text: "a sample" } } })]);
+    expect(noted(shown)).toEqual(["Got: a sample"]);
+    expect((await loadWorkflowState(at, "greet"))?.dry_run).toMatchObject({ sample: { synthetic: { text: "a sample" } } });
+  });
+
+  it("refuses when there is neither a stored message nor a sample", async () => {
+    const at = await home();
+    await writeWorkflow(at, GREET);
+    await expect(dryrunCommand(at, "greet", undefined, PERSON, () => AT)).rejects.toThrow(InputError);
+    await expect(dryrunCommand(at, "greet", undefined, PERSON, () => AT)).rejects.toThrow("--value '<sample event json>'");
+    await expect(dryrunCommand(at, "greet", undefined, PERSON, () => AT, "[1]")).rejects.toThrow("--value '<sample event json>'");
+    expect(await loadWorkflowState(at, "greet")).toBeNull();
   });
 });
 

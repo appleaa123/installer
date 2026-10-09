@@ -27,6 +27,8 @@ export interface RunTrigger {
   readonly kind: "cron" | "event" | "manual" | "report";
   readonly scheduled_for?: string;
   readonly inbox_id?: number;
+  /** A dry run's synthetic sample message (D98), bound as `event` when no stored message matches the trigger. */
+  readonly sample_event?: Readonly<Record<string, unknown>>;
 }
 
 export interface RunRecord {
