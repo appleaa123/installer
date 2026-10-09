@@ -89,6 +89,9 @@ function urgentAnswers(schema: Readonly<Record<string, unknown>>, outputs: reado
   return outputs.filter((output) => typeof output === "object" && output !== null && (output as Record<string, unknown>).urgent === true);
 }
 
+/** The field names the step's schema declares: the only parts of an answer an alert shows (labelled, D95). */
+const declaredFields = ({ properties: declared }: Readonly<Record<string, unknown>>): string[] => (typeof declared === "object" && declared !== null ? Object.keys(declared) : []);
+
 export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "judge" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.judge;
   const backend = await exec.backend();
@@ -108,7 +111,7 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
   const output = step.foreach === undefined ? (outputs[0] ?? null) : outputs;
   await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(inputs), output, context_calls: calls, ...(needs.length > 0 ? { needs_human: needs } : {}) });
   const urgent = urgentAnswers(spec.schema, outputs);
-  if (urgent.length > 0) await raiseAlert(exec.ctx, exec.state?.roles, { workflow: record.workflow, run_id: record.run_id, step: step.id }, JSON.stringify(urgent));
+  if (urgent.length > 0) await raiseAlert(exec.ctx, exec.state?.roles, { workflow: record.workflow, run_id: record.run_id, step: step.id }, { fields: declaredFields(spec.schema), answers: urgent });
   return { kind: "done", output, actions: 0, needs_human: needs.length, ...(urgent.length > 0 ? { urgent: true } : {}) };
 }
 

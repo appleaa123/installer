@@ -33,6 +33,7 @@ export type Alert = {
   readonly workflow: string;
   readonly run_id: string;
   readonly step: string;
+  /** What the model said: only the schema's declared fields, each line quoted with "> " (never the engine's words). */
   readonly text: string;
   readonly created_at: string;
   readonly sends: number;
@@ -49,7 +50,8 @@ const isDomainError = (error: unknown): boolean => error instanceof InputError |
 async function notifyDecisionMaker(ctx: ToolContext, roles: Roles | undefined, text: string): Promise<string | null> {
   if (!roles) return "no decision maker is set (MODE phase)";
   try {
-    await invokeTool(ctx, "channel.notify", { member: roles.decision_maker, text });
+    // The engine's own words carry the installer's mark, which only the gateway's voice may use (never an agent's call).
+    await invokeTool({ ...ctx, via: "gateway" }, "channel.notify", { member: roles.decision_maker, text });
     return null;
   } catch (error) {
     if (!isDomainError(error)) throw error;
@@ -57,8 +59,21 @@ async function notifyDecisionMaker(ctx: ToolContext, roles: Roles | undefined, t
   }
 }
 
+type AlertRef = { readonly workflow: string; readonly run_id: string; readonly step: string };
+const where = (ref: AlertRef): string => `Workflow '${ref.workflow}' (step '${ref.step}', run ${ref.run_id}) found something urgent.`;
+const saying = (said: string): string => `\nThe model says:\n${said}`;
+
+/**
+ * The model's answers, labelled as its words: only the fields the recipe's schema declares, one per line, each value
+ * as JSON (a string stays quoted and on its line) after "> ", so nothing it wrote reads as the engine's instructions.
+ */
+function modelSays(fields: readonly string[], answers: readonly unknown[]): string {
+  const lines = answers.flatMap((answer) => (isRecord(answer) ? fields.filter((field) => Object.hasOwn(answer, field)).map((field) => `> ${field}: ${JSON.stringify(answer[field])}`) : []));
+  return lines.join("\n").slice(0, 600);
+}
+
 async function sendAlert(ctx: ToolContext, roles: Roles | undefined, alert: Alert): Promise<Alert> {
-  const error = await notifyDecisionMaker(ctx, roles, `URGENT (alert ${alert.id}): ${alert.text} Reply K${alert.id} to acknowledge, or run 'installer alerts ack ${alert.id}'.`);
+  const error = await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (alert ${alert.id}): ${where(alert)} Reply K${alert.id} to acknowledge, or run 'installer alerts ack ${alert.id}'.${saying(alert.text)}`);
   const sent: Alert = { ...alert, sends: alert.sends + 1, last_sent: ctx.now() };
   await replaceRecord(ctx.home, ALERTS_DIR, sent);
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "engine", event: "alert.sent", ref: `alert:${alert.id}`, payload: { run: `${alert.workflow}/${alert.run_id}`, sends: sent.sends, delivered: error === null, ...(error ? { error } : {}) } });
@@ -66,10 +81,10 @@ async function sendAlert(ctx: ToolContext, roles: Roles | undefined, alert: Aler
 }
 
 /** An urgent judgement: the decision maker hears of it now. In a sandbox run the message is recorded and nothing repeats. */
-export async function raiseAlert(ctx: ToolContext, roles: Roles | undefined, ref: { workflow: string; run_id: string; step: string }, detail: string): Promise<void> {
-  const text = `Workflow '${ref.workflow}' (step '${ref.step}', run ${ref.run_id}) found something urgent: ${detail.slice(0, 600)}`;
+export async function raiseAlert(ctx: ToolContext, roles: Roles | undefined, ref: AlertRef, said: { fields: readonly string[]; answers: readonly unknown[] }): Promise<void> {
+  const text = modelSays(said.fields, said.answers);
   if (ctx.sandbox) {
-    await notifyDecisionMaker(ctx, roles, `URGENT (sandbox): ${text}`);
+    await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (sandbox): ${where(ref)}${saying(text)}`);
     return;
   }
   const alert = await createRecord<Alert>(ctx.home, ALERTS_DIR, (id) => ({ id, ...ref, text, created_at: ctx.now(), sends: 0, last_sent: ctx.now() }));
