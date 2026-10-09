@@ -78,7 +78,7 @@ async function makeCall(run: AgentRun, answer: Answer, number: number): Promise<
     const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, answer.tool), args);
     if (!needsApproval(prepared.level) || exec.ctx.sandbox) return { tool: answer.tool, args: prepared.args, level: prepared.level, result: await invokeTool(exec.ctx, answer.tool, args) };
     const why = `Workflow '${record.workflow}' (agentic step '${run.step}', call ${number}) wants to run ${answer.tool}, which is ${prepared.level}`;
-    const item = await requestApproval(exec.home, { prepared, why, urgent: false, via: "runner", run: { workflow: record.workflow, run_id: record.run_id, step: run.step } }, exec.ctx.now());
+    const item = await requestApproval(exec.home, { prepared, why, urgent: record.urgent === true, via: "runner", run: { workflow: record.workflow, run_id: record.run_id, step: run.step } }, exec.ctx.now());
     return { tool: answer.tool, args: prepared.args, level: prepared.level, approval: item.id };
   } catch (error) {
     if (!isDomainError(error)) throw error;

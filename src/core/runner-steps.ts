@@ -1,6 +1,7 @@
 import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";
+import { raiseAlert } from "./alerts.js";
 import { approveByGrant, proposeIfEarned } from "./autonomy.js";
 import { askJudge, protectedFields, runContextTools, skillText, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
 import { needsApproval } from "./levels.js";
@@ -26,7 +27,7 @@ export interface Exec {
 }
 
 export type StepOutcome =
-  | { readonly kind: "done"; readonly output: unknown; readonly actions: number; readonly needs_human: number }
+  | { readonly kind: "done"; readonly output: unknown; readonly actions: number; readonly needs_human: number; readonly urgent?: boolean }
   | { readonly kind: "wait"; readonly approval: number }
   | { readonly kind: "stop"; readonly status: "partial" | "failed"; readonly reason: string; readonly drift?: boolean };
 
@@ -58,7 +59,7 @@ async function escalate(exec: Exec, record: RunRecord, step: string, prepared: P
   const item = await requestApproval(exec.home, { prepared, why: request.why, urgent: request.urgent, via: "runner", run }, now(exec));
   const log: StepLog = { step, status: "waiting", started_at: request.startedAt, finished_at: now(exec), duration_ms: 0, input_fingerprint: fingerprint(prepared.args), approval: item.id };
   await saveStep(exec.home, record, log);
-  if (await approveByGrant(exec.home, item, prepared, false, now(exec))) return checkApproval(exec, record, log);
+  if (await approveByGrant(exec.home, item, prepared, request.urgent, now(exec))) return checkApproval(exec, record, log);
   return { kind: "wait", approval: item.id };
 }
 
@@ -71,7 +72,7 @@ export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep 
     const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
     if (needsApproval(prepared.level) && !exec.ctx.sandbox) {
       if (step.foreach !== undefined) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs an approval for each item; approve one call with an approve step instead`);
-      return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: false, startedAt, policy: true });
+      return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: record.urgent === true, startedAt, policy: true });
     }
     outputs.push(await invokeTool(exec.ctx, step.tool, args));
     actions += prepared.level === "L0" ? 0 : 1;
@@ -79,6 +80,13 @@ export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep 
   const output = step.foreach === undefined ? outputs[0] : outputs;
   await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(list), output });
   return { kind: "done", output, actions, needs_human: 0 };
+}
+
+/** §11.7: answers that say `urgent: true`, when the step's schema declares that field (the recipe decides, D26). */
+function urgentAnswers(schema: Readonly<Record<string, unknown>>, outputs: readonly unknown[]): unknown[] {
+  const { properties: declared } = schema;
+  if (typeof declared !== "object" || declared === null || !Object.hasOwn(declared, "urgent")) return [];
+  return outputs.filter((output) => typeof output === "object" && output !== null && (output as Record<string, unknown>).urgent === true);
 }
 
 export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "judge" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
@@ -99,7 +107,9 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
   }
   const output = step.foreach === undefined ? (outputs[0] ?? null) : outputs;
   await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(inputs), output, context_calls: calls, ...(needs.length > 0 ? { needs_human: needs } : {}) });
-  return { kind: "done", output, actions: 0, needs_human: needs.length };
+  const urgent = urgentAnswers(spec.schema, outputs);
+  if (urgent.length > 0) await raiseAlert(exec.ctx, exec.state?.roles, { workflow: record.workflow, run_id: record.run_id, step: step.id }, JSON.stringify(urgent));
+  return { kind: "done", output, actions: 0, needs_human: needs.length, ...(urgent.length > 0 ? { urgent: true } : {}) };
 }
 
 export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "approve" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
@@ -111,7 +121,7 @@ export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowSt
     await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output });
     return { kind: "done", output, actions: 1, needs_human: 0 };
   }
-  return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent, startedAt, policy: false });
+  return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent || record.urgent === true, startedAt, policy: false });
 }
 
 /** A waiting step: approved → the same call with the token; rejected → the run stops; expired → it fails. */

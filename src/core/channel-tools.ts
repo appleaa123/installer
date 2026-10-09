@@ -1,4 +1,4 @@
-import { DEFAULT_POLICY, inQuietHours, isOptedOut, type ChannelPolicy } from "./channel-policy.js";
+import { DEFAULT_POLICY, inQuietHours, isOptedOut, rateLimited, recordSent, type ChannelPolicy } from "./channel-policy.js";
 import { describeChannel, requireEmailAddress } from "./channel-commands.js";
 import { CHANNEL_IDS, listChannels, requireChannelId, type ChannelId } from "./channels.js";
 import { hasWrittenFirst, listInbox } from "./inbox.js";
@@ -62,9 +62,9 @@ async function sendExpected(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs>
   return {};
 }
 
-async function sendReady(ctx: ToolContext): Promise<string | null> {
+async function sendReady(ctx: ToolContext, args: ToolArgs): Promise<string | null> {
   const policy = await policyOf(ctx.home);
-  if (!inQuietHours(policy, ctx.now()) || !policy.quiet_hours) return null;
+  if (!inQuietHours(policy, ctx.now()) || !policy.quiet_hours) return rateLimited(ctx.home, policy, { channel: args.channel as string, address: args.to as string }, ctx.now());
   const { start, end, tz } = policy.quiet_hours;
   return `It is quiet hours (${start} to ${end}, ${tz}): call again after ${end} with the same arguments and token; the approval stays valid until it expires`;
 }
@@ -138,7 +138,9 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
     parse: parseSend, expected: sendExpected, ready: sendReady, outbound: true,
     run: async (ctx, args) => {
       const message = { to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}) };
-      return { channel: args.channel, to: args.to, ...(await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox, ctx.run)) };
+      const delivery = await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox, ctx.run);
+      if (delivery.status === "sent") await recordSent(ctx.home, { channel: args.channel as string, address: args.to as string }, ctx.now());
+      return { channel: args.channel, to: args.to, ...delivery };
     },
   },
 ];

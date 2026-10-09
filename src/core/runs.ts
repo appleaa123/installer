@@ -49,6 +49,8 @@ export interface RunRecord {
   readonly reason?: string;
   /** Drift (D18): the typed step that failed, after which this run fell back to the workflow's agent. */
   readonly fallback_from?: { readonly step: string; readonly error: string };
+  /** A judge flagged something urgent (§11.7): approvals go first and are reminded often, and no grant approves them. */
+  readonly urgent?: boolean;
 }
 
 export const STEP_STATUSES = ["done", "waiting", "rejected", "failed"] as const;

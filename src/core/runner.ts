@@ -139,7 +139,7 @@ async function execute(exec: Exec, workflow: Workflow, start: RunRecord): Promis
     if (outcome.kind === "stop" && outcome.drift && workflow.fallback && !record.fallback_from) return execute(exec, workflow, await fallBack(exec, record, step.id, outcome.reason));
     if (outcome.kind === "stop") return finish(exec, record, outcome.status, outcome.reason);
     scope[step.id] = outcome.output;
-    record = { ...record, actions: record.actions + outcome.actions, needs_human: record.needs_human + outcome.needs_human };
+    record = { ...record, actions: record.actions + outcome.actions, needs_human: record.needs_human + outcome.needs_human, ...(outcome.urgent ? { urgent: true } : {}) };
     await saveRun(exec.home, record);
   }
   return finish(exec, record, record.needs_human > 0 ? "partial" : "completed");
