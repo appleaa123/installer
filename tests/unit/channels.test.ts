@@ -145,6 +145,46 @@ describe("the channel connectors (§12.2)", () => {
     expect(await channel.receive({ uidvalidity: 3, last_uid: 0 }, 0, new AbortController().signal)).toEqual({ messages: [], cursor: { uidvalidity: 7, last_uid: 101 } });
   });
 
+  it("email: reads a message over 1 MB, since the line limit does not apply to a message's bytes", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
+    await channelCommand(home, "email", value, now, env);
+    const channel = await openChannel(home, "email", env);
+    imap.deliver(MAIL("ada@example.com", `Long${" x".repeat(600_000)}`, "big"));
+    const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
+    expect(read.messages.map((message) => message.message_id)).toEqual(["<big@example.com>"]);
+    expect(read.cursor).toEqual({ uidvalidity: 7, last_uid: 102 });
+  });
+
+  it("email: skips a message over the size limit with a note, never its text, and reads the mail after it", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
+    await channelCommand(home, "email", value, now, env);
+    const channel = await openChannel(home, "email", env);
+    imap.deliver(MAIL("ada@example.com", `SECRET${"y".repeat(10_000_000)}`, "huge"));
+    imap.deliver(MAIL("grace@example.com", "after", "g1"));
+    const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
+    expect(read.messages).toEqual([
+      { channel: "email", from: "ada@example.com", thread: "<huge@example.com>", message_id: "<huge@example.com>", text: expect.stringMatching(/^\(Not read: this email is \d+ bytes, over the limit of 10000000 bytes; open it in the mailbox\)$/) },
+      { channel: "email", from: "grace@example.com", thread: "<g1@example.com>", text: "after", message_id: "<g1@example.com>" },
+    ]);
+    expect(read.cursor).toEqual({ uidvalidity: 7, last_uid: 103 });
+    expect(imap.commands).not.toContain("UID FETCH 102 (BODY.PEEK[])");
+  });
+
+  it("email: skips a message that is gone before it is fetched", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
+    await channelCommand(home, "email", value, now, env);
+    const channel = await openChannel(home, "email", env);
+    imap.deliver(MAIL("ada@example.com", "gone", "a1"));
+    imap.deliver(MAIL("grace@example.com", "after", "g1"));
+    imap.vanish(102);
+    const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
+    expect(read.messages.map((message) => message.text)).toEqual(["after"]);
+    expect(read.cursor).toEqual({ uidvalidity: 7, last_uid: 103 });
+  });
+
   it("refuses to open a channel that is not set up", async () => {
     const { home, env } = await setup({});
     await expect(openChannel(home, "email", env)).rejects.toThrow("run 'installer channel email' first");

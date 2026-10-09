@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ChannelConnector, Cursor, EmailConfig } from "./channels.js";
 import type { RawInbound } from "./envelope.js";
-import { withImap, type ImapSession, type MailboxStatus } from "./imap.js";
+import { MAX_MESSAGE_BYTES, withImap, type ImapSession, type MailboxStatus } from "./imap.js";
 import { parseMail } from "./mime.js";
 import { smtpSend } from "./smtp.js";
 
@@ -18,14 +18,26 @@ type Env = Readonly<Record<string, string | undefined>>;
 /** Where reading starts for a mailbox seen for the first time, or renumbered: after its newest message. */
 export const startCursor = (status: MailboxStatus): Cursor => ({ uidvalidity: status.uidvalidity, last_uid: Math.max(status.uidnext - 1, 0) });
 
+/**
+ * One message, or null when it is gone, has no sender or is the mailbox's own. A message over MAX_MESSAGE_BYTES is
+ * never fetched whole: only its headers are read, and its text is a note, so one large email never stops the cursor.
+ */
+async function readOne(session: ImapSession, config: EmailConfig, uid: number): Promise<RawInbound | null> {
+  const size = await session.size(uid);
+  if (size === null) return null;
+  const tooLarge = size > MAX_MESSAGE_BYTES;
+  const mail = parseMail(tooLarge ? await session.headers(uid) : await session.fetch(uid));
+  if (mail.from === "" || mail.from === config.address.toLowerCase()) return null;
+  const text = tooLarge ? `(Not read: this email is ${size} bytes, over the limit of ${MAX_MESSAGE_BYTES} bytes; open it in the mailbox)` : mail.text || mail.subject;
+  return { channel: "email", from: mail.from, thread: mail.in_reply_to || mail.message_id || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}` };
+}
+
 async function newMessages(session: ImapSession, config: EmailConfig, last: number): Promise<{ messages: RawInbound[]; last: number }> {
   const uids = (await session.newerThan(last)).slice(0, MAX_FETCH);
   const messages: RawInbound[] = [];
   for (const uid of uids) {
-    const mail = parseMail(await session.fetch(uid));
-    if (mail.from === "" || mail.from === config.address.toLowerCase()) continue;
-    const text = mail.text || mail.subject;
-    messages.push({ channel: "email", from: mail.from, thread: mail.in_reply_to || mail.message_id || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}` });
+    const message = await readOne(session, config, uid);
+    if (message) messages.push(message);
   }
   return { messages, last: uids.at(-1) ?? last };
 }

@@ -59,10 +59,11 @@ function lineBuffer(endpoint: Endpoint) {
   let buffer = Buffer.alloc(0);
   let broken: Error | null = null;
   let wake: () => void = () => undefined;
-  const until = async (ready: () => boolean): Promise<void> => {
+  /** `lineLimit`: a line may not grow past it; a byte count the caller asked for is bounded by that count instead. */
+  const until = async (ready: () => boolean, lineLimit = Infinity): Promise<void> => {
     while (!ready()) {
       if (broken) throw broken;
-      if (buffer.length > MAX_LINE_BYTES) throw new ActionFailure(`The mail server ${endpoint.host} sent an answer that is too long`);
+      if (buffer.length > lineLimit) throw new ActionFailure(`The mail server ${endpoint.host} sent an answer that is too long`);
       await new Promise<void>((tick) => {
         wake = tick;
       });
@@ -83,7 +84,7 @@ function lineBuffer(endpoint: Endpoint) {
       wake();
     },
     readLine: async (): Promise<string> => {
-      await until(() => buffer.includes("\r\n"));
+      await until(() => buffer.includes("\r\n"), MAX_LINE_BYTES);
       return take(buffer.indexOf("\r\n"), 2).toString("utf8");
     },
     readBytes: async (count: number): Promise<Buffer> => {

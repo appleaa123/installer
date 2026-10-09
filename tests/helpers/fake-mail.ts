@@ -152,6 +152,8 @@ export interface FakeImap extends FakeServer {
   readonly logins: { user: string; password: string; secure: boolean }[];
   /** Adds a message to INBOX; UIDs start at 101. */
   readonly deliver: (raw: string) => void;
+  /** The message is expunged between a SEARCH and a FETCH: still listed, never returned. */
+  readonly vanish: (uid: number) => void;
 }
 
 const QUOTED = /"((?:[^"\\]|\\.)*)"/g;
@@ -160,6 +162,7 @@ const unquote = (text: string): string[] => [...text.matchAll(QUOTED)].map((matc
 /** IMAP4rev1, read-only: STARTTLS, LOGIN, EXAMINE, UID SEARCH, UID FETCH (BODY.PEEK[]), LOGOUT. UIDVALIDITY 7. */
 export async function startFakeImap(security: Security, messages: readonly string[] = []): Promise<FakeImap> {
   const inbox = [...messages];
+  const gone = new Set<number>();
   const commands: string[] = [];
   const logins: FakeImap["logins"] = [];
   const uidOf = (index: number): number => 101 + index;
@@ -186,7 +189,7 @@ export async function startFakeImap(security: Security, messages: readonly strin
           [`* ${inbox.length} EXISTS`, "* OK [UIDVALIDITY 7] UIDs valid", `* OK [UIDNEXT ${uidOf(inbox.length)}] next`].forEach((reply) => session.send(reply));
           return done("[READ-ONLY] EXAMINE completed");
         case "UID":
-          return uidCommand(session, tag, arg, inbox, uidOf);
+          return uidCommand(session, tag, arg, inbox.map((raw, index) => (gone.has(uidOf(index)) ? undefined : raw)), uidOf);
         case "LOGOUT":
           session.send("* BYE logging out");
           done();
@@ -196,11 +199,11 @@ export async function startFakeImap(security: Security, messages: readonly strin
       }
     };
   });
-  return { ...server, commands, logins, deliver: (raw) => void inbox.push(raw) };
+  return { ...server, commands, logins, deliver: (raw) => void inbox.push(raw), vanish: (uid) => void gone.add(uid) };
 }
 
 /** `UID SEARCH UID n:*` (like real servers, it always names the last message) and `UID FETCH n (BODY.PEEK[])`. */
-function uidCommand(session: LineSession, tag: string, arg: string, inbox: readonly string[], uidOf: (index: number) => number): void {
+function uidCommand(session: LineSession, tag: string, arg: string, inbox: readonly (string | undefined)[], uidOf: (index: number) => number): void {
   const search = /^SEARCH UID (\d+):\*$/i.exec(arg);
   if (search) {
     const from = Number(search[1]);
@@ -208,10 +211,23 @@ function uidCommand(session: LineSession, tag: string, arg: string, inbox: reado
     session.send(`* SEARCH${uids.map((uid) => ` ${uid}`).join("")}`);
     return session.send(`${tag} OK SEARCH completed`);
   }
-  const fetch = /^FETCH (\d+) \(BODY\.PEEK\[\]\)$/i.exec(arg);
+  const fetch = /^FETCH (\d+) \((BODY\.PEEK\[\]|RFC822\.SIZE|BODY\.PEEK\[HEADER\.FIELDS \(([^)]*)\)\])\)$/i.exec(arg);
   const index = fetch ? Number(fetch[1]) - 101 : -1;
   const raw = inbox[index];
-  if (raw === undefined) return session.send(`${tag} OK FETCH completed`);
-  session.send(`* ${index + 1} FETCH (UID ${uidOf(index)} BODY[] {${Buffer.byteLength(raw)}}\r\n${raw})`);
+  if (raw === undefined || !fetch) return session.send(`${tag} OK FETCH completed`);
+  const item = fetch[2]?.toUpperCase() ?? "";
+  if (item === "RFC822.SIZE") session.send(`* ${index + 1} FETCH (UID ${uidOf(index)} RFC822.SIZE ${Buffer.byteLength(raw)})`);
+  else if (item === "BODY.PEEK[]") session.send(`* ${index + 1} FETCH (UID ${uidOf(index)} BODY[] {${Buffer.byteLength(raw)}}\r\n${raw})`);
+  else {
+    const part = headerFields(raw, (fetch[3] ?? "").split(" "));
+    session.send(`* ${index + 1} FETCH (UID ${uidOf(index)} BODY[HEADER.FIELDS (${fetch[3]})] {${Buffer.byteLength(part)}}\r\n${part})`);
+  }
   return session.send(`${tag} OK FETCH completed`);
+}
+
+/** The named header fields of a message, as `BODY[HEADER.FIELDS (…)]` returns them (ending with a blank line). */
+function headerFields(raw: string, names: readonly string[]): string {
+  const wanted = names.map((name) => name.toLowerCase());
+  const head = raw.slice(0, raw.indexOf("\r\n\r\n"));
+  return `${head.split("\r\n").filter((line) => wanted.includes(line.slice(0, line.indexOf(":")).toLowerCase())).join("\r\n")}\r\n\r\n`;
 }
