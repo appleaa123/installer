@@ -1,11 +1,10 @@
 import { join } from "node:path";
-import { AuditCorruptError, appendAudit } from "./audit.js";
+import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { ActionFailure } from "./failure.js";
 import { DOCTOR_CHECKS, defaultFreeBytes, isDomainError, type DoctorCheck, type DoctorCheckDef, type DoctorContext } from "./doctor-checks.js";
 import { systemProbe, type HostProbe } from "./host.js";
 import { InputError } from "./inputs.js";
-import { SolutionError } from "./solution.js";
 import { StateCorruptError, loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { MAX_TEXT, invokeTool, toolContext } from "./tools.js";
@@ -83,8 +82,8 @@ async function runOne(check: DoctorCheckDef, ctx: DoctorContext, timeoutMs?: num
     const found = await within(check.run(ctx), timeoutMs);
     return found === null ? [] : Array.isArray(found) ? [...found] : [found as DoctorCheck];
   } catch (error) {
-    if (!isDomainError(error) && !(error instanceof AuditCorruptError) && !(error instanceof SolutionError)) throw error;
-    return [{ id: check.id, status: "fail", detail: error.message }];
+    // Whatever went wrong (a domain error, a bug, a damaged file) is a finding: only its message, never a stack.
+    return [{ id: check.id, status: "fail", detail: error instanceof Error ? error.message : String(error) }];
   }
 }
 
@@ -124,14 +123,19 @@ async function tellFailures(home: string, now: () => string, report: DoctorRepor
   await appendAudit(home, { ts: now(), actor: "engine", event: "doctor.notified", ref: DOCTOR_FILE, payload: { failed: failed.map((check) => check.id), delivered: error === null, ...(error ? { error } : {}) } });
 }
 
-/** Run by the tick: once every DOCTOR_EVERY_MS; the first call only sets the time. Returns the report when it ran. */
+/** Run by the tick: once every DOCTOR_EVERY_MS, counted once a run finished; the first call only sets the time. Returns the report when it ran. */
 export async function dailyDoctor(home: string, now: () => string, env?: Env, daily: DailyOptions = {}): Promise<DoctorReport | null> {
   const at = now();
   const next = ((await readConfig(home, DOCTOR_NEXT)) as { at?: string } | null)?.at;
   if (next !== undefined && at < next) return null;
-  await writeConfig(home, DOCTOR_NEXT, { at: new Date(Date.parse(at) + DOCTOR_EVERY_MS).toISOString() });
-  if (next === undefined) return null;
+  const following = { at: new Date(Date.parse(at) + DOCTOR_EVERY_MS).toISOString() };
+  if (next === undefined) {
+    await writeConfig(home, DOCTOR_NEXT, following);
+    return null;
+  }
   const report = await runDoctor(home, { now, shadow: false, timeoutMs: daily.timeoutMs ?? DAILY_CHECK_TIMEOUT_MS, ...(env ? { env } : {}) }, daily.checks);
+  // Only a finished run moves the next one a day on; a run that could not finish is tried again at the next tick.
+  await writeConfig(home, DOCTOR_NEXT, following);
   if (report.status === "fail") await tellFailures(home, now, report);
   return report;
 }

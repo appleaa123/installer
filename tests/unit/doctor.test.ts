@@ -4,7 +4,7 @@ import { access, mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AUDIT_FILE, appendAudit } from "../../src/core/audit.js";
-import { writeConfig } from "../../src/core/data-source.js";
+import { readConfig, writeConfig } from "../../src/core/data-source.js";
 import { DAILY_CHECK_TIMEOUT_MS, DOCTOR_FILE, DOCTOR_NEXT, dailyDoctor, loadDoctorReport, runDoctor } from "../../src/core/doctor.js";
 import { PID_FILE, claimPid } from "../../src/core/gateway-process.js";
 import { deleteSecret, setSecret } from "../../src/core/keychain.js";
@@ -128,6 +128,26 @@ describe("installer doctor (§16.1, D103)", () => {
     expect((await fake.sent()).filter((message) => message.chat_id === OWNER.address).map((message) => message.text)).toContainEqual(expect.stringContaining("Daily check:"));
     expect(await events(home)).toContain("doctor.notified");
     await access(join(home, DOCTOR_FILE));
+  });
+});
+
+describe("a check that throws", () => {
+  it("becomes a fail finding with its message and no stack, whatever it throws", async () => {
+    const home = await healthyHome();
+    const plain = { id: "plain", run: async () => Promise.reject(new Error("the disk said no")) };
+    const typed = { id: "typed", run: async () => Promise.reject(new TypeError("cannot read properties of undefined")) };
+    const report = await runDoctor(home, { now: () => AT, freeBytes: PLENTY }, [plain, typed]);
+    expect(report.checks).toEqual([{ id: "plain", status: "fail", detail: "the disk said no" }, { id: "typed", status: "fail", detail: "cannot read properties of undefined" }]);
+    expect(JSON.stringify(report)).not.toContain("    at ");
+  });
+
+  it("from the tick: the next daily run is set only once this run has finished", async () => {
+    const home = await healthyHome();
+    await writeConfig(home, DOCTOR_NEXT, { at: OLD });
+    const peek = { id: "peek", run: async () => ({ id: "peek", status: "ok" as const, detail: JSON.stringify(await readConfig(home, DOCTOR_NEXT)) }) };
+    const report = await dailyDoctor(home, () => AT, undefined, { checks: [peek] });
+    expect(report?.checks[0]?.detail).toBe(JSON.stringify({ at: OLD }));
+    expect(await readConfig(home, DOCTOR_NEXT)).toEqual({ at: "2026-10-09T12:00:00.000Z" });
   });
 });
 
