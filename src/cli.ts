@@ -290,7 +290,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   run: async ({ deps }, flags, arg) => runCommand(deps.home, arg, flags.sandbox === true, deps.now),
   tick: async ({ deps }) => tick(deps.home, deps.now),
   schedule: async ({ deps }, flags, arg) => scheduleCommand(deps.home, arg, flags.value, deps.now),
-  model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now),
+  model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now, process.stdin.isTTY === true),
 };
 
 async function run(argv: readonly string[]): Promise<number> {

@@ -64,11 +64,19 @@ export async function loadModelConfig(home: string): Promise<ModelConfig | null>
   return raw === null ? null : parseModelConfig(raw);
 }
 
+/** The settings decide where the model key is sent, so like the mail servers (D61, D73) only a person at a terminal sets them. */
+async function requireTerminal(home: string, interactive: boolean, now: string): Promise<void> {
+  if (interactive) return;
+  await appendAudit(home, { ts: now, actor: "agent", event: "model.refused", ref: MODEL_CONFIG, payload: { command: "installer model --value" } });
+  throw new InputError("The direct model is set by a person in their own terminal, not by the agent: ask them to open a terminal and run 'installer model --value <json>' there");
+}
+
 /** `installer model [--value <json>]`: shows the direct model, or saves it (no call is made, nothing is spent). */
-export async function modelCommand(home: string, value: string | undefined, now: () => string): Promise<Record<string, unknown>> {
+export async function modelCommand(home: string, value: string | undefined, now: () => string, interactive = false): Promise<Record<string, unknown>> {
   if (value === undefined) {
     return { model: await loadModelConfig(home), key_stored: (await getSecret(MODEL_SECRET_ID)) !== null, note: "Judges use the agent's headless command when the probe found one; this model only when it did not (D85)" };
   }
+  await requireTerminal(home, interactive, now());
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);

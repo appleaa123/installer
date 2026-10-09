@@ -48,10 +48,12 @@ describe("installer run, tick, schedule and model (§6.6, D82)", () => {
     expect(text).toContain("tick");
   });
 
-  it("schedule report and model save their settings", async () => {
+  it("schedule report saves its settings; model refuses an agent's shell (no terminal)", async () => {
     const dir = await home();
     expect(runCli(["schedule", "report", "--value", '{"recipients":[{"member":"Owner","tz":"America/Toronto"}]}'], { home: dir }).json).toMatchObject({ status: "saved" });
-    expect(runCli(["model", "--value", '{"provider":"anthropic","model":"test-model"}'], { home: dir }).json).toMatchObject({ status: "saved", key_stored: false });
-    expect(runCli(["model", "--value", '{"provider":"other"}'], { home: dir }).json).toMatchObject({ code: 2 });
+    const refused = runCli(["model", "--value", '{"provider":"anthropic","model":"test-model"}'], { home: dir });
+    expect(refused.code).toBe(2);
+    expect(refused.json).toMatchObject({ error: expect.stringContaining("not by the agent") });
+    expect(runCli(["model"], { home: dir }).json).toMatchObject({ model: null });
   });
 });

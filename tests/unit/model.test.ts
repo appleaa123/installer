@@ -6,7 +6,7 @@ import { ActionFailure } from "../../src/core/failure.js";
 import { InputError } from "../../src/core/inputs.js";
 import { askJudge } from "../../src/core/judge.js";
 import { setSecret } from "../../src/core/keychain.js";
-import { MODEL_CONFIG, judgeBackend, modelClient, modelCommand, parseModelConfig } from "../../src/core/model.js";
+import { MODEL_CONFIG, judgeBackend, loadModelConfig, modelClient, modelCommand, parseModelConfig } from "../../src/core/model.js";
 import type { CapabilityMap, InstallState } from "../../src/core/types.js";
 import { startFakeModel, type FakeModel } from "../helpers/fake-model.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -51,13 +51,23 @@ describe("the direct model's settings (D85)", () => {
 
   it("installer model saves the settings privately, audits them and asks for the key; without a value it shows them", async () => {
     const home = await makeTempHome();
-    expect(await modelCommand(home, JSON.stringify(ANTHROPIC), NOW)).toEqual({
+    expect(await modelCommand(home, JSON.stringify(ANTHROPIC), NOW, true)).toEqual({
       status: "saved", model: { provider: "anthropic", model: "test-model", max_tokens: 4096 }, key_stored: false, next: "Ask the person to run 'installer secret model' and enter their API key on the page that opens",
     });
     expect((await stat(join(home, MODEL_CONFIG))).mode & 0o777).toBe(0o600);
     expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"model.configured"');
     expect(await modelCommand(home, undefined, NOW)).toMatchObject({ model: { provider: "anthropic" }, key_stored: false });
-    await expect(modelCommand(home, "{not json", NOW)).rejects.toThrow("--value must be JSON");
+    await expect(modelCommand(home, "{not json", NOW, true)).rejects.toThrow("--value must be JSON");
+  });
+
+  it("refuses to set or change the model from an agent's shell (no terminal): the key would follow base_url", async () => {
+    const home = await makeTempHome();
+    const attacker = { provider: "openai_compatible", model: "m", base_url: "https://attacker.example" };
+    await expect(modelCommand(home, JSON.stringify(attacker), NOW)).rejects.toThrow(InputError);
+    await expect(modelCommand(home, JSON.stringify(attacker), NOW)).rejects.toThrow("not by the agent");
+    expect(await loadModelConfig(home)).toBeNull();
+    const audit = (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { actor: string; event: string });
+    expect(audit.map((line) => [line.actor, line.event])).toEqual([["agent", "model.refused"], ["agent", "model.refused"]]);
   });
 });
 
@@ -94,7 +104,7 @@ describe("which way a judge is asked (D85)", () => {
 
   it("falls back to the direct model when the agent has no headless calls, and judges with it", async () => {
     const home = await makeTempHome();
-    await modelCommand(home, JSON.stringify(ANTHROPIC), NOW);
+    await modelCommand(home, JSON.stringify(ANTHROPIC), NOW, true);
     await setSecret("model", fake.key, keychain);
     fake.answer("```json\n{\"label\":\"now\",\"confidence\":0.75}\n```");
     const backend = await judgeBackend(home, state(runtime(false)), env());
@@ -108,7 +118,7 @@ describe("which way a judge is asked (D85)", () => {
     await writeFile(join(dir, "blocked-agent.json"), JSON.stringify({ ...profile, id: "blocked-agent", tos_review: { status: "blocked", note: "Terms forbid third-party calls." } }));
     vi.stubEnv("INSTALLER_PROFILE_DIR", dir);
     const home = await makeTempHome();
-    await modelCommand(home, JSON.stringify(COMPATIBLE), NOW);
+    await modelCommand(home, JSON.stringify(COMPATIBLE), NOW, true);
     await setSecret("model", fake.key, keychain);
     expect((await judgeBackend(home, state(runtime(true, "blocked-agent")), env())).name).toBe("model");
   });
@@ -116,7 +126,7 @@ describe("which way a judge is asked (D85)", () => {
   it("says what to set up when there is no way to ask a judge", async () => {
     const home = await makeTempHome();
     await expect(judgeBackend(home, state(undefined), env())).rejects.toThrow("no direct model is set up: run 'installer model --value <json>' and 'installer secret model'");
-    await modelCommand(home, JSON.stringify(ANTHROPIC), NOW);
+    await modelCommand(home, JSON.stringify(ANTHROPIC), NOW, true);
     await expect(judgeBackend(home, state(runtime(false)), { ...env(), INSTALLER_KEYCHAIN_DIR: await makeTempHome() })).rejects.toThrow("ask the person to run 'installer secret model'");
   });
 });
