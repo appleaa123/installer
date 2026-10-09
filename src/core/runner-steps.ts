@@ -1,6 +1,7 @@
 import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";
+import { approveByGrant, proposeIfEarned } from "./autonomy.js";
 import { askJudge, protectedFields, runContextTools, skillText, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
 import { needsApproval } from "./levels.js";
 import { fingerprint, saveStep, type RunRecord, type StepLog } from "./runs.js";
@@ -51,11 +52,13 @@ async function save(exec: Exec, record: RunRecord, log: Omit<StepLog, "finished_
   await saveStep(exec.home, record, { ...log, finished_at: finished, duration_ms: Math.max(0, Date.parse(finished) - Date.parse(log.started_at)) });
 }
 
-/** Asks a person to approve exactly this call; the run waits for the decision (§10.9 policy). */
-async function escalate(exec: Exec, record: RunRecord, step: string, prepared: PreparedAction, request: { why: string; urgent: boolean; startedAt: string }): Promise<StepOutcome> {
-  const run = { workflow: record.workflow, run_id: record.run_id, step };
+/** Asks a person to approve exactly this call; the run waits for the decision (§10.9 policy), unless a grant approves it (D94). */
+async function escalate(exec: Exec, record: RunRecord, step: string, prepared: PreparedAction, request: { why: string; urgent: boolean; startedAt: string; policy: boolean }): Promise<StepOutcome> {
+  const run = { workflow: record.workflow, run_id: record.run_id, step, ...(request.policy ? { policy: true } : {}) };
   const item = await requestApproval(exec.home, { prepared, why: request.why, urgent: request.urgent, via: "runner", run }, now(exec));
-  await save(exec, record, { step, status: "waiting", started_at: request.startedAt, input_fingerprint: fingerprint(prepared.args), approval: item.id });
+  const log: StepLog = { step, status: "waiting", started_at: request.startedAt, finished_at: now(exec), duration_ms: 0, input_fingerprint: fingerprint(prepared.args), approval: item.id };
+  await saveStep(exec.home, record, log);
+  if (await approveByGrant(exec.home, item, prepared, false, now(exec))) return checkApproval(exec, record, log);
   return { kind: "wait", approval: item.id };
 }
 
@@ -68,7 +71,7 @@ export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep 
     const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
     if (needsApproval(prepared.level) && !exec.ctx.sandbox) {
       if (step.foreach !== undefined) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs an approval for each item; approve one call with an approve step instead`);
-      return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: false, startedAt });
+      return escalate(exec, record, step.id, prepared, { why: `Workflow '${record.workflow}' (step '${step.id}') wants to run ${step.tool}, which is ${prepared.level}`, urgent: false, startedAt, policy: true });
     }
     outputs.push(await invokeTool(exec.ctx, step.tool, args));
     actions += prepared.level === "L0" ? 0 : 1;
@@ -108,7 +111,7 @@ export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowSt
     await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output });
     return { kind: "done", output, actions: 1, needs_human: 0 };
   }
-  return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent, startedAt });
+  return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent, startedAt, policy: false });
 }
 
 /** A waiting step: approved → the same call with the token; rejected → the run stops; expired → it fails. */
@@ -119,6 +122,7 @@ export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog)
   if (item.status === "approved" && item.token) {
     const output = await invokeTool(exec.ctx, item.action.tool, { ...item.action.args, [TOKEN_ARG]: item.token });
     await save(exec, record, { ...log, status: "done", output });
+    await proposeIfEarned(exec.ctx, exec.state?.roles, item);
     return { kind: "done", output, actions: 1, needs_human: 0 };
   }
   const rejected = item.status === "rejected";

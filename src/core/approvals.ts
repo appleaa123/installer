@@ -44,6 +44,8 @@ export interface RunRef {
   readonly workflow: string;
   readonly run_id: string;
   readonly step: string;
+  /** Asked because a typed tool step's derived level needs it (not an approve step, not an agent's call): earned autonomy may apply (D94). */
+  readonly policy?: boolean;
 }
 
 /** Spec §11.5. `source.via` says which surface asked; a workflow's request also names its run and step. */
