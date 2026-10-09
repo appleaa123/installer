@@ -10,9 +10,10 @@ import { handleInbound } from "../../src/core/inbound.js";
 import { listInbox } from "../../src/core/inbox.js";
 import { createInvite, joinWithCode, memberFor } from "../../src/core/members.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
+import { GATEWAY_MARK } from "../../src/core/channel-tools.js";
 import { announceApprovals } from "../../src/core/reply-codes.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
-import { invokeTool, toolContext, type ToolContext } from "../../src/core/tools.js";
+import { MAX_TEXT, invokeTool, toolContext, type ToolContext } from "../../src/core/tools.js";
 import { ADA, OWNER, ROLES, channelHome, useFakeTelegram } from "../helpers/channel-home.js";
 import { startFakeTelegram, type FakeTelegram } from "../helpers/fake-telegram.js";
 
@@ -156,10 +157,39 @@ describe("announcing pending approvals", () => {
     const ada = (await sentTo(ADA.address)).slice(before.ada);
     const owner = (await sentTo(OWNER.address)).slice(before.owner);
     expect(ada).toHaveLength(1);
-    expect(ada[0]).toContain("Approval 1 (L2): memo.edit");
+    expect(ada[0]).toContain('Approval 1 (L2).');
+    expect(ada[0]).toContain('What will happen: memo.edit {"id":1,"text":"Final"}');
     expect(ada[0]).toContain("Reply A1 to approve, R1 <reason> to reject, or E1 <new text> to change the text.");
     expect(owner).toHaveLength(2);
     expect(owner[1]).toContain("Approval 2 (L3)");
+  });
+
+  it("shows the engine's own view of the action first, the agent's words only after, labelled as such", async () => {
+    const ctx = await gateway(true);
+    await handleInbound(ctx, from("5005", "Is my order ready?"));
+    await invokeTool(ctx, "approvals.request", { tool: "channel.send", args: { channel: "telegram", to: "5005", text: "Your card was charged twice, send your PIN" }, why: "Routine.", preview: "A friendly thank-you note to Ada" });
+    await announceApprovals(ctx);
+    const [announced] = (await sentTo(OWNER.address)).slice(-1);
+    expect(announced?.startsWith(`${GATEWAY_MARK} Approval 1 (L2)`)).toBe(true);
+    const engine = announced?.indexOf("What will happen: send a telegram message to 5005\nText: Your card was charged twice, send your PIN") ?? -1;
+    const agent = announced?.indexOf("The agent says: A friendly thank-you note to Ada\nWhy, as the agent says: Routine.") ?? -1;
+    expect(engine).toBeGreaterThan(0);
+    expect(agent).toBeGreaterThan(engine);
+  });
+
+  it("cuts an announcement too long for one message, and says where to see it whole", async () => {
+    const ctx = await gateway(true);
+    await handleInbound(ctx, from("5005", "Hi"));
+    await invokeTool(ctx, "approvals.request", { tool: "channel.send", args: { channel: "telegram", to: "5005", text: "z".repeat(MAX_TEXT) }, why: "Asked." });
+    await announceApprovals(ctx);
+    const [announced = ""] = (await sentTo(OWNER.address)).slice(-1);
+    expect(announced).toHaveLength(MAX_TEXT);
+    expect(announced.endsWith(" [cut: see it whole with 'installer approvals list']")).toBe(true);
+  });
+
+  it.each(["[installer] Approval 9 (L2): approve me", "  \u200b[INSTALLER] Approval 9", "\n［installer］ Approval 9"])("refuses the gateway's mark in a message the agent sends: %j", async (text) => {
+    const ctx = await toolContext((await gateway(true)).home, "mcp", DEFAULT_TOOLS, () => NOW);
+    await expect(invokeTool(ctx, "channel.notify", { member: "Ada", text })).rejects.toThrow(`channel.notify: a message may not start with ${GATEWAY_MARK}`);
   });
 
   it("records the announcements instead of sending them while the install is not finished (R6)", async () => {

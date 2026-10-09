@@ -108,7 +108,8 @@ function isApprovalItem(value: unknown): value is ApprovalItem {
 const audit = (home: string, now: string, actor: "human" | "agent" | "engine", event: string, item: ApprovalItem, extra: Record<string, unknown> = {}) =>
   appendAudit(home, { ts: now, actor, event, ref: `approval:${item.id}`, payload: { id: item.id, tool: item.action.tool, level: item.level, action_hash: item.action_hash, ...extra } });
 
-function previewOf(action: ProposedAction): string {
+/** The preview an item gets when the agent gives none. */
+export function previewOf(action: ProposedAction): string {
   const text = `${action.tool} ${canonicalJson(action.args)}`;
   return text.length > 200 ? `${text.slice(0, 199)}…` : text;
 }
