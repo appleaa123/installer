@@ -3,12 +3,14 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
-import { saveSource } from "../../src/core/data-source.js";
+import { saveSource, writeConfig } from "../../src/core/data-source.js";
+import { DOCTOR_FILE } from "../../src/core/doctor.js";
 import { normalizeInbound } from "../../src/core/envelope.js";
 import { LOG_FILE } from "../../src/core/gateway.js";
 import { storeInbound } from "../../src/core/inbox.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { createInvite, joinWithCode } from "../../src/core/members.js";
+import { saveRun } from "../../src/core/runs.js";
 import { TICK_LOG } from "../../src/core/scheduler.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { scrub, supportBundle } from "../../src/core/support-bundle.js";
@@ -21,6 +23,11 @@ import { makeTempHome } from "../helpers/temp-home.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
 const MODEL_KEY = "sk-SENTINEL-model-key";
+/** An outside contact the engine never knew by name, and their short Telegram id, inside engine error messages. */
+const OUTSIDE = "Theodora Quince";
+const SHORT_ID = "55555";
+const NOT_FIRST = `step 'send' failed: The consent policy says a contact must write first; ${SHORT_ID} has not written on telegram`;
+const NO_MEMBER = `No joined member is called '${OUTSIDE}'; joined: Ada`;
 beforeEach(async () => {
   vi.stubEnv("INSTALLER_KEYCHAIN_DIR", await makeTempHome());
   await setSecret("telegram", BOT_TOKEN);
@@ -46,7 +53,9 @@ async function personalHome(): Promise<string> {
   await invokeTool(ctx, "approvals.request", { tool: "memo.edit", args: { id: 1, text: "SENTINEL-APPROVAL" }, why: "Fix it." });
   await saveSource(home, { entity: "contact", connector: { id: "google-sheets", version: "1", sha256: "pinned" }, spreadsheet_id: "1SENTINELsheetid" });
   await log(home, LOG_FILE, JSON.stringify({ ts: AT, level: "error", loop: "telegram", error: "send to zed@example.org failed for Quillon Vexmoor (+1 416 555 0199)" }));
-  await log(home, TICK_LOG, JSON.stringify({ status: "ran", errors: ["No joined member is called 'Marisol Okafor'"] }));
+  await log(home, TICK_LOG, JSON.stringify({ status: "ran", errors: ["No joined member is called 'Marisol Okafor'", `events: ${NO_MEMBER}`, `resume: ${NOT_FIRST}`] }));
+  await saveRun(home, { workflow: "outreach", run_id: "r1", key: "outreach:1", trigger: { kind: "manual" }, version: 1, status: "failed", started_at: AT, finished_at: AT, sandbox: false, pid: 1, actions: 0, needs_human: 0, reason: NOT_FIRST });
+  await writeConfig(home, DOCTOR_FILE, { status: "warn", checked_at: AT, checks: [{ id: "recent_runs", status: "warn", detail: `in the last 24 hours: outreach r1 failed; report r2: ${NO_MEMBER}` }] });
   return home;
 }
 
@@ -71,10 +80,18 @@ describe("installer support bundle (§16.5, D110)", () => {
   it("never holds a secret, a name, an address, a message, a record, an answer or the OS user's home folder", async () => {
     const home = await personalHome();
     const text = await readFile((await supportBundle(home, () => AT)).file as string, "utf8");
-    for (const secret of [BOT_TOKEN, MODEL_KEY, "SENTINEL", "zed@example.org", "416 555", "Vexmoor", "Marisol", homedir()]) expect(text).not.toContain(secret);
-    for (const word of [/\bAda\b/, /\bOwner\b/, /\b1001\b/, /\b1002\b/, /\b7123456\b/, /\b5005\b/, /desk_test_bot/]) expect(text).not.toMatch(word);
+    for (const secret of [BOT_TOKEN, MODEL_KEY, "SENTINEL", "zed@example.org", "416 555", "Vexmoor", "Marisol", "Quince", "Theodora", homedir()]) expect(text).not.toContain(secret);
+    for (const word of [/\bAda\b/, /\bOwner\b/, /\b1001\b/, /\b1002\b/, /\b7123456\b/, /\b5005\b/, /\b55555\b/, /desk_test_bot/]) expect(text).not.toMatch(word);
     expect(text).toContain("[redacted]");
     expect(text).toContain(AT);
+  });
+
+  it("keeps only a fixed category of each error: run reasons, the doctor's recent runs and the tick log's errors", async () => {
+    const home = await personalHome();
+    const bundle = JSON.parse(await readFile((await supportBundle(home, () => AT)).file as string, "utf8"));
+    expect(bundle.runs.recent.find((run: { run_id: string }) => run.run_id === "r1")).toMatchObject({ status: "failed", reason: "step failed" });
+    expect(bundle.doctor.checks).toEqual([{ id: "recent_runs", status: "warn", detail: "in the last 24 hours: runs that failed or were missed, or report fallbacks (see runs)" }]);
+    expect(JSON.parse(bundle.logs.tick[0])).toEqual({ status: "ran", errors: ["error", "events", "resume"] });
   });
 
   it("redacts the values of fields the contract tags personal, wherever they appear", () => {

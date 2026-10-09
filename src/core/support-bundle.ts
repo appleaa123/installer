@@ -19,11 +19,11 @@ import { loadModelConfig } from "./model.js";
 import { listIds } from "./numbered.js";
 import { OUTBOX_DIR } from "./outbound.js";
 import { loadPacks } from "./packs.js";
-import { loadPause } from "./pause.js";
+import { PAUSED_REASON, loadPause } from "./pause.js";
 import { loadPinnedSolution } from "./pin.js";
 import { buildReport } from "./report.js";
 import { loadRetention } from "./retention.js";
-import { listRuns } from "./runs.js";
+import { MISSED_REASON, listRuns } from "./runs.js";
 import { loadSandboxMode } from "./sandbox.js";
 import { TICK_LOG } from "./scheduler.js";
 import { loadState } from "./state.js";
@@ -42,6 +42,9 @@ import { ENGINE_SECRETS, EXPORTS_DIR } from "./uninstall.js";
 const REDACTED = "[redacted]";
 const LOG_LINES = 50;
 const RECENT_RUNS = 20;
+/** The tick's passes (tick.ts `guard`), whose name leads each error the tick logs. */
+const TICK_PASSES: ReadonlySet<string> = new Set(["report", "events", "resume", "alerts", "learning", "doctor"]);
+const RECENT_RUNS_DETAIL = "in the last 24 hours: runs that failed or were missed, or report fallbacks (see runs)";
 
 type Raw = Record<string, unknown>;
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -86,6 +89,32 @@ async function sheetIds(home: string): Promise<string[]> {
   return ids;
 }
 
+/**
+ * An engine error message can hold an outside contact's name or a short chat id (the scrub cannot know them), so the
+ * bundle keeps only a fixed category for it, never its text.
+ */
+export function errorCategory(text: string): string {
+  if (text === PAUSED_REASON) return "paused";
+  if (text === MISSED_REASON) return "missed";
+  if (/^step '[^']*' failed: /.test(text)) return "step failed";
+  if (/^approval \d+ is \w+$/.test(text)) return "approval";
+  const pass = text.split(":")[0] ?? "";
+  return text.includes(":") && TICK_PASSES.has(pass) ? pass : "error";
+}
+
+/** A tick log line (the tick's JSON result, or its error) with each error message replaced by its category. */
+function tickLine(line: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return line;
+  }
+  if (!isRecord(parsed)) return line;
+  const errors = Array.isArray(parsed.errors) ? { errors: parsed.errors.map((error) => (typeof error === "string" ? errorCategory(error) : "error")) } : {};
+  return JSON.stringify({ ...parsed, ...errors, ...(typeof parsed.error === "string" ? { error: errorCategory(parsed.error) } : {}) });
+}
+
 async function tail(home: string, relative: string): Promise<string[]> {
   const text = await readFile(await confinedPath(home, relative), "utf8").catch(() => "");
   return text.split("\n").filter((line) => line !== "").slice(-LOG_LINES);
@@ -118,8 +147,15 @@ async function counts(home: string, now: string): Promise<Raw> {
 
 async function runsView(home: string): Promise<Raw> {
   const runs = await listRuns(home, undefined, async () => undefined);
-  const recent = runs.slice(-RECENT_RUNS).map((run) => ({ workflow: run.workflow, run_id: run.run_id, status: run.status, trigger: run.trigger.kind, started_at: run.started_at, finished_at: run.finished_at ?? null, sandbox: run.sandbox, actions: run.actions, needs_human: run.needs_human, reason: run.reason ?? null }));
+  const recent = runs.slice(-RECENT_RUNS).map((run) => ({ workflow: run.workflow, run_id: run.run_id, status: run.status, trigger: run.trigger.kind, started_at: run.started_at, finished_at: run.finished_at ?? null, sandbox: run.sandbox, actions: run.actions, needs_human: run.needs_human, reason: run.reason === undefined ? null : errorCategory(run.reason) }));
   return { by_status: count(runs.map((run) => run.status)), recent };
+}
+
+/** The doctor's findings; the recent runs' detail quotes run errors, so it becomes a fixed text (the runs section has them). */
+async function doctorView(home: string): Promise<Raw | null> {
+  const report = await loadDoctorReport(home);
+  if (!report) return null;
+  return { ...report, checks: report.checks.map((check) => (check.id === "recent_runs" && check.status !== "ok" ? { ...check, detail: RECENT_RUNS_DETAIL } : check)) };
 }
 
 async function auditView(home: string, state: InstallState): Promise<Raw> {
@@ -133,9 +169,9 @@ async function bundleOf(home: string, state: InstallState, now: string): Promise
   const secrets = Object.fromEntries(await Promise.all(ENGINE_SECRETS.map(async (id) => [id, (await getSecret(id)) !== null])));
   return {
     format: 1, created_at: now, versions: { node: process.version, platform: `${process.platform} ${process.arch}` },
-    state: stateView(state), report: buildReport(solution, state), doctor: await loadDoctorReport(home), readiness: await readConfig(home, READINESS_FILE),
+    state: stateView(state), report: buildReport(solution, state), doctor: await doctorView(home), readiness: await readConfig(home, READINESS_FILE),
     runs: await runsView(home), settings: await settings(home), counts: await counts(home, now), audit: await auditView(home, state),
-    secrets_present: secrets, logs: { gateway: await tail(home, LOG_FILE), tick: await tail(home, TICK_LOG) },
+    secrets_present: secrets, logs: { gateway: await tail(home, LOG_FILE), tick: (await tail(home, TICK_LOG)).map(tickLine) },
   };
 }
 

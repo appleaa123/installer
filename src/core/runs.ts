@@ -20,6 +20,7 @@ export const KEYS_DIR = join("state", "runner", "keys");
 export const RUN_STATUSES = ["running", "waiting", "completed", "partial", "failed", "missed"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export const FINISHED: readonly RunStatus[] = ["completed", "partial", "failed", "missed"];
+export const MISSED_REASON = "the host or the runner was not running at the scheduled time";
 /** Run folders that are not workflows (the twice-daily report, D89); a workflow id cannot start with `_`. */
 export const REPORT_RUNS = "_report";
 
@@ -226,7 +227,7 @@ export async function recordMissed(home: string, workflow: string, version: numb
   const kind = workflow === REPORT_RUNS ? "report" : "cron";
   const record: RunRecord = {
     workflow, run_id: runIdFor(key, scheduledFor), key, trigger: { kind, scheduled_for: scheduledFor }, version, status: "missed",
-    started_at: now, finished_at: now, sandbox: false, pid: process.pid, actions: 0, needs_human: 0, reason: "the host or the runner was not running at the scheduled time",
+    started_at: now, finished_at: now, sandbox: false, pid: process.pid, actions: 0, needs_human: 0, reason: MISSED_REASON,
   };
   if (!(await claimRun(home, record))) return null;
   await auditRun(home, now, "run.missed", record, { scheduled_for: scheduledFor });
