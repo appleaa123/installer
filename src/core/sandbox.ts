@@ -19,11 +19,20 @@ export interface SandboxMode {
   readonly at: string;
   readonly by: string;
 }
+/** The last dry run of a workflow (§6.2 DRY RUN, D98): a sandbox run a person read and confirmed. */
+export interface DryRun {
+  readonly version: number;
+  readonly run_id: string;
+  readonly status: string;
+  readonly confirmed_by?: string;
+  readonly confirmed_at?: string;
+}
 
 export interface WorkflowState {
   readonly workflow: string;
   /** True until a person confirmed a dry run of the workflow's current version. */
   readonly sandbox: boolean;
+  readonly dry_run?: DryRun;
 }
 
 type Raw = Record<string, unknown>;

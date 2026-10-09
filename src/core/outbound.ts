@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { loadChannel, openChannel, type ChannelId, type OutboundMessage } from "./channels.js";
 import { InputError } from "./inputs.js";
-import { createRecord } from "./numbered.js";
+import { createRecord, listRecords } from "./numbered.js";
 import { loadPinnedSolution } from "./pin.js";
 import { buildReport } from "./report.js";
 import { SANDBOX_MODE_REASON, sandboxMode } from "./sandbox.js";
@@ -68,4 +68,9 @@ export async function recordAction(home: string, action: RecordedAction["action"
   const recorded = await createRecord<RecordedAction>(home, OUTBOX_DIR, (id) => ({ id, action, level, at: now, reason: SANDBOX_ACTION_REASON, ...(run ? { run } : {}) }));
   await appendAudit(home, { ts: now, actor: "engine", event: "action.recorded", ref: action.tool, payload: { outbox_id: recorded.id, level, run: run ?? null } });
   return { status: "recorded", outbox_id: recorded.id, tool: action.tool, level, reason: SANDBOX_ACTION_REASON };
+}
+/** What the recording sink holds: messages and actions, of one run (`<workflow>/<run_id>`) or all. */
+export async function listOutbox(home: string, run?: string): Promise<Readonly<Record<string, unknown>>[]> {
+  const isEntry = (value: unknown): value is { readonly id: number; readonly run?: string } => typeof value === "object" && value !== null && typeof (value as { id?: unknown }).id === "number";
+  return (await listRecords(home, OUTBOX_DIR, isEntry)).filter((entry) => run === undefined || entry.run === run);
 }

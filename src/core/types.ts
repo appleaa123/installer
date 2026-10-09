@@ -71,6 +71,8 @@ export interface Solution {
   readonly data_contract?: DataContract;
   /** Outbound rules for external contacts (spec §12.5, D80); none declared means DEFAULT_POLICY. */
   readonly channel_policy?: ChannelPolicy;
+  /** Workflows the recipe suggests for the WORKFLOWS phase (§6.2); each is checked when it is added (D98). */
+  readonly workflows?: readonly Readonly<Record<string, unknown>>[];
 }
 
 export const STEP_STATUSES = ["pending", "done", "blocked", "skipped", "failed"] as const;
