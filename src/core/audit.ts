@@ -133,7 +133,31 @@ async function withAuditLock<T>(home: string, task: () => Promise<T>): Promise<T
   try {
     return await task();
   } finally {
+    await releaseLock(path);
+  }
+}
+
+/**
+ * The owner removes its lock under the takeover guard too: otherwise a stealer that read this owner's pid could see
+ * it exit, then remove the next owner's fresh lock (review finding). A guard that never frees still lets go in the end.
+ */
+async function releaseLock(path: string): Promise<void> {
+  const guard = `${path}.takeover`;
+  const until = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      await (await open(guard, "wx", 0o600)).close();
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() > until) return rm(path, { force: true });
+      await dropOldGuard(guard);
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  try {
     await rm(path, { force: true });
+  } finally {
+    await rm(guard, { force: true });
   }
 }
 
