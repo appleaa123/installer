@@ -141,10 +141,14 @@ function telegramChannel(token: string, env: Env): ChannelConnector {
   };
 }
 
+/** The connector for a channel's settings and secret; the contract checks run it against fakes and real services (D118). */
+export function channelConnector(config: ChannelConfig, secret: string, env: Env = process.env): ChannelConnector {
+  return config.channel === "telegram" ? telegramChannel(secret, env) : emailChannel(config, secret, env);
+}
+
 /** The connector of a configured channel, with its secret from the keychain. */
 export async function openChannel(home: string, id: ChannelId, env: Env = process.env): Promise<ChannelConnector> {
   const config = await loadChannel(home, id);
   if (!config) throw new InputError(`The ${id} channel is not set up: run 'installer channel ${id}' first`);
-  const secret = await channelSecret(id, env);
-  return config.channel === "telegram" ? telegramChannel(secret, env) : emailChannel(config, secret, env);
+  return channelConnector(config, await channelSecret(id, env), env);
 }

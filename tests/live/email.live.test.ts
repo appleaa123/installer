@@ -4,13 +4,16 @@
  *   TEST_EMAIL_IMAP_HOST, TEST_EMAIL_IMAP_PORT, TEST_EMAIL_IMAP_SECURITY (ssl | starttls), TEST_EMAIL_IMAP_USER,
  *   TEST_EMAIL_SMTP_HOST, TEST_EMAIL_SMTP_PORT, TEST_EMAIL_SMTP_SECURITY (ssl | starttls), TEST_EMAIL_SMTP_USER
  * in the environment; everything is skipped when any of them is empty. It signs in to IMAP and opens INBOX
- * read-only (EXAMINE: nothing is marked read or moved), and it sends ONE real email from the test mailbox to
- * the same address (TEST_EMAIL_ADDRESS), so it arrives in the developer's own mailbox.
+ * read-only (EXAMINE: nothing is marked read or moved), and runs the email channel's contract (D118): it sends ONE
+ * real email from the test mailbox to the same address (TEST_EMAIL_ADDRESS), so it arrives in the developer's own
+ * mailbox, and reads INBOX twice from its cursor, read-only.
  */
 import { describe, expect, it } from "vitest";
+import { channelConnector } from "../../src/core/channels.js";
 import { withImap } from "../../src/core/imap.js";
-import { smtpSend, type MailAccount } from "../../src/core/smtp.js";
+import type { MailAccount } from "../../src/core/smtp.js";
 import type { MailSecurity } from "../../src/core/wire.js";
+import { channelContract } from "../helpers/contracts.js";
 
 const env = (name: string): string => process.env[name] ?? "";
 /** The USER names are optional: empty means the sign-in name is the address, as the email channel itself does. */
@@ -29,10 +32,8 @@ describe.skipIf(missing)("real mailbox (D75)", () => {
     expect(status.uidnext).toBeGreaterThan(0);
   });
 
-  it("sends one email to the test mailbox itself with AUTH PLAIN", async () => {
-    const address = env("TEST_EMAIL_ADDRESS");
-    const now = new Date().toISOString();
-    const message = { from: address, to: address, subject: `installer live test ${now}`, text: "Sent by the installer's live test (Plan 6). You can delete it.", message_id: `<live-${Date.now()}@${address.split("@")[1]}>`, date: now };
-    await expect(smtpSend(account("SMTP"), env("TEST_EMAIL_APP_PASSWORD"), message, NO_OVERRIDE)).resolves.toBeUndefined();
-  });
+  channelContract(() => ({
+    channel: channelConnector({ channel: "email", address: env("TEST_EMAIL_ADDRESS"), imap: account("IMAP"), smtp: account("SMTP"), verified_at: new Date().toISOString() }, env("TEST_EMAIL_APP_PASSWORD"), NO_OVERRIDE),
+    to: env("TEST_EMAIL_ADDRESS"),
+  }), { receive: true });
 });
