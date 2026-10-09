@@ -145,3 +145,73 @@ export async function startFakeSmtp(security: Security, options: { offerStartTls
   });
   return { ...server, received, logins };
 }
+
+export interface FakeImap extends FakeServer {
+  /** Every command after the tag, LOGIN's password masked; a test checks that nothing writes to the mailbox. */
+  readonly commands: string[];
+  readonly logins: { user: string; password: string; secure: boolean }[];
+  /** Adds a message to INBOX; UIDs start at 101. */
+  readonly deliver: (raw: string) => void;
+}
+
+const QUOTED = /"((?:[^"\\]|\\.)*)"/g;
+const unquote = (text: string): string[] => [...text.matchAll(QUOTED)].map((match) => (match[1] ?? "").replace(/\\(.)/g, "$1"));
+
+/** IMAP4rev1, read-only: STARTTLS, LOGIN, EXAMINE, UID SEARCH, UID FETCH (BODY.PEEK[]), LOGOUT. UIDVALIDITY 7. */
+export async function startFakeImap(security: Security, messages: readonly string[] = []): Promise<FakeImap> {
+  const inbox = [...messages];
+  const commands: string[] = [];
+  const logins: FakeImap["logins"] = [];
+  const uidOf = (index: number): number => 101 + index;
+  const server = await lineServer(security, (session) => {
+    session.send("* OK [CAPABILITY IMAP4rev1 STARTTLS AUTH=PLAIN] fake.test ready");
+    let authed = false;
+    return (line) => {
+      const [tag = "", verb = "", ...rest] = line.split(" ");
+      const arg = rest.join(" ");
+      const done = (text = "completed"): void => session.send(`${tag} OK ${text}`);
+      commands.push(verb.toUpperCase() === "LOGIN" ? "LOGIN ***" : `${verb} ${arg}`.trim());
+      switch (verb.toUpperCase()) {
+        case "STARTTLS":
+          done("begin TLS");
+          return session.upgrade();
+        case "LOGIN": {
+          const [user = "", password = ""] = unquote(arg);
+          logins.push({ user, password, secure: session.secure() });
+          authed = user === MAIL_USER && password === MAIL_PASSWORD;
+          return authed ? done("LOGIN completed") : session.send(`${tag} NO [AUTHENTICATIONFAILED] Invalid credentials`);
+        }
+        case "EXAMINE":
+          if (!authed) return session.send(`${tag} BAD not signed in`);
+          [`* ${inbox.length} EXISTS`, "* OK [UIDVALIDITY 7] UIDs valid", `* OK [UIDNEXT ${uidOf(inbox.length)}] next`].forEach((reply) => session.send(reply));
+          return done("[READ-ONLY] EXAMINE completed");
+        case "UID":
+          return uidCommand(session, tag, arg, inbox, uidOf);
+        case "LOGOUT":
+          session.send("* BYE logging out");
+          done();
+          return session.close();
+        default:
+          return session.send(`${tag} BAD unknown command`);
+      }
+    };
+  });
+  return { ...server, commands, logins, deliver: (raw) => void inbox.push(raw) };
+}
+
+/** `UID SEARCH UID n:*` (like real servers, it always names the last message) and `UID FETCH n (BODY.PEEK[])`. */
+function uidCommand(session: LineSession, tag: string, arg: string, inbox: readonly string[], uidOf: (index: number) => number): void {
+  const search = /^SEARCH UID (\d+):\*$/i.exec(arg);
+  if (search) {
+    const from = Number(search[1]);
+    const uids = inbox.map((_raw, index) => uidOf(index)).filter((uid, index) => uid >= from || index === inbox.length - 1);
+    session.send(`* SEARCH${uids.map((uid) => ` ${uid}`).join("")}`);
+    return session.send(`${tag} OK SEARCH completed`);
+  }
+  const fetch = /^FETCH (\d+) \(BODY\.PEEK\[\]\)$/i.exec(arg);
+  const index = fetch ? Number(fetch[1]) - 101 : -1;
+  const raw = inbox[index];
+  if (raw === undefined) return session.send(`${tag} OK FETCH completed`);
+  session.send(`* ${index + 1} FETCH (UID ${uidOf(index)} BODY[] {${Buffer.byteLength(raw)}}\r\n${raw})`);
+  return session.send(`${tag} OK FETCH completed`);
+}
