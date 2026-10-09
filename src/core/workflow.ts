@@ -14,15 +14,23 @@ import type { ToolRegistry } from "./tools.js";
  * approve one exact tool call and runs it once approved. `foreach` and `when` modify a step. Everything is
  * checked when the file is loaded: tools exist, references name earlier steps, conditions parse, schemas use
  * only what the runner can check. Nothing in a workflow can choose a level or carry an approval token.
+ * Plan 8 (§10.8, D92): an `agent` step lets the model choose each call among the step's tools, one at a time, and the
+ * runner makes it through the gate; `mode: "agentic"` is a workflow that is one agent step (instructions + tools),
+ * and a typed workflow may name a `fallback` agent that finishes a run whose typed step failed (drift, §10.9).
  */
 export const WORKFLOWS_DIR = "workflows";
 export const WORKFLOW_FILE = "workflow.json";
 export const DEFAULT_TOLERANCE_MINUTES = 5;
 export const DEFAULT_MAX_TOOL_CALLS = 3;
+export const DEFAULT_MAX_TURNS = 8;
+export const MAX_TURNS = 20;
+/** The id of the one step of an agentic workflow, and of the step a drifting run falls back to. */
+export const AGENT_STEP = "agent";
+export const FALLBACK_STEP = "fallback";
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 const STEP_ID = /^[a-z][a-z0-9_]*$/;
 /** Names the runner binds itself; a step cannot be called one of them. */
-const RESERVED = ["item", "event", "run"];
+const RESERVED = ["item", "event", "run", "failure", FALLBACK_STEP];
 const FROM = ["external", "member"] as const;
 
 export type Trigger =
@@ -47,6 +55,13 @@ export interface JudgeSpec {
   readonly max_tool_calls: number;
   readonly min_confidence?: number;
 }
+/** An agentic step (§10.8): the model names each call among `tools`; the runner makes it through the gate. */
+export interface AgentSpec {
+  readonly instructions: string;
+  readonly tools: readonly string[];
+  readonly max_turns: number;
+  readonly input?: unknown;
+}
 
 interface StepBase {
   readonly id: string;
@@ -56,14 +71,18 @@ interface StepBase {
 export type WorkflowStep =
   | (StepBase & { readonly kind: "tool"; readonly tool: string; readonly args: ArgsTemplate; readonly foreach?: string })
   | (StepBase & { readonly kind: "judge"; readonly judge: JudgeSpec; readonly foreach?: string })
-  | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean });
+  | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean })
+  | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec });
 
 export interface Workflow {
   readonly id: string;
   readonly version: number;
   readonly description: string;
+  readonly mode: "typed" | "agentic";
   readonly trigger: Trigger;
   readonly steps: readonly WorkflowStep[];
+  /** The agent a run falls back to when one of its typed steps fails (drift, D18). */
+  readonly fallback?: AgentSpec;
 }
 
 export class WorkflowError extends InputError {
@@ -150,18 +169,27 @@ function parseJudge(value: unknown, registry: ToolRegistry, where: string, fail:
     ...(value.input === undefined ? {} : { input: value.input }), ...(skill ? { skill } : {}), ...(minimum === undefined ? {} : { min_confidence: minimum as number }),
   };
 }
+function parseAgent(value: unknown, registry: ToolRegistry, where: string, fail: (message: string) => never): AgentSpec {
+  if (!isRecord(value)) return fail(`${where} must be {"instructions":…,"tools":[…]}`);
+  if (!Array.isArray(value.tools) || value.tools.length === 0) return fail(`${where}.tools must list the tools the agent may call`);
+  const tools = [...new Set(value.tools.map((name, index) => workflowTool(registry, name, `${where}.tools[${index}]`, fail)))];
+  const turns = value.max_turns ?? DEFAULT_MAX_TURNS;
+  if (typeof turns !== "number" || !Number.isInteger(turns) || turns < 1 || turns > MAX_TURNS) return fail(`${where}.max_turns must be a whole number from 1 to ${MAX_TURNS}`);
+  return { instructions: text(value.instructions, `${where}.instructions`, fail), tools, max_turns: turns, ...(value.input === undefined ? {} : { input: value.input }) };
+}
 
 function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: (message: string) => never): WorkflowStep {
   const where = `steps[${index}]`;
   if (!isRecord(value)) return fail(`${where} must be an object`);
   const id = typeof value.id === "string" && STEP_ID.test(value.id) && !RESERVED.includes(value.id) ? value.id : fail(`${where}.id must be lowercase letters, digits and _ (not ${RESERVED.join(", ")})`);
-  const kinds = ["tool", "judge", "approve"].filter((kind) => value[kind] !== undefined);
-  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve`);
+  const kinds = ["tool", "judge", "approve", "agent"].filter((kind) => value[kind] !== undefined);
+  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve, agent`);
   const base = { id, ...(value.when === undefined ? {} : { when: text(value.when, `step '${id}'.when`, fail) }) };
   const foreach = value.foreach === undefined ? {} : { foreach: text(value.foreach, `step '${id}'.foreach`, fail) };
   if (value.judge !== undefined) return { ...base, kind: "judge", judge: parseJudge(value.judge, registry, `step '${id}'.judge`, fail), ...foreach };
   if (value.tool !== undefined) return { ...base, kind: "tool", tool: workflowTool(registry, value.tool, `step '${id}'`, fail), args: args(value.args, `step '${id}'.args`, fail), ...foreach };
-  if (value.foreach !== undefined) return fail(`step '${id}': an approve step acts on one call and cannot use foreach`);
+  if (value.foreach !== undefined) return fail(`step '${id}': an ${kinds[0]} step cannot use foreach`);
+  if (value.agent !== undefined) return { ...base, kind: "agent", agent: parseAgent(value.agent, registry, `step '${id}'.agent`, fail) };
   const approve = isRecord(value.approve) ? value.approve : fail(`step '${id}'.approve must be {"tool":…,"args":…,"why":…}`);
   return {
     ...base, kind: "approve", tool: workflowTool(registry, approve.tool, `step '${id}'.approve`, fail), args: args(approve.args, `step '${id}'.approve.args`, fail),
@@ -173,6 +201,7 @@ const foreachOf = (step: WorkflowStep): string | undefined => ("foreach" in step
 
 /** The roots a step's arguments refer to; `item` is allowed there inside foreach. */
 function argumentRoots(step: WorkflowStep): readonly string[] {
+  if (step.kind === "agent") return templateRoots(step.agent.input);
   const templates = step.kind === "judge" ? [step.judge.input, step.judge.context_tools.map((entry) => entry.args)] : [step.args];
   return templates.flatMap(templateRoots);
 }
@@ -194,6 +223,16 @@ function checkReferences(workflow: Workflow, fail: (message: string) => never): 
     seen.push(step.id);
   }
 }
+/** An agentic workflow (§10.8) is written as instructions and tools; it runs as one agent step. */
+function rawSteps(value: Raw, fail: (message: string) => never): readonly unknown[] {
+  if (value.mode !== "agentic") {
+    if (!Array.isArray(value.steps) || value.steps.length === 0) return fail("steps must list at least one step");
+    return value.steps;
+  }
+  if (value.steps !== undefined || value.fallback !== undefined) return fail("an agentic workflow has instructions and tools, not steps or a fallback: the agent chooses each call");
+  const agent = { instructions: value.instructions, tools: value.tools, ...(value.max_turns === undefined ? {} : { max_turns: value.max_turns }), ...(value.input === undefined ? {} : { input: value.input }) };
+  return [{ id: AGENT_STEP, agent }];
+}
 
 export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry): Workflow {
   const fail = (message: string): never => {
@@ -201,13 +240,13 @@ export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry
   };
   if (!isRecord(value)) return fail("the file must be a JSON object");
   if (value.workflow !== id) return fail(`"workflow" must be '${id}', the name of its folder`);
-  if (value.mode !== undefined && value.mode !== "typed") return fail("only typed workflows can run yet (mode: typed)");
+  if (value.mode !== undefined && value.mode !== "typed" && value.mode !== "agentic") return fail('mode must be "typed" or "agentic"');
   const version = value.version;
   if (typeof version !== "number" || !Number.isInteger(version) || version < 1) return fail("version must be a whole number from 1");
-  if (!Array.isArray(value.steps) || value.steps.length === 0) return fail("steps must list at least one step");
+  const fallback = value.fallback === undefined ? {} : { fallback: parseAgent(isRecord(value.fallback) ? { ...value.fallback, input: undefined } : value.fallback, registry, "fallback", fail) };
   const workflow: Workflow = {
-    id, version, description: typeof value.description === "string" ? value.description : "", trigger: parseTrigger(value.trigger, fail),
-    steps: value.steps.map((step, index) => parseStep(step, index, registry, fail)),
+    id, version, description: typeof value.description === "string" ? value.description : "", mode: value.mode === "agentic" ? "agentic" : "typed",
+    trigger: parseTrigger(value.trigger, fail), steps: rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), ...fallback,
   };
   try {
     checkReferences(workflow, fail);

@@ -47,9 +47,21 @@ export interface RunRecord {
   /** The approval item the run waits for. */
   readonly waiting_on?: number;
   readonly reason?: string;
+  /** Drift (D18): the typed step that failed, after which this run fell back to the workflow's agent. */
+  readonly fallback_from?: { readonly step: string; readonly error: string };
 }
 
 export const STEP_STATUSES = ["done", "waiting", "rejected", "failed"] as const;
+
+/** One call an agent step made (§10.8, D92): what the model asked for, the level the gate derived, and what happened. */
+export interface AgentTurn {
+  readonly tool: string;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly level?: string;
+  readonly result?: unknown;
+  readonly error?: string;
+  readonly approval?: number;
+}
 
 export interface StepLog {
   readonly step: string;
@@ -64,6 +76,9 @@ export interface StepLog {
   readonly context_calls?: readonly unknown[];
   readonly needs_human?: readonly { readonly index: number; readonly reason: string }[];
   readonly error?: string;
+  /** Agent steps: the input the agent was given and every call it made, in order (the record hardening learns from). */
+  readonly input?: unknown;
+  readonly turns?: readonly AgentTurn[];
 }
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
