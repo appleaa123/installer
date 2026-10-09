@@ -13,6 +13,8 @@ export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "used"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 const TOKEN_PATTERN = /^([1-9]\d*)\.[0-9a-f]{64}$/;
+/** Which surface made a tool call: the agent over MCP, the shell (`installer tool`), or the gateway itself (D79). */
+export type Via = "mcp" | "cli" | "gateway";
 
 export interface ProposedAction {
   readonly tool: string;
@@ -40,7 +42,7 @@ export interface Decision {
 /** Spec §11.5. `source.via` says which surface asked; workflows add their run and step in Plan 7. */
 export interface ApprovalItem {
   readonly id: number;
-  readonly source: { readonly via: "mcp" | "cli" };
+  readonly source: { readonly via: Via };
   readonly level: Level;
   readonly urgent: boolean;
   readonly action: ProposedAction;
@@ -64,7 +66,7 @@ export interface ApprovalRequest {
   readonly preview?: string;
   readonly evidence?: readonly string[];
   readonly urgent?: boolean;
-  readonly via: "mcp" | "cli";
+  readonly via: Via;
 }
 
 /** Who decides at the terminal, and with which role (D60). */

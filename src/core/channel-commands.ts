@@ -61,7 +61,8 @@ async function verifyEmail(home: string, value: string | undefined, now: string,
   return { ...setup, verified_at: now };
 }
 
-const describeChannel = (config: ChannelConfig) => ({
+/** A channel as the person and the agent see it: never its secret. */
+export const describeChannel = (config: ChannelConfig) => ({
   channel: config.channel, verified_at: config.verified_at, ...CHANNEL_FACTS[config.channel],
   ...(config.channel === "telegram" ? { bot: `@${config.bot.username}` } : { address: config.address }),
 });
