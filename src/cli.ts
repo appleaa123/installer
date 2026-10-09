@@ -14,8 +14,10 @@ import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { operationsView, renderOperations } from "./core/data-flow.js";
 import { disconnect } from "./core/disconnect.js";
+import { doctorCommand } from "./core/doctor.js";
 import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { hardenCommand } from "./core/hardening.js";
+import { hostCommand } from "./core/host.js";
 import { listLearnings } from "./core/learning.js";
 import { dryrunCommand, sandboxCommand, workflowCommand } from "./core/lifecycle.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
@@ -26,7 +28,12 @@ import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
 import { startOAuthPage } from "./core/oauth-page.js";
+import { pauseCommand, unpauseCommand } from "./core/pause.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
+import { retentionCommand } from "./core/retention.js";
+import { packsCommand } from "./core/shadow.js";
+import { supportBundle } from "./core/support-bundle.js";
+import { uninstall } from "./core/uninstall.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -44,7 +51,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -271,6 +278,8 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
   probe: (_home, flags) => probeCommand(flags),
   secret: (_home, _flags, arg) => secretCommand(requireArg(arg, "secret")),
   disconnect: (home, _flags, arg) => disconnect(home, requireArg(arg, "disconnect"), () => new Date().toISOString()),
+  /** D103: reads the state itself, so a damaged state is a finding, not an exit 3. */
+  doctor: (home) => doctorCommand(home, () => new Date().toISOString()),
 };
 
 /** Commands that run on the install in the home. */
@@ -307,6 +316,16 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   autonomy: async ({ state, deps }, flags, arg, extra) => autonomyCommand(deps.home, state.roles, { sub: arg, arg: extra, as: flags.as, reason: flags.reason, interactive: process.stdin.isTTY === true }, deps.now),
   alerts: async ({ deps }, flags, arg, extra) => alertsCommand(deps.home, arg, extra, person(flags), deps.now),
   learnings: async ({ deps }) => ({ learnings: await listLearnings(deps.home) }),
+  pause: async ({ deps }, flags, arg) => pauseCommand(deps.home, arg, person(flags), flags.reason, deps.now),
+  unpause: async ({ deps }, flags) => unpauseCommand(deps.home, person(flags), deps.now),
+  host: async ({ deps }, _flags, arg, extra) => hostCommand(deps.home, arg, extra, deps.now),
+  packs: async ({ state, deps }, flags, arg, extra) => packsCommand(deps.home, arg, extra, state.roles, person(flags), deps.now),
+  retention: async ({ deps }, flags) => retentionCommand(deps.home, flags.value, person(flags), deps.now),
+  support: async ({ deps }, _flags, arg) => {
+    if (arg !== "bundle") throw new InputError("support takes: bundle");
+    return supportBundle(deps.home, deps.now);
+  },
+  uninstall: async ({ deps }, flags) => uninstall(deps.home, person(flags), deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {
