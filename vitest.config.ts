@@ -22,6 +22,8 @@ export default defineConfig({
       INSTALLER_BROWSER: "none",
       // Host readiness never reads the real OS settings in a test run (D104); tests pass a fake CommandRunner.
       INSTALLER_HOST_CHECKS: "none",
+      // `installer certify` never runs the suite inside the suite (D116); the real run is a person's task.
+      INSTALLER_CERTIFY_SUITES: "none",
       // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
       INSTALLER_CLI: resolve("dist/cli.js"),
     },

@@ -5,6 +5,7 @@
  * SKILLSWIKI_LIVE_RESOURCE=<pack>/<skill> enables the resource test. INSTALLER_LIVE_AGENT=1 enables the real
  * Claude Code C6 rehearsal (costs tokens, writes a temporary `swtest-installer` server to the user MCP config and
  * a temporary `skillswiki-live` keychain item, both removed afterwards; run it from a folder Claude Code trusts).
+ * INSTALLER_LIVE_PROFILE names another bundled profile (D116); one without MCP templates skips the rehearsal.
  */
 import { describe, expect, it } from "vitest";
 import { deleteSecret, setSecret } from "../../src/core/keychain.js";
@@ -18,6 +19,8 @@ const KEY = process.env.SKILLSWIKI_API_KEY ?? "";
 const URL = process.env.SKILLSWIKI_MCP_URL ?? "";
 const RESOURCE = process.env.SKILLSWIKI_LIVE_RESOURCE ?? "";
 const AGENT = process.env.INSTALLER_LIVE_AGENT === "1";
+const PROFILE = await loadProfile(process.env.INSTALLER_LIVE_PROFILE || "claude-code");
+const REHEARSABLE = PROFILE.mcp_register !== undefined && PROFILE.headless.allow_tool !== undefined;
 const target = { url: URL, key: KEY };
 
 describe.skipIf(!KEY || !URL)("hosted Skills Wiki MCP (fact 5)", () => {
@@ -42,12 +45,12 @@ describe.skipIf(!KEY || !URL)("hosted Skills Wiki MCP (fact 5)", () => {
   });
 });
 
-describe.skipIf(!KEY || !URL || !AGENT)("real Claude Code C6 rehearsal (fact 4)", () => {
+describe.skipIf(!KEY || !URL || !AGENT || !REHEARSABLE)(`real ${PROFILE.name} C6 rehearsal (fact 4)`, () => {
   const SERVER = "swtest-installer";
   const SECRET = "skillswiki-live";
 
   it("registers a headers-helper server, has claude -p call get_active_combo, then cleans up", async () => {
-    const profile = await loadProfile("claude-code");
+    const profile = PROFILE;
     const cwd = process.env.INSTALLER_LIVE_DIR ?? process.cwd();
     await setSecret(SECRET, KEY);
     try {
