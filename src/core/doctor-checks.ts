@@ -7,6 +7,7 @@ import { CONNECTOR_SECRETS } from "./connectors.js";
 import { SOURCES_DIR, loadSource, readConfig } from "./data-source.js";
 import { gatewayStatus } from "./gateway-process.js";
 import { proposeHardening } from "./hardening.js";
+import { HOST_CHECKS_ENV, hostReadiness, saveReadiness, type HostProbe } from "./host.js";
 import { ToolRefusal } from "./approvals.js";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
@@ -47,6 +48,8 @@ export interface DoctorContext {
   readonly now: string;
   readonly env: Env;
   readonly freeBytes: (path: string) => Promise<number>;
+  /** Reads the OS settings of host readiness (D104); null where host checks are switched off. */
+  readonly host: HostProbe | null;
 }
 
 export interface DoctorCheckDef {
@@ -216,6 +219,17 @@ async function hardeningCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   return ok("hardening", ready.length === 0 ? "no hardening proposal is ready" : `hardening proposals ready: ${ready.join(", ")} ('installer harden <workflow>' shows each)`);
 }
 
+/** Layer 1 (D42, D104): re-checked daily; the score goes into the report, the fixes are printed by 'installer host'. */
+async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
+  if (!ctx.host) return ok("host", `host readiness not checked here (${HOST_CHECKS_ENV}=none)`);
+  const readiness = await hostReadiness(ctx.home, ctx.state, ctx.host, ctx.now);
+  await saveReadiness(ctx.home, readiness);
+  const open = readiness.checks.filter((entry) => entry.status === "fix").map((entry) => entry.id);
+  if (!readiness.applies) return ok("host", `readiness ${readiness.score} (Personal mode: for information only)`);
+  if (open.length === 0) return ok("host", `readiness ${readiness.score}`);
+  return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}`, fix: "'installer host' prints each fix; a person with administrator rights runs them in their own terminal" };
+}
+
 export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "state", run: stateCheck },
   { id: "audit", run: auditCheck },
@@ -226,6 +240,7 @@ export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "runner", run: runnerCheck },
   { id: "gateway", run: gatewayCheck },
   { id: "disk", run: diskCheck },
+  { id: "host", run: hostCheck },
   { id: "run_claims", run: claimsCheck },
   { id: "runs", run: runsCheck },
   { id: "retention", run: retentionCheck },

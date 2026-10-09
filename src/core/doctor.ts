@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { AuditCorruptError, appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { DOCTOR_CHECKS, defaultFreeBytes, isDomainError, type DoctorCheck, type DoctorCheckDef, type DoctorContext } from "./doctor-checks.js";
+import { systemProbe, type HostProbe } from "./host.js";
 import { InputError } from "./inputs.js";
 import { SolutionError } from "./solution.js";
 import { StateCorruptError, loadState } from "./state.js";
@@ -32,10 +33,13 @@ export interface DoctorOptions {
   readonly now: () => string;
   readonly env?: Env;
   readonly freeBytes?: (path: string) => Promise<number>;
+  /** The OS settings reader for host readiness; by default the real one, unless INSTALLER_HOST_CHECKS=none. */
+  readonly host?: HostProbe | null;
 }
 
 async function contextOf(home: string, options: DoctorOptions): Promise<DoctorContext> {
-  const base = { home, now: options.now(), env: options.env ?? process.env, freeBytes: options.freeBytes ?? defaultFreeBytes };
+  const env = options.env ?? process.env;
+  const base = { home, now: options.now(), env, freeBytes: options.freeBytes ?? defaultFreeBytes, host: options.host === undefined ? systemProbe(env) : options.host };
   let state: InstallState | null;
   try {
     state = await loadState(home);

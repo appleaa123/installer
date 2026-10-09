@@ -46,7 +46,7 @@ describe("installer doctor (§16.1, D103)", () => {
     const home = await healthyHome();
     const report = await doctor(home);
     expect(report.status).toBe("ok");
-    expect(report.checks.map((check) => check.id)).toEqual(["state", "audit", "pause", "secrets", "runner", "gateway", "disk", "run_claims", "run_records", "recent_runs", "retention", "hardening"]);
+    expect(report.checks.map((check) => check.id)).toEqual(["state", "audit", "pause", "secrets", "runner", "gateway", "disk", "host", "run_claims", "run_records", "recent_runs", "retention", "hardening"]);
     expect(await loadDoctorReport(home)).toEqual(report);
     expect(await events(home)).toEqual(["doctor.ran"]);
   });
