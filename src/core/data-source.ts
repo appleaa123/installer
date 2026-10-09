@@ -35,7 +35,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
 
-async function readConfig(home: string, relative: string): Promise<unknown> {
+/** A JSON file under the home (D34); null when it does not exist. */
+export async function readConfig(home: string, relative: string): Promise<unknown> {
   const path = await confinedPath(home, relative);
   let text: string;
   try {
@@ -47,12 +48,12 @@ async function readConfig(home: string, relative: string): Promise<unknown> {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw new StateCorruptError(`${path} is not valid JSON; it was not changed. Remove it and run the connect or map command again.`);
+    throw new StateCorruptError(`${path} is not valid JSON; it was not changed. Remove it and run the command that wrote it again.`);
   }
 }
 
 /** Atomic write: synced temp file, rename, directory sync (0600 in a 0700 folder, D34). */
-async function writeConfig(home: string, relative: string, value: unknown): Promise<void> {
+export async function writeConfig(home: string, relative: string, value: unknown): Promise<void> {
   const target = await confinedPath(home, relative);
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   await removeStaleTemps(dirname(target), basename(target));

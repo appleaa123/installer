@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { approvalsCommand } from "./core/approval-commands.js";
+import { channelCommand } from "./core/channel-commands.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { oauthConnectorFor } from "./core/connectors.js";
@@ -31,7 +32,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -274,6 +275,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     approvalsCommand(deps.home, state.roles, { sub: arg, id: extra, as: flags.as, reason: flags.reason, value: flags.value, interactive: process.stdin.isTTY === true }, deps.now),
   connect: async ({ deps }, flags, arg) => connectEntity(deps.home, requireEntityArg(arg, "connect"), flags.sheet, deps.now),
   map: async ({ deps }, flags, arg) => mapEntity(deps.home, requireEntityArg(arg, "map"), flags.value, deps.now, process.env, process.stdin.isTTY === true),
+  channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {
