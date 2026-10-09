@@ -147,13 +147,20 @@ or any other business uses the same engine with a different recipe.
   solution/solution.json           # pinned solution (Plan 1)
   state/approvals/<id>.json        # approval items, one file each; <id>.claimed = token spent (Plan 4, D57)
   data/memos/<id>.json             # memo tool records (Plan 4, D63)
+  config/channels/<id>.json        # a verified channel: bot or mailbox, servers; no secrets (Plan 6, D73)
+  state/members/<id>.json          # invited members: role, code hash, bound channel identity (Plan 6, D77)
+  state/gateway/                   # channel cursors, seen message ids, announced approvals (Plan 6, D72, D76, D78)
+  runtime/gateway/                 # gateway.pid, gateway.log, per-loop heartbeats (Plan 6, D72)
+  data/inbox/<id>.json             # inbound envelopes with their route (Plan 6, D76)
+  data/channels/opt-outs/<id>.json # do-not-contact entries (Plan 6, D80)
   runtime/probe/                   # working folder for headless probe calls (Plan 2)
   ops.sqlite                       # runs, idempotency, sessions, autonomy stats,
                                    # pending events (store decided in Plan 7, D57)
   audit/audit.lock                 # one audit writer at a time (Plan 4, D57)
   runs/<workflow>/<run_id>/        # per-run artifacts (§10.6)
   audit/audit.jsonl                # hash-chained (§11.8)
-  sandbox/outbox/                  # recording sink in sandbox mode (§15.5)
+  sandbox/outbox/                  # recording sink in sandbox mode (§15.5); every message until
+                                   # the install is finished (Plan 6, D79)
 ```
 
 ---
@@ -385,13 +392,15 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer connect <entity> --sheet <link \| id \| new>` | Connect an entity of the data contract to a sheet, or create one (§9.4, D68, D69) |
 | `installer map <entity> [--value <json>]` | Show fields, columns and sample rows; save the confirmed field → column mapping (§9.4, D68) |
 | `installer mcp-headers <id>` | Run by the agent's MCP client: prints the Authorization header from the keychain (§7.2, D52) |
-| `installer invite` | Create per-member join links (channel identity + optional personal sign-ins) |
+| `installer channel [telegram \| email --value <json>]` | Check a channel live and save it, or list the channels (§12.2, D73) |
+| `installer invite <name>` | Create a member's one-time join code, in a person's terminal only; the member sends it to a channel, which binds their identity to a role (§11.9, D77). Personal sign-ins later |
+| `installer members [remove <id>]` | List the members, or remove one (terminal only, D77) |
 | `installer run <workflow> [--sandbox]` | Run a workflow now |
 | `installer harden <workflow>` | Review and apply hardening proposals (§10.8) |
 | `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4); prints the tool's result, exits 2 on a refusal (D63) |
 | `installer approvals list \| approve <id> \| edit <id> --value <json> \| reject <id>` | Decide approval items in a person's own terminal (`--as <name>`, `--reason`; D60, D61) |
 | `installer mcp-serve` | Run by the agent's MCP client: the local MCP server on stdio (D56) |
-| `installer gateway start|stop|status` | Manage the gateway daemon |
+| `installer gateway start|stop|status` | Manage the gateway: a detached process with a pid file under the engine home, replaced after a crash by the next start (D72); started at boot by the OS in Plan 9 |
 | `installer doctor` | Health checks (§16.1) |
 | `installer pause` / `installer unpause` | Kill switch (§14.4) |
 | `installer disconnect <connector>` | Revoke access and delete stored credentials (`skillswiki`, or a pinned connector such as `google-sheets`: deletes its sign-in and names the provider page that removes the grant, D67) |
@@ -548,8 +557,9 @@ adapter instead of an MCP server:
   "risk": { "reads_personal_data": true, "outbound_external": false, "official_api": true } }
 ```
 
-The `records.*` tools declare their own levels (D70); `risk.actions` level rules arrive with connector-specific
-tools (Plan 6).
+The `records.*` tools declare their own levels (D70), and so do the `channel.*` tools (D79); `risk.actions` level
+rules arrive with packaged connectors that bring their own tools. Telegram and email are built-in adapters, not
+packages (D73).
 
 ### 8.2 Catalog rules
 - Curated by Allen only; pinned version + checksum; installer updates
@@ -956,7 +966,7 @@ Decisions:
 | Approve | Token issued for the exact `action_hash` |
 | Edit | Human-edited action → new hash → approved as edited; diff stored → learning candidate |
 | Reject | Step marked rejected; optional reason → learning candidate |
-| Expire | Reminder, then escalation to the next role (Plan 6). Plan 4: an open item expires 24 h after the request, on the first read after that, with one audit line (D62) |
+| Expire | Reminder, then escalation to the next role (Plan 7). Plan 4: an open item expires 24 h after the request, on the first read after that, with one audit line (D62) |
 
 ### 11.6 Earned autonomy (D25)
 - Tracked per action type (tool + target audience + template class).
@@ -1004,6 +1014,13 @@ Decisions:
   without a terminal on stdin (an agent's shell) is refused and audited.
   The decision maker is whoever passes `--as` with the MODE phase's
   decision maker name; everyone else is a member (D60, D61).
+- Plan 6: `installer invite <name>` (terminal only) prints a one-time
+  join code; the member sends it to a channel and the gateway binds that
+  identity to the member's role, once, within 72 hours (D77). A joined
+  member decides with reply codes in Telegram; email reply codes are
+  refused because a sender can be forged. The gateway announces each
+  pending item once to the members who may decide it; buttons come later
+  (D78).
 
 ---
 
@@ -1031,6 +1048,12 @@ The engine adapts: no buttons → reply codes; closed reply window →
 template required; `official_api: false` → install-time warning and **not
 allowed for external audiences**.
 
+**v1 (Plan 6).** Two built-in adapters behind one interface (receive +
+send), their capabilities declared in the engine with one more risk fact,
+`sender_verified` (D73): Telegram through the Bot API with long polling
+(D74) and email through IMAP + SMTP on `node:tls` (D75). Both use reply
+codes. `installer channel <id>` checks a channel live before it is saved.
+
 ### 12.3 Gateway
 - One always-on daemon on the host owns every channel (inbound and
   outbound) on every runtime.
@@ -1039,6 +1062,10 @@ allowed for external audiences**.
   (D34).
 - Conversations: headless host-agent call per message with session resume
   (C5) or replayed history (§7.4).
+- v1 (Plan 6, D72): a detached local process (`installer gateway start`)
+  that only polls (Telegram, IMAP), so it listens on no port; a pid file,
+  per-loop heartbeats and a log under `runtime/gateway/`; conversations
+  arrive in Plan 8.
 
 ### 12.4 Inbound pipeline
 
@@ -1053,6 +1080,12 @@ channel → normalize → { channel, from, thread, text, attachments, received_a
 Attachments are stored under the run folder; judges receive references;
 video is processed by a frame-extraction `tool` step.
 
+v1 (Plan 6, D76): the envelope also carries `message_id`, `untrusted:
+true` and the injection flags; messages are kept in `data/inbox/` with
+the route `conversation`, `event` (the hook for §10.3 event triggers) or
+`command`; a message seen twice is stored once. `records.match` and
+attachments arrive with the workflows (Plan 7).
+
 ### 12.5 Outbound rules
 - External sends require approval per §11.
 - Opt-out keywords (STOP, unsubscribe, and recipe-declared equivalents)
@@ -1063,6 +1096,11 @@ video is processed by a frame-extraction `tool` step.
   declared policy without knowing the law.
 - Platform rules from connector capabilities (reply windows, templates,
   sender registration).
+- v1 (Plan 6): `channel.notify` (internal, L1) and `channel.send`
+  (external, L2); until the install is finished every message is recorded
+  in `sandbox/outbox/`, not sent (R6, D79). A solution's `channel_policy`
+  declares `consent` (`none` | `inbound_first`), `quiet_hours` with a time
+  zone and extra opt-out words; rate limits arrive with Plan 7 (D80).
 
 ### 12.6 Defaults
 - Internal: what the client already uses (Slack, Teams, …); otherwise
@@ -1274,7 +1312,7 @@ Same engine, same phases, same contracts.
 | O1 | Live test of Codex `exec`, `exec resume`, `--output-schema` (documented by third-party guides only) | Codex certification |
 | O2 | Vendor terms review per runtime before certification | Certification |
 | O3 | ~~Secret entry on a headless team host~~ Resolved: the `ssh -L` hint (D47) also carries the OAuth redirect, which returns to the same loopback page (D66) | — |
-| O4 | Tunnel choice and setup for webhook channels | Webhook connectors |
+| O4 | Tunnel choice and setup for webhook channels (v1 channels poll instead: D74, D75) | Webhook connectors |
 | O5 | Runtime profile details for OpenClaw, Hermes, Pi, WorkBuddy | Compatible tier |
 | O6 | ~~Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header~~ Resolved: `claude mcp add-json -s user <name> '{"type":"http","url":…,"headersHelper":…}'` (D52) | — |
 | O7 | ~~CI monthly budget cap amount~~ Resolved: no paid CI; local offline tests plus opt-in live tests (D48) | — |
@@ -1299,8 +1337,8 @@ Same engine, same phases, same contracts.
 | §8 | D8, D21, D22, D34, D65–D67 |
 | §9 | D28, D29, D64, D68–D71 |
 | §10 | D10–D19, D38–D40 |
-| §11 | D23–D26, D35 |
-| §12 | D30 |
+| §11 | D23–D26, D35, D77, D78 |
+| §12 | D30, D72–D80 |
 | §13 | D1, D6, D8, D19 |
 | §14 | D24, D34, D43 |
 | §15 | D31–D33 |
