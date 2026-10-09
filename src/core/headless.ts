@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProfileError, type RuntimeProfile } from "./profile.js";
+import { spawnable } from "./win-shim.js";
 
 export const HEADLESS_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 1_000_000;
@@ -40,9 +41,15 @@ export interface ProcessResult {
   readonly error?: string;
 }
 
-/** Spawns argv with no shell; stdin gets `input` (keychain values travel that way) and is closed at once. Never rejects. */
-export function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
-  const [file, ...args] = argv;
+/** Spawns argv with no shell (on Windows through `spawnable`, D115); stdin gets `input` (keychain values travel that way) and is closed at once. Never rejects. */
+export async function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
+  const target = await spawnable(argv);
+  if ("error" in target) return { stdout: "", code: null, error: target.error };
+  return spawnProcess(target.argv, cwd, timeoutMs, input);
+}
+
+function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
+  const [file = "", ...args] = argv;
   return new Promise((done) => {
     const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "ignore"] });
     let stdout = "";

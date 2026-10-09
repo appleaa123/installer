@@ -68,6 +68,11 @@ describe("runProbe", () => {
     expect(map).toMatchObject({ c4_headless: true, c5_resume: true, tier: "unknown", notes: ["Fake Codex's terms of service are not reviewed yet (tos_review: pending), so its tier stays unknown (D32)"] });
   });
 
+  it("keeps an agent on Windows at tier unknown until Windows is certified (D115)", async () => {
+    const map = await runProbe({ profiles: [await loadProfile(FAKE)], cwd: await makeTempHome(), platform: "win32" });
+    expect(map).toMatchObject({ c4_headless: true, tier: "unknown", notes: ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs installer certify on Windows"] });
+  });
+
   it("uses the first profile whose agent is installed", async () => {
     const map = await runProbe({ profiles: [await loadProfile(MISSING), await loadProfile(FAKE)], cwd: await makeTempHome() });
     expect(map.profile).toBe("fake-agent");
