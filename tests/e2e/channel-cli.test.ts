@@ -39,3 +39,14 @@ describe("installer channel and disconnect from the shell (D73)", () => {
     expect(runCli(["channel", "fax"], { home, env }).code).toBe(2);
   });
 });
+
+describe("installer invite and members from the shell (D77)", () => {
+  it("refuses to invite from an agent's shell (no terminal) and lists no members", async () => {
+    const { home, env } = await install({ telegram: BOT_TOKEN });
+    runCli(["channel", "telegram"], { home, env });
+    const refused = runCli(["invite", "Owner"], { home, env });
+    expect(refused.code).toBe(2);
+    expect(refused.json).toMatchObject({ error: expect.stringContaining("not by the agent") });
+    expect(runCli(["members"], { home, env }).json).toEqual({ members: [] });
+  });
+});
