@@ -4,6 +4,7 @@ import { readConfig, writeConfig } from "./data-source.js";
 import { interpolate } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { listRuns, loadStep, type AgentTurn, type RunRecord } from "./runs.js";
+import { saveWorkflowState } from "./sandbox.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, type AgentSpec, type Workflow } from "./workflow.js";
 
@@ -147,13 +148,19 @@ export async function replayGate(home: string, workflow: Workflow, proposal: Pro
 const fileOf = (id: string): string => join(WORKFLOWS_DIR, id, WORKFLOW_FILE);
 const versionFile = (id: string, version: number): string => join(WORKFLOWS_DIR, id, VERSIONS_DIR, String(version), WORKFLOW_FILE);
 
-/** Keeps the current file under versions/<n>/ and writes `next` (checked first) as the workflow. */
+/**
+ * Keeps the current file under versions/<n>/ and writes `next` (checked first) as the workflow. The new version
+ * goes back to sandbox, with no dry run: it runs live only once a person confirmed a dry run of it (D98).
+ */
 async function replaceVersion(home: string, workflow: Workflow, next: Raw): Promise<Workflow> {
   const checked = parseWorkflow(next, workflow.id, DEFAULT_TOOLS);
   await writeConfig(home, versionFile(workflow.id, workflow.version), await readConfig(home, fileOf(workflow.id)));
+  await saveWorkflowState(home, { workflow: workflow.id, sandbox: true });
   await writeConfig(home, fileOf(workflow.id), next);
   return checked;
 }
+
+const dryRunNext = (id: string, version: number): string => `Version ${version} runs in sandbox until a person confirms a dry run of it: 'installer dryrun ${id}', then 'installer dryrun confirm ${id}'`;
 
 function hardenedFile(workflow: Workflow, current: Raw, proposal: Proposal): Raw {
   const agent = agentOf(workflow) as AgentSpec & { readonly id: string };
@@ -171,7 +178,7 @@ export async function applyHardening(home: string, workflow: Workflow, by: strin
   if (!replay.ok) throw new InputError(`The replay gate failed, so version ${workflow.version} stays: ${replay.runs.filter((run) => !run.ok).map((run) => `${run.run_id}: ${run.mismatch ?? ""}`).join("; ")}`);
   const next = await replaceVersion(home, workflow, hardenedFile(workflow, (await readConfig(home, fileOf(workflow.id))) as Raw, proposal));
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.hardened", ref: `workflow:${workflow.id}`, payload: { by, from: workflow.version, to: next.version, promoted: proposal.promoted.map((step) => step.tool), replayed: replay.runs.length } });
-  return { status: "hardened", workflow: workflow.id, version: next.version, kept: join(WORKFLOWS_DIR, workflow.id, VERSIONS_DIR, String(workflow.version)), promoted: proposal.promoted, agent_kept: proposal.agent_kept };
+  return { status: "hardened", workflow: workflow.id, version: next.version, kept: join(WORKFLOWS_DIR, workflow.id, VERSIONS_DIR, String(workflow.version)), promoted: proposal.promoted, agent_kept: proposal.agent_kept, sandbox: true, next: dryRunNext(workflow.id, next.version) };
 }
 
 /** Restores version `version` from versions/ as a new version (versions only grow, so run keys never repeat). */
@@ -180,7 +187,7 @@ export async function rollbackWorkflow(home: string, workflow: Workflow, version
   if (old === null || typeof old !== "object") throw new InputError(`Workflow '${workflow.id}' has no kept version ${version} under ${VERSIONS_DIR}/`);
   const next = await replaceVersion(home, workflow, { ...(old as Raw), version: workflow.version + 1 });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.rolled_back", ref: `workflow:${workflow.id}`, payload: { by, from: workflow.version, restored: version, to: next.version } });
-  return { status: "rolled_back", workflow: workflow.id, restored: version, version: next.version };
+  return { status: "rolled_back", workflow: workflow.id, restored: version, version: next.version, sandbox: true, next: dryRunNext(workflow.id, next.version) };
 }
 
 /** `installer harden <workflow> [apply | rollback --value <n>]`: shows the proposal and its replay; changes need a terminal. */

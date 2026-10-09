@@ -6,6 +6,8 @@ import { hardenCommand, proposeHardening, replayGate, type Proposal } from "../.
 import { resumeRun, startRun } from "../../src/core/runner.js";
 import { runIdFor } from "../../src/core/runs.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
+import { dryrunCommand } from "../../src/core/lifecycle.js";
+import { loadWorkflowState } from "../../src/core/sandbox.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { loadWorkflow } from "../../src/core/workflow.js";
 import { runnerHome } from "../helpers/runner-home.js";
@@ -27,6 +29,13 @@ async function agentRun(home: string, index: number, calls: (runId: string) => u
   vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([...calls(runIdFor(key, AT)), { tool: "done", summary: "noted" }]));
   const at = new Date(Date.parse(AT) + index * 60_000).toISOString();
   return startRun({ home, workflow: await load(home), key, trigger: { kind: "manual" }, now: () => at });
+}
+
+/** A person dry-runs the current version and confirms it, so its runs are live again. */
+async function live(home: string): Promise<void> {
+  vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "dry" }]));
+  await dryrunCommand(home, "tidy", undefined, TERMINAL, () => AT);
+  await dryrunCommand(home, "confirm", "tidy", TERMINAL, () => AT);
 }
 
 const NOTE = (runId: string) => [{ tool: "memo.list", args: {} }, { tool: "memo.add", args: { text: runId } }];
@@ -89,6 +98,7 @@ describe("the replay gate and versions (§10.8)", () => {
     expect(JSON.parse(await readFile(join(home, "workflows/tidy/versions/1/workflow.json"), "utf8"))).toEqual(AGENTIC);
     const hardened = await load(home);
     expect(hardened).toMatchObject({ version: 2, mode: "typed", fallback: { tools: ["memo.list", "memo.add", "memo.edit"] } });
+    await live(home);
     vi.stubEnv("FAKE_AGENT_JUDGE", "not json: the model must not be asked");
     const run = await startRun({ home, workflow: hardened, key: "tidy:manual:9", trigger: { kind: "manual" }, now: () => AT });
     expect(run).toMatchObject({ status: "completed", version: 2 });
@@ -105,15 +115,34 @@ describe("the replay gate and versions (§10.8)", () => {
       expect(await resumeRun({ home, workflow: await load(home), key: waiting.key, trigger: waiting.trigger, now: () => AT }, waiting)).toMatchObject({ status: "completed" });
     }
     expect(await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT)).toMatchObject({ promoted: [{ tool: "memo.edit", args: { id: 1, text: "${run.id}" } }] });
+    await live(home);
     const run = await startRun({ home, workflow: await load(home), key: "tidy:manual:20", trigger: { kind: "manual" }, now: () => AT });
     expect(run).toMatchObject({ status: "waiting", version: 2 });
     expect((await listApprovals(home, AT)).find((item) => item.id === run.waiting_on)).toMatchObject({ level: "L2", status: "pending", action: { args: { text: run.run_id } } });
   });
 
+  it("puts a hardened version back in sandbox until a person confirms a dry run of it (D98)", async () => {
+    const home = await hardenable();
+    await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT);
+    expect(await loadWorkflowState(home, "tidy")).toEqual({ workflow: "tidy", sandbox: true });
+    await expect(dryrunCommand(home, "confirm", "tidy", TERMINAL, () => AT)).rejects.toThrow("has no dry run of version 2 yet");
+    expect(await startRun({ home, workflow: await load(home), key: "tidy:manual:30", trigger: { kind: "manual" }, now: () => AT })).toMatchObject({ version: 2, sandbox: true });
+    expect(await memos(home)).not.toContain(runIdFor("tidy:manual:30", AT));
+  });
+
+  it("puts a rolled-back version back in sandbox until a person confirms a dry run of it (D98)", async () => {
+    const home = await hardenable();
+    await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT);
+    await live(home);
+    await hardenCommand(home, "tidy", "rollback", "1", TERMINAL, () => AT);
+    expect(await loadWorkflowState(home, "tidy")).toEqual({ workflow: "tidy", sandbox: true });
+    await expect(dryrunCommand(home, "confirm", "tidy", TERMINAL, () => AT)).rejects.toThrow("has no dry run of version 3 yet");
+  });
+
   it("rolls back to a kept version as a new version", async () => {
     const home = await hardenable();
     await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT);
-    expect(await hardenCommand(home, "tidy", "rollback", "1", TERMINAL, () => AT)).toEqual({ status: "rolled_back", workflow: "tidy", restored: 1, version: 3 });
+    expect(await hardenCommand(home, "tidy", "rollback", "1", TERMINAL, () => AT)).toEqual({ status: "rolled_back", workflow: "tidy", restored: 1, version: 3, sandbox: true, next: expect.stringContaining("installer dryrun tidy") });
     expect(await load(home)).toMatchObject({ version: 3, mode: "agentic" });
     await expect(hardenCommand(home, "tidy", "rollback", "7", TERMINAL, () => AT)).rejects.toThrow("has no kept version 7");
   });
