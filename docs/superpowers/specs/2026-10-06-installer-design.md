@@ -283,6 +283,13 @@ reference and the URL (`{{SOLUTION_REF}}`, `{{SKILLSWIKI_URL}}`).
 Industry content enters only as data: recipe suggestions (phase 5) and the
 connectors those suggestions need (phases 3–4).
 
+Plan 8 (D98): WORKFLOWS adds workflows with `installer workflow add` (a recipe
+suggestion, or the person's own words as an agentic v1), in sandbox; DRY
+RUN runs each in sandbox and the person confirms it in their own terminal
+(`installer dryrun confirm`); ACTIVATE leaves sandbox once all are
+confirmed, checks the gateway (started in CHANNELS, where the decision
+maker joins) and asks the person to load the schedule.
+
 ### 6.3 Step protocol (D21)
 
 `installer next` prints exactly one step as JSON, wrapped with its
@@ -399,11 +406,17 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer channel [telegram \| email --value <json>]` | Check a channel live and save it, or list the channels (§12.2, D73) |
 | `installer invite <name>` | Create a member's one-time join code, in a person's terminal only; the member sends it to a channel, which binds their identity to a role (§11.9, D77). Personal sign-ins later |
 | `installer members [remove <id>]` | List the members, or remove one (terminal only, D77) |
-| `installer run <workflow> [--sandbox]` | Run a workflow now, with its own idempotency key; `--sandbox` records every outbound message of the run in `sandbox/outbox/` (D90; dry runs are Plan 8) |
+| `installer run <workflow> [--sandbox]` | Run a workflow now, with its own idempotency key; `--sandbox` makes it a sandbox run: every message and every action above L0 is recorded in `sandbox/outbox/`, nothing is approved or done (D90, D91) |
+| `installer workflow list \| suggestions \| add <id> [--value <json>]` | List the workflows, the recipe's suggestions, or add one (a suggestion, or the person's words as an agentic v1), in sandbox (D98) |
+| `installer dryrun [<workflow>] \| confirm <workflow>` | Run each workflow in sandbox and show what it would do; the person confirms in their own terminal (D98) |
+| `installer sandbox status \| on \| off \| outbox` | Engine-wide sandbox mode; `off` only in the person's terminal (D91) |
 | `installer tick` | Run by the OS scheduler every minute: starts the runs that are due, records missed ones, sends the back-online notice, starts event runs, resumes decided runs, sends the twice-daily report (D82, D84, D88, D89) |
 | `installer schedule list \| install \| remove \| report [--value <json>]` | Show the workflows' next runs and the last tick; write the launchd or crontab entry under the home and print the commands the person runs (never run by the installer); remove it; set the report's recipients (D82, D89) |
 | `installer model [--value <json>]` | Show or save the direct-model fallback for judges (provider, model; the key through `installer secret model`) (D85) |
-| `installer harden <workflow>` | Review and apply hardening proposals (§10.8) |
+| `installer harden <workflow> [apply \| rollback --value <n>]` | Show the hardening proposal and its replay; a person applies it or rolls back in their own terminal (§10.8, D93) |
+| `installer autonomy list \| grant <type> \| revoke <id>` | Streaks and grants of earned autonomy; grants and revokes by the decision maker in their terminal (§11.6, D94) |
+| `installer alerts list \| ack <id>` | Urgent alerts; acknowledged in a person's terminal or with `K<id>` (§11.7, D95) |
+| `installer learnings` | The redacted learnings and whether Skills Wiki recorded them (§10.10, D97) |
 | `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4); prints the tool's result, exits 2 on a refusal (D63) |
 | `installer approvals list \| approve <id> \| edit <id> --value <json> \| reject <id>` | Decide approval items in a person's own terminal (`--as <name>`, `--reason`; D60, D61) |
 | `installer mcp-serve` | Run by the agent's MCP client: the local MCP server on stdio (D56) |
@@ -735,6 +748,10 @@ judge names its `instructions`, an inline `schema` and an `input`, and `foreach`
   ] }
 ```
 
+Plan 8 (D92): a fourth step kind, `agent` (`{"instructions","tools","max_turns"?}`),
+lets the model choose each call among its tools; `"mode": "agentic"` is a
+workflow written as `instructions` and `tools`; a typed workflow may name a
+`fallback` agent for drift.
 ### 10.2 Step types (D14)
 
 | Type | Behaviour | Model | May change state |
@@ -890,6 +907,15 @@ describe (plain words) → v1 agentic → dry run (sandbox, human confirms)
   approved outputs (exact for tool steps; schema-equal and label-equal for
   judge steps). Mismatch blocks the switch and is shown to the human.
 - Previous versions kept under `versions/` for rollback.
+- Plan 8 (D91–D93): agentic mode is the runner's own loop: the model names
+  one call at a time (tools off), the runner makes it through the gate and
+  logs it, so approvals apply as in typed steps. Proposals come from the
+  agent's calls in the last 5 runs (literal values, or values found at one
+  path of the run's data or an earlier call's result); the replay gate
+  re-runs the new steps over the last 10 runs with recorded results; a
+  person applies it (`installer harden <workflow> apply`); old files stay
+  under `workflows/<id>/versions/<n>/`; a typed step's failure falls back
+  to the agent (`fallback`).
 
 ### 10.9 Escalation (D18)
 
@@ -904,6 +930,11 @@ describe (plain words) → v1 agentic → dry run (sandbox, human confirms)
   learning → submitted with Skills Wiki `learning_record` after
   **redacting `personal` fields** (D34).
 - `doctor` re-runs evals when a pinned pack version changes (§14.3).
+- Plan 8 (D97): the learning's body is written by the engine from the
+  person's side only (decision, reason, the values they wrote), with
+  `personal` and `protected_ground` values, email addresses and long
+  numbers replaced, at most 600 characters; sent by the tick with
+  `learning_list` then `learning_record`; a refusal is kept, not retried.
 
 ---
 
@@ -1011,6 +1042,11 @@ Decisions:
 - Approvals given in **sandbox / dry-run** mode do not count toward a
   streak: they confirm an output looks right, not that the action type is
   safe to automate.
+- Plan 8 (D94): an action type is one typed tool step
+  (`<workflow>/<step>/<tool>`); the decision maker grants it in their own
+  terminal; a grant only lets the runner approve that step's item itself
+  when its derived level is L2 from the tool alone; the item, hash, token
+  and audit stay, and urgent runs are excluded.
 
 ### 11.7 Urgent events (D26)
 - Recipes/connectors declare which events are urgent (e.g. via a judge
@@ -1023,6 +1059,10 @@ Decisions:
   within minutes.
 - **Any external safety or instruction message:** requires human input;
   the model may draft; no pre-approved templates.
+- Plan 8 (D95): urgent = a judge's declared boolean `urgent` field is
+  true; the alert repeats every 10 minutes (6 sends) until the decision
+  maker answers `K<id>` or runs `installer alerts ack <id>`; the run's
+  items are urgent, reminded every 5 minutes, never auto-approved.
 
 ### 11.8 Audit trail (D23, D34)
 - One append-only `audit.jsonl`; each line:
@@ -1097,7 +1137,7 @@ codes. `installer channel <id>` checks a channel live before it is saved.
 - v1 (Plan 6, D72): a detached local process (`installer gateway start`)
   that only polls (Telegram, IMAP), so it listens on no port; a pid file,
   per-loop heartbeats and a log under `runtime/gateway/`; conversations
-  arrive in Plan 8.
+  arrive in a later plan (D100).
 
 ### 12.4 Inbound pipeline
 
@@ -1132,7 +1172,9 @@ attachments arrive with the workflows (Plan 7).
   (external, L2); until the install is finished every message is recorded
   in `sandbox/outbox/`, not sent (R6, D79). A solution's `channel_policy`
   declares `consent` (`none` | `inbound_first`), `quiet_hours` with a time
-  zone and extra opt-out words; rate limits arrive with Plan 7 (D80).
+  zone and extra opt-out words. Plan 8 (D96): `rate_limits`
+  (`per_contact_per_day`, `per_hour`; default 3 and 20) on messages really
+  sent, checked before the token is spent.
 
 ### 12.6 Defaults
 - Internal: what the client already uses (Slack, Teams, …); otherwise
@@ -1268,6 +1310,10 @@ privacy obligations (e.g. PIPEDA, GDPR).
 - **Sandbox mode** (engine-wide): outbound connectors replaced by a
   recording sink (`sandbox/outbox/`); only admin recipients allowed. Used
   in phase 6 and when testing new workflows.
+  Plan 8 (D91): `config/sandbox.json` turns it on for the whole engine;
+  a workflow also stays in sandbox until its dry run is confirmed. A
+  sandbox run reads for real but records every message and every action
+  above L0, and asks no approval; the person reads the recordings.
 - **`doctor` daily** (§16.1).
 
 ---
@@ -1351,7 +1397,7 @@ Same engine, same phases, same contracts.
 | O8 | ~~Final CLI / product name~~ Resolved: `installer` (D49) | — |
 | O10 | Whether Skills Wiki `enterprise` routes support team seats; v1 runs helper and keychain as the agent's OS user (D50) | Hybrid/personal seats |
 | O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
-| O12 | Default thresholds (hardening N=5, replay K=10, autonomy streak 25, cache 60 s, retention 90 d) | Tuning after pilot |
+| O12 | ~~Default thresholds~~ First pass (D99): hardening N = 5, replay K = 10, autonomy streak 25, alert repeats 10 min × 6, reminders 12 h (urgent 5 min × 3), rate limits 3 a day per contact and 20 an hour; the 60 s cache and 90-day retention are Plan 9's | Tuning after pilot |
 | O14 | Approach resolved by D82 and D84 (the runner decides by the clock, so a coalesced or skipped firing changes nothing); still to verify on a real macOS and Linux host after sleep (human task 10) | §10.3 |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
@@ -1364,14 +1410,14 @@ Same engine, same phases, same contracts.
 | §1–3 | D1–D3, D5, D27 |
 | §4 | D1, D13, D30 |
 | §5 | D9, D12, D41–D43 |
-| §6 | D3, D4, D17, D20–D22, D36, D37 |
+| §6 | D3, D4, D17, D20–D22, D36, D37, D98 |
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34, D65–D67 |
 | §9 | D28, D29, D64, D68–D71 |
-| §10 | D10–D19, D38–D40, D81–D90 |
-| §11 | D23–D26, D35, D77, D78 |
-| §12 | D30, D72–D80 |
+| §10 | D10–D19, D38–D40, D81–D93, D97, D99, D100 |
+| §11 | D23–D26, D35, D77, D78, D94–D96 |
+| §12 | D30, D72–D80, D96 |
 | §13 | D1, D6, D8, D19 |
 | §14 | D24, D34, D43 |
-| §15 | D31–D33 |
+| §15 | D31–D33, D91 |
 | §16 | D34 |

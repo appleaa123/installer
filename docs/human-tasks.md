@@ -110,16 +110,24 @@ Each task says why it is needed and what to do, step by step.
 4. Paste each test's output to Claude. If an output differs from the guide, Claude fixes the code or the guide.
 5. The guide's last test removes the LaunchAgent with the commands `installer schedule remove` prints, and deletes the test home.
 
+### 11. Run the Plan 8 live test (agentic workflows, dry runs, hardening)
+
+**Why:** the automated tests use a fake agent and a fake Skills Wiki. This checks, through your own Claude Code (about twenty short calls on your subscription), that a workflow described in plain words runs, that its dry run changes nothing until you confirm it in your terminal, that hardening proposes fixed steps from real model calls and passes its replay check, and that an urgent alert waits for your acknowledgement. It also reads your Skills Wiki learnings once (never writes). The guide's expected outputs are predictions: they have not been run yet.
+
+1. Open `docs/testing/2026-10-08-plan-8-live-test.md` and follow it in one terminal, in order.
+2. Run the `confirm`, `apply`, `sandbox off` and `alerts ack` commands yourself, in your own terminal; the guide also shows that they refuse without one.
+3. Paste each test's output to Claude, including the hardening proposal of Test 4. If an output differs from the guide, Claude fixes the code or the guide.
+4. After a pilot with a real client, tell Claude whether the first thresholds (D99: 5 runs, 10 replays, 25 approvals, 3 messages a day per contact) feel right.
 ## Optional
 
-### 11. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
+### 12. Check Antigravity's terms (only if you want `agy` as an automatic model fallback)
 
 **Why:** decision D32 records that Antigravity's terms (clause 6) forbid other programs from invoking it, so the installer never calls `agy` automatically. If the current terms allow it, Claude can add it.
 
 1. Read Antigravity's current terms of service and find the section on automated or third-party use.
 2. Tell Claude what it says. Claude will record the outcome as a decision.
 
-### 12. Check the crontab entry on a Linux host (only if a client will run on Linux)
+### 13. Check the crontab entry on a Linux host (only if a client will run on Linux)
 
 **Why:** on Linux the runner's minute is a crontab line (D82). It was only checked as text on macOS.
 
