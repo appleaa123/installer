@@ -86,8 +86,12 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   return runApprove(exec, record, step, scope, startedAt);
 }
 
-/** A step that throws a domain error fails the run; anything else (a bug, a damaged file) leaves it resumable. */
+/**
+ * A step that throws a domain error fails the run; anything else (a bug, a damaged file) leaves it resumable. A pause
+ * that came while the run was under way stops it before its next step (D101): no further model call or action.
+ */
 async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope: Scope): Promise<StepOutcome> {
+  if (await isPaused(exec.home)) return { kind: "stop", status: "partial", reason: PAUSED_REASON };
   try {
     return await runStep(exec, record, step, scope);
   } catch (error) {

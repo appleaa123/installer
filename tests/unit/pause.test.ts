@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolRefusal } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { writeConfig } from "../../src/core/data-source.js";
@@ -10,7 +10,7 @@ import { listInbox } from "../../src/core/inbox.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
 import { PAUSED_REASON, isPaused, loadPause, pauseCommand, setPaused, unpauseCommand } from "../../src/core/pause.js";
 import { startRun } from "../../src/core/runner.js";
-import { listRuns } from "../../src/core/runs.js";
+import { listRuns, loadStep } from "../../src/core/runs.js";
 import { HEARTBEAT_FILE, tick } from "../../src/core/tick.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
@@ -18,7 +18,8 @@ import { parseWorkflow } from "../../src/core/workflow.js";
 import { ADA, OWNER, channelHome, useFakeTelegram } from "../helpers/channel-home.js";
 import { startFakeTelegram, type FakeTelegram } from "../helpers/fake-telegram.js";
 import { runnerHome } from "../helpers/runner-home.js";
-import { writeWorkflow } from "../helpers/workflow-home.js";
+import { makeTempHome } from "../helpers/temp-home.js";
+import { LABEL_SCHEMA, writeWorkflow } from "../helpers/workflow-home.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
 const AGENT = { interactive: false };
@@ -31,11 +32,26 @@ beforeAll(async () => {
   fake = await startFakeTelegram();
   await useFakeTelegram(fake);
 });
-afterAll(() => fake.stop());
+afterAll(() => {
+  vi.unstubAllEnvs();
+  return fake.stop();
+});
+let agentHome = "";
+beforeEach(async () => {
+  agentHome = await makeTempHome();
+  vi.stubEnv("FAKE_AGENT_HOME", agentHome);
+});
 
 const events = async (home: string): Promise<string[]> => (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { event: string }).event);
 const from = (address: string, text: string) => ({ channel: "telegram", from: address, thread: address, text, message_id: `p${++ids}` });
 const sentTo = async (chat: string): Promise<string[]> => (await fake.sent()).filter((message) => message.chat_id === chat).map((message) => message.text);
+const answers = (...values: unknown[]) => vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify(values));
+const modelCalls = async (): Promise<number> => (await readFile(join(agentHome, "judge-calls.jsonl"), "utf8")).trim().split("\n").length;
+const label = (id: string, input: string) => ({ id, judge: { instructions: "Say whether this needs action now or later.", input, schema: LABEL_SCHEMA } });
+const TWO_JUDGES = { workflow: "sorter", version: 1, steps: [label("first", "one"), label("second", "two")] };
+const TIDY = { workflow: "tidy", version: 1, mode: "agentic", instructions: "Read the memos three times.", tools: ["memo.list"] };
+const manual = (home: string, value: Record<string, unknown>) =>
+  startRun({ home, workflow: parseWorkflow(value, String(value.workflow), DEFAULT_TOOLS), key: `${String(value.workflow)}:manual`, trigger: { kind: "manual" }, now: () => AT });
 const ctxOf = async (home: string, via: "cli" | "gateway" = "cli") => toolContext(home, via, DEFAULT_TOOLS, () => AT);
 
 describe("the kill switch (§14.4, D36, D101)", () => {
@@ -83,6 +99,24 @@ describe("the kill switch (§14.4, D36, D101)", () => {
     const after = await tick(home, () => "2026-10-08T12:20:30.000Z");
     expect(after).toMatchObject({ status: "ran", back_online: false, missed: [expect.stringContaining("(missed)"), expect.stringContaining("(missed)")], started: [expect.stringContaining("(completed)")] });
     expect((await listRuns(home, "pulse")).map((run) => run.status)).toEqual(["missed", "missed", "completed"]);
+  });
+
+  it("stops a judge-only run that is under way: the step after the pause makes no model call", async () => {
+    const home = await runnerHome();
+    answers({ label: "now", confidence: 0.9, __pause: home }, { label: "later", confidence: 0.8 });
+    const run = await manual(home, TWO_JUDGES);
+    expect(run).toMatchObject({ status: "partial", reason: PAUSED_REASON });
+    expect(await modelCalls()).toBe(1);
+    expect(await loadStep(home, run, "second")).toBeNull();
+  });
+
+  it("stops an agentic step at its next turn: the model is not asked again once the engine is paused", async () => {
+    const home = await runnerHome();
+    answers({ tool: "memo.list", args: {}, __pause: home }, { tool: "memo.list", args: {} }, { tool: "done", summary: "Read them" });
+    const run = await manual(home, TIDY);
+    expect(run).toMatchObject({ status: "partial", reason: PAUSED_REASON });
+    expect(await modelCalls()).toBe(1);
+    expect((await loadStep(home, run, "agent"))?.turns).toMatchObject([{ tool: "memo.list", level: "L0" }]);
   });
 
   it("works from the decision maker's Telegram: /pause answers before it stops, /unpause after it restarts", async () => {
