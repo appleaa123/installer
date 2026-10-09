@@ -12,6 +12,7 @@ import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
+import { operationsView, renderOperations } from "./core/data-flow.js";
 import { disconnect } from "./core/disconnect.js";
 import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { hardenCommand } from "./core/hardening.js";
@@ -283,7 +284,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   resume: async ({ state, deps }) => (await resume(deps, state)).result,
   report: async ({ state, deps }, flags) => {
     const report = buildReport(deps.solution, state);
-    return flags.json ? report : renderReport(report);
+    const operations = await operationsView(deps.home, state);
+    return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },
   tool: async ({ deps }, _flags, arg, extra) => toolCommand(deps.home, arg, extra),
   approvals: async ({ state, deps }, flags, arg, extra) =>
