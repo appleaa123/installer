@@ -1,6 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LIVE_KEYS, NOT_RUN, certify, type CertifyDeps, type SuiteResult } from "../../src/core/certify.js";
 import { checkoutState, requireCheckout, suiteFromReport, vitestSuites } from "../../src/core/certify-runs.js";
 import { InputError } from "../../src/core/inputs.js";
@@ -8,6 +8,8 @@ import { unknownRuntime } from "../../src/core/probe.js";
 import type { CapabilityMap } from "../../src/core/types.js";
 import { FAKE_RUNTIME } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const AT = "2026-10-09T12:00:00.000Z";
 const PASSED: SuiteResult = { status: "passed", files: 93, tests: 1241, passed: 1241, failed: 0, skipped: 0 };
@@ -74,9 +76,13 @@ describe("installer certify, the local certification (D116)", () => {
     if (reasons[0] === "the offline suite failed") expect(deps.runs).toEqual([[false, "claude-code"]]);
   });
 
-  it("keeps a profile whose vendor terms are under review at Unknown, whatever passed (Codex, D32, O2)", async () => {
-    const record = await certify(await makeTempHome(), "codex", fakes({ map: { ...CLAUDE, profile: "codex", agent_version: "0.50.0" } }));
-    expect(record).toMatchObject({ tos_review: "pending", tier: "unknown", reasons: ["the vendor's terms are not reviewed (tos_review: pending)"] });
+  it("keeps a profile whose vendor terms are under review at Unknown, whatever passed (D32, O2)", async () => {
+    const dir = await makeTempHome();
+    const base = JSON.parse(await readFile("profiles/codex.json", "utf8")) as Record<string, unknown>;
+    await writeFile(join(dir, "pending-agent.json"), JSON.stringify({ ...base, id: "pending-agent", tos_review: { status: "pending", note: "Not reviewed." } }));
+    vi.stubEnv("INSTALLER_PROFILE_DIR", dir);
+    const record = await certify(await makeTempHome(), "pending-agent", fakes({ map: { ...CLAUDE, profile: "pending-agent", agent_version: "0.50.0" } }));
+    expect(record).toMatchObject({ tos_review: "pending", tier: "unknown", reasons: expect.arrayContaining(["the vendor's terms are not reviewed (tos_review: pending)"]) });
   });
 
   it("names the live keys by name only: no value reaches the record", async () => {

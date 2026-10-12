@@ -134,15 +134,15 @@ contracts against the fakes.
 
 ---
 
-## Test 5 (optional, after human task 15): Codex stays Unknown while its terms are pending
+## Test 5 (optional, after human task 15): certify Codex (terms reviewed `ok`, D121)
 
 ```bash
 npm run certify -- --profile codex --home $C
 ```
 
-**Expected:** `"tos_review":"pending"`, `"tier":"unknown"` and among the `reasons`
-`the vendor's terms are not reviewed (tos_review: pending)`. With Codex installed, the probe's `c4_headless`,
-`c4_schema` and `c5_resume` show whether the documented flags work (O1); without it, the reasons also say
+**Expected:** `"tos_review":"ok"` (D121). With Codex installed, the probe's `c4_headless`,
+`c4_schema` and `c5_resume` show whether the documented flags work (O1); the tier is `unknown` until they pass and
+the other conditions hold. Without Codex installed, `"tier":"unknown"` and the reasons say
 `the agent did not pass C4, C4 schema and C5`. The live judge call runs through Codex; the C6 rehearsal is skipped
 (the profile has no MCP templates).
 

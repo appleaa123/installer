@@ -150,13 +150,13 @@ Each task says why it is needed and what to do, step by step.
 
 ### 15. Install Codex and certify it (O1)
 
-**Why:** the Codex profile (D113) was written from Codex's documentation; nobody has run it, because Codex is not installed on the development machine. Its tier stays Unknown until its terms are reviewed (task 17) and a certification passes. It uses your ChatGPT plan's Codex allowance (a few short calls).
+**Why:** the Codex profile (D113) was written from Codex's documentation; nobody has run it, because Codex is not installed on the development machine. Its terms are reviewed (task 17, D121); its tier stays Unknown until a certification passes. It uses your ChatGPT plan's Codex allowance (a few short calls).
 
 1. Install the Codex CLI as OpenAI's documentation says (for example `npm install -g @openai/codex`), sign in (`codex login`) and check that `codex --version` prints `codex-cli <version>`.
 2. In an empty folder, check the three documented facts by hand: `codex exec --json --skip-git-repo-check "Reply with exactly this word: alpha"` prints JSON lines, among them `{"type":"thread.started","thread_id":…}` and an `item.completed` line whose `item.type` is `agent_message` and `item.text` is `alpha`; `codex exec resume --json --skip-git-repo-check <thread_id> "What word did you just reply with?"` answers in the same thread; and `--output-schema <file>` with a JSON schema file makes the answer JSON that fits it.
-3. From the repository, run `node dist/cli.js probe --profile codex`: C4, C4 schema and C5 should pass, and the tier stays `unknown` with the note about the terms.
+3. From the repository, run `node dist/cli.js probe --profile codex`: C4, C4 schema and C5 should pass, and the tier stays `unknown` until a certification passes.
 4. Run Test 5 of the Plan 10 guide (`installer certify --profile codex`).
-5. Paste everything to Claude. Claude corrects the profile from what you saw (flags, `min_version`, a stricter tools-off switch than `--sandbox read-only` if Codex has one). Once task 17 says the terms allow it, Claude sets `tos_review` to `ok` and you certify again.
+5. Paste everything to Claude. Claude corrects the profile from what you saw (flags, `min_version`, a stricter tools-off switch than `--sandbox read-only` if Codex has one). Then you certify again.
 
 ### 16. Certify on Windows (only before a client runs on Windows)
 
@@ -169,7 +169,7 @@ Each task says why it is needed and what to do, step by step.
 
 ### 17. Review the vendors' terms (O2)
 
-**Why:** decision D32: each runtime's terms are read before the installer runs it for a client. The Codex profile waits on this (`tos_review: pending`). Antigravity's terms (clause 6) forbid other programs from invoking it, so it has no profile and the installer never calls `agy` (D114).
+**Why:** decision D32: each runtime's terms are read before the installer runs it for a client. Codex: done on 2026-10-12, `tos_review: ok` (D121). Antigravity's terms (clause 6) forbid other programs from invoking it, so it has no profile and the installer never calls `agy` (D114).
 
 1. Codex: read OpenAI's current terms of use and any Codex CLI terms or usage policy, looking for running Codex from another program, headless or unattended, and business use of a ChatGPT plan. Tell Claude what you found, with the date and the links: Claude sets `tos_review` to `ok` (or `blocked`) with that note.
 2. Antigravity (only if you want `agy` as an automatic model fallback): read its current Additional Terms, clause 6 in particular. Tell Claude; if they now allow it, Claude adds a profile as D114 describes and you certify it.
