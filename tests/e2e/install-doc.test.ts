@@ -1,3 +1,4 @@
+import { guideCommand } from "../../src/core/guide-commands.js";
 import { readFileSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -47,6 +48,20 @@ describe("INSTALL.md", () => {
     expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
     expect(usesSkillswiki(starter)).toBe(true);
+  });
+
+  it("every guide the starter names has a setup block and is printed by installer guide", async () => {
+    const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
+    const guides = starter.steps.flatMap((step) => (step.guide ? [step.guide] : []));
+    expect(guides).toEqual(["google-sheets"]);
+    for (const id of guides) await expect(guideCommand(id)).resolves.toMatchObject({ connector: id });
+  });
+
+  it("proves the Google sign-in right after it is stored", () => {
+    const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
+    const ids = starter.steps.map((step) => step.step_id);
+    expect(ids.indexOf("data.google-ready")).toBe(ids.indexOf("data.google") + 1);
+    expect(starter.steps.find((step) => step.step_id === "data.google-ready")?.verify).toEqual({ check: "oauth_ready", args: { id: "google" } });
   });
 });
 
@@ -126,7 +141,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
       runtime: { profile: "fake-agent", c6_mcp: true, support_level: 3, notes: [] },
     });
     const report = runCli(["report"], { home, env }).stdout;
-    expect(report).toContain("✅ READY  (25 of 25 steps done) · fixture-starter@1.0.0");
+    expect(report).toContain("✅ READY  (26 of 26 steps done) · fixture-starter@1.0.0");
     expect(runCli(["sandbox"], { home, env }).json).toEqual({ mode: expect.objectContaining({ on: false, by: "engine" }), workflows: [{ workflow: "contacts-summary", sandbox: false }] });
     expect(runCli(["gateway", "status"], { home, env }).json).toMatchObject({ status: "running" });
     expect(runCli(["sandbox", "outbox"], { home, env }).json).toMatchObject({ outbox: expect.arrayContaining([expect.objectContaining({ to: "1002", text: "0 contacts", run: expect.stringMatching(/^contacts-summary\//) })]) });
@@ -157,7 +172,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const run = await operate({ home, solutionRef: STARTER_REF, script, startArgs: ["--url", fake.url], env });
     expect(run.final.status).toBe("complete");
     expect((await loadState(home))?.runtime).toMatchObject({ c6_mcp: false, support_level: 2, notes: [expect.stringContaining("workspace trust may be missing in ")] });
-    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (25 of 25 steps done)");
+    expect(runCli(["report"], { home, env }).stdout).toContain("⚠️ READY WITH LIMITS  (26 of 26 steps done)");
     expect(runCli(["report"], { home, env }).stdout).toContain("level 2 of 3 (no MCP client; Skills Wiki content is inlined)");
   });
 
