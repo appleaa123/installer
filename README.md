@@ -18,8 +18,8 @@ D48). The record a run writes says which tier it reached and why.
 
 | Runtime | Profile | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|---|
-| Claude Code | `claude-code` | Not certified yet | Not certified yet | Unknown | Human task 14 runs the first certification; Windows needs a run of its own (task 16, D115). |
-| Codex CLI | `codex` | Unknown | Unknown | Unknown | Used only when named. Its flags come from Codex's documentation and were not run (O1, task 15); its terms are under review (O2, task 17, D113). |
+| Claude Code | `claude-code` | **Certified** 2026-10-12 (commit `437692c`, Claude Code 2.1.296, Node 22.14.0, macOS on Intel) | Not certified yet | Unknown | First real certification run (task 14): 1,360 offline and 18 live tests passed. Linux and Windows need a run of their own (task 16, D115). |
+| Codex CLI | `codex` | Unknown | Unknown | Unknown | Its terms were reviewed and allow it (O2, D121). Its flags come from Codex's documentation and were not run (O1, task 15), so it stays Unknown until a certification passes. |
 | Antigravity | none | — | — | — | Never run by the installer: its terms forbid invocation by other programs (D32, D114). |
 | Any other agent | none | Unknown | Unknown | Unknown | The probe decides; the fallbacks apply (§7.4). |
 
