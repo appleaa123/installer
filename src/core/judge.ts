@@ -40,7 +40,7 @@ export type JudgeOutcome =
   | { readonly status: "ok"; readonly value: unknown; readonly attempts: number }
   | { readonly status: "needs_human"; readonly reason: string; readonly attempts: number };
 
-const fenced = (value: unknown): string => `${UNTRUSTED_FENCE}\n${JSON.stringify(value ?? null, null, 2)}\n\`\`\``;
+export const fenced = (value: unknown): string => `${UNTRUSTED_FENCE}\n${JSON.stringify(value ?? null, null, 2)}\n\`\`\``;
 
 /** JSON escapes every line break inside a value, so nothing in the input can close the fence. */
 export function judgePrompt(spec: JudgeSpec, input: unknown, context: readonly ContextCall[], skill: string | null, retry?: string): string {

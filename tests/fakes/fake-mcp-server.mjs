@@ -4,6 +4,8 @@
 // initialized notification, get_active_combo and get_skill_resource results.
 // FAKE_MCP_KEY: the accepted Bearer key (default test-key). FAKE_MCP_COMBO: the active combo slug
 // (default demo-combo; empty = no combo activated). FAKE_MCP_DIR: folder served as <pack>/<skill>/<path>.
+// Learnings (Plan 8): learning_record and learning_list keep learnings in memory per pack; FAKE_MCP_LEARNING=off
+// answers learning_record with the error a user without Learning Mode gets.
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -13,6 +15,7 @@ const key = process.env.FAKE_MCP_KEY ?? "test-key";
 const comboSlug = process.env.FAKE_MCP_COMBO ?? "demo-combo";
 const resourceDir = process.env.FAKE_MCP_DIR ?? "";
 const sessions = new Set();
+const learnings = [];
 
 const toolResult = (payload, isError = false) => ({ content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload, isError });
 const noCombo = { combo: null, combo_slug: null, has_loop: false, learning_mode: false, skills: [], skill_tools: [], skills_not_mounted: [], harness: "" };
@@ -34,7 +37,17 @@ function skillResource({ pack, skill_name: skill, path }) {
   }
 }
 
+function learning(name, args) {
+  if (name === "learning_list") return toolResult({ pack: args.pack, learnings: learnings.filter((entry) => entry.pack === args.pack) });
+  if (process.env.FAKE_MCP_LEARNING === "off") return { content: [{ type: "text", text: "Learning Mode is off: turn it on under Settings to record learnings" }], isError: true };
+  if (typeof args.body !== "string" || args.body.length > 600 || !args.pack || !args.skill_slug) return { content: [{ type: "text", text: "body must be at most 600 characters" }], isError: true };
+  const entry = { id: learnings.length + 1, pack: args.pack, skill_slug: args.skill_slug, body: args.body, supersedes: args.supersedes ?? null };
+  learnings.push(entry);
+  return toolResult({ recorded: true, id: entry.id });
+}
+
 function callTool(params) {
+  if (params.name === "learning_list" || params.name === "learning_record") return { result: learning(params.name, params.arguments ?? {}) };
   if (params.name === "get_active_combo") return { result: activeCombo() };
   if (params.name === "get_skill_resource") return { result: skillResource(params.arguments ?? {}) };
   return { error: { code: -32602, message: `Unknown tool: ${params.name}` } };

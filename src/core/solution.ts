@@ -170,6 +170,16 @@ function checkDataSteps(steps: readonly StepDef[], contract: DataContract | unde
     }
   }
 }
+/** Recipe suggestions (§6.2 WORKFLOWS): ids are checked here, the rest when `installer workflow add` writes one. */
+function parseSuggestions(value: unknown): readonly Readonly<Record<string, unknown>>[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every(isRecord)) throw new SolutionError("workflows must be a list of workflow objects");
+  const ids = value.map((entry) => entry.workflow);
+  if (!ids.every((id) => typeof id === "string" && /^[a-z0-9][a-z0-9-]*$/.test(id)) || new Set(ids).size !== ids.length) {
+    throw new SolutionError("each suggested workflow needs its own id in 'workflow': lowercase letters, digits and dashes");
+  }
+  return value;
+}
 
 function parseDataContract(value: unknown): DataContract | undefined {
   if (value === undefined) return undefined;
@@ -203,7 +213,8 @@ export function parseSolution(raw: unknown): Solution {
   const contract = parseDataContract(raw.data_contract);
   checkDataSteps(steps, contract);
   const policy = parseChannelPolicy(raw.channel_policy);
-  return { id, version, steps, ...(contract ? { data_contract: contract } : {}), ...(policy ? { channel_policy: policy } : {}) };
+  const workflows = parseSuggestions(raw.workflows);
+  return { id, version, steps, ...(contract ? { data_contract: contract } : {}), ...(policy ? { channel_policy: policy } : {}), ...(workflows ? { workflows } : {}) };
 }
 
 export function parseSolutionText(text: string, where: string): Solution {

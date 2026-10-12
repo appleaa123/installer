@@ -9,6 +9,7 @@ import { isOptOut, joinCodeIn, normalizeInbound, replyCodeIn, type InboundEnvelo
 import { storeInbound, type Route } from "./inbox.js";
 import { joinWithCode, memberFor, type Identity, type Member } from "./members.js";
 import { loadPinnedSolution } from "./pin.js";
+import { acknowledgeByReply } from "./alerts.js";
 import { decideByReply } from "./reply-codes.js";
 import { invokeTool, type ToolContext } from "./tools.js";
 
@@ -98,7 +99,7 @@ async function routeInbound(ctx: ToolContext, envelope: InboundEnvelope): Promis
   if (member && reply) {
     await storeInbound(ctx.home, envelope, "command", member.name);
     if (!CHANNEL_FACTS[requireChannelId(envelope.channel)].risk.sender_verified) return unverifiedReply(ctx, member, envelope.channel, reply);
-    await tell(ctx, member, envelope.channel, await decideByReply(ctx, member, reply));
+    await tell(ctx, member, envelope.channel, reply.decision === "acknowledge" ? await acknowledgeByReply(ctx, member, reply.id) : await decideByReply(ctx, member, reply));
     return "decided";
   }
   if (!member) await strangerCode(ctx, envelope);

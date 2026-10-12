@@ -4,7 +4,9 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { alertsCommand } from "./core/alerts.js";
 import { approvalsCommand } from "./core/approval-commands.js";
+import { autonomyCommand } from "./core/autonomy.js";
 import { channelCommand } from "./core/channel-commands.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
@@ -12,6 +14,9 @@ import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { disconnect } from "./core/disconnect.js";
 import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
+import { hardenCommand } from "./core/hardening.js";
+import { listLearnings } from "./core/learning.js";
+import { dryrunCommand, sandboxCommand, workflowCommand } from "./core/lifecycle.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
@@ -38,7 +43,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -253,6 +258,8 @@ async function mcpServeCommand(home: string): Promise<number> {
   await serveStdio({ list: () => describeTools(DEFAULT_TOOLS), call }, process.stdin, process.stdout);
   return EXIT.OK;
 }
+/** Who runs a command that only a person may run: a terminal on stdin (an agent's shell has none, D61), and `--as`. */
+const person = (flags: Flags): { interactive: boolean; as?: string } => ({ interactive: process.stdin.isTTY === true, ...(flags.as ? { as: flags.as } : {}) });
 
 type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
 type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined, extra: string | undefined) => Promise<unknown>;
@@ -291,6 +298,13 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   tick: async ({ deps }) => tick(deps.home, deps.now),
   schedule: async ({ deps }, flags, arg) => scheduleCommand(deps.home, arg, flags.value, deps.now),
   model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now, process.stdin.isTTY === true),
+  workflow: async ({ deps }, flags, arg, extra) => workflowCommand(deps.home, arg, extra, flags.value, deps.now),
+  dryrun: async ({ deps }, flags, arg, extra) => dryrunCommand(deps.home, arg, extra, person(flags), deps.now, flags.value),
+  sandbox: async ({ deps }, flags, arg) => sandboxCommand(deps.home, arg, person(flags), deps.now),
+  harden: async ({ deps }, flags, arg, extra) => hardenCommand(deps.home, arg, extra, flags.value, person(flags), deps.now),
+  autonomy: async ({ state, deps }, flags, arg, extra) => autonomyCommand(deps.home, state.roles, { sub: arg, arg: extra, as: flags.as, reason: flags.reason, interactive: process.stdin.isTTY === true }, deps.now),
+  alerts: async ({ deps }, flags, arg, extra) => alertsCommand(deps.home, arg, extra, person(flags), deps.now),
+  learnings: async ({ deps }) => ({ learnings: await listLearnings(deps.home) }),
 };
 
 async function run(argv: readonly string[]): Promise<number> {

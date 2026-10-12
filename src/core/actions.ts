@@ -8,6 +8,7 @@ import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
 import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { probeMcp, runProbe, withMcpProbe } from "./probe.js";
+import { setSandboxMode } from "./sandbox.js";
 import { TOOLS_MCP_NAME, headersHelperCommand, installerCliPath, registerMcp, registerMcpConfig, toolsServerConfig } from "./register.js";
 import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
 import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
@@ -56,6 +57,28 @@ export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'installer resume'";
 const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'installer resume', or use 'installer tool' instead";
 const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'installer resume'";
+const now = (): string => new Date().toISOString();
+/** Loaded when used: the lifecycle reaches the runner and the gateway, which import this module (confinedPath). */
+const lifecycle = () => import("./lifecycle.js");
+
+/** ACTIVATE (D98): the engine leaves sandbox only when the person confirmed a dry run of every workflow's current version. */
+async function leaveSandbox(home: string): Promise<StatePatch> {
+  const open = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.confirmed).map((row) => row.id);
+  if (open.length > 0) throw new ActionFailure(`Not confirmed yet: ${open.join(", ")}. The person reads 'installer dryrun' and runs 'installer dryrun confirm <workflow>' in their own terminal; then run 'installer resume'`);
+  await setSandboxMode(home, false, "engine", now());
+  return {};
+}
+
+/** ACTIVATE: the gateway receives messages and announces approvals from now on (D72); a failure is the person's to fix. */
+async function startGatewayAction(home: string): Promise<StatePatch> {
+  try {
+    await (await import("./gateway-process.js")).startGateway(home, now);
+  } catch (error) {
+    if (error instanceof InputError) throw new ActionFailure(`${error.message}; then run 'installer resume'`);
+    throw error;
+  }
+  return {};
+}
 
 async function probeDir(home: string): Promise<string> {
   const cwd = await confinedPath(home, PROBE_DIR);
@@ -104,6 +127,13 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     return {};
   },
   /** C6 (D54): runs in the agent's own folder, allowing exactly the registered server's get_active_combo tool. */
+  /** WORKFLOWS (D91): from here until ACTIVATE, every message is recorded and every run is a sandbox run. */
+  enter_sandbox: async (home) => {
+    await setSandboxMode(home, true, "engine", now());
+    return {};
+  },
+  leave_sandbox: async (home) => leaveSandbox(home),
+  start_gateway: async (home) => startGatewayAction(home),
   probe_mcp: async (home, _args, state) => {
     const { runtime, profile } = await probedRuntime(state);
     const expectedSlug = await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url));
@@ -142,6 +172,29 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
   mapping_present: async (home, args) => mappingCheck(home, stringArg(args, "entity")),
   /** §6.2 CHANNELS: the agent set the channel up with `installer channel <id>`, which checked it live (D73). */
   channel_verified: async (home, args) => channelCheck(home, stringArg(args, "channel")),
+  /** §6.2 CHANNELS: the decision maker joined from a channel (D77), so approvals and urgent alerts reach them. */
+  decision_maker_joined: async (home, _args, state) => {
+    const name = state?.roles?.decision_maker.trim().toLowerCase();
+    const members = await (await import("./members.js")).listMembers(home, now());
+    if (name && members.some((member) => member.status === "joined" && member.name.toLowerCase() === name)) return { ok: true };
+    return { ok: false, hint: "The decision maker has not joined yet: they run 'installer invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
+  },
+  /** §6.2 ACTIVATE: the gateway runs, so messages arrive and approvals are announced (D72). */
+  gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'installer gateway start', then 'installer resume'" }),
+  /** §6.2 WORKFLOWS: at least one workflow was added (D98). */
+  workflows_present: async (home) => ((await (await lifecycle()).lifecycleStatus(home)).length > 0 ? { ok: true } : { ok: false, hint: "No workflow yet: run 'installer workflow suggestions', then 'installer workflow add <id>' for the ones the person chooses" }),
+  /** §6.2 DRY RUN: every workflow's current version had a dry run that did not fail. */
+  dry_runs_done: async (home) => {
+    const missing = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.ran).map((row) => row.id);
+    return missing.length === 0 ? { ok: true } : { ok: false, hint: `No dry run yet (or it failed) for: ${missing.join(", ")}: run 'installer dryrun' and show the person the output` };
+  },
+  /** §6.2 DRY RUN: the person confirmed each dry run in their own terminal. */
+  dry_runs_confirmed: async (home) => {
+    const open = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.confirmed).map((row) => row.id);
+    return open.length === 0 ? { ok: true } : { ok: false, hint: `Waiting for the person to run 'installer dryrun confirm <workflow>' in their own terminal for: ${open.join(", ")}` };
+  },
+  /** §6.2 ACTIVATE: the OS scheduler runs the tick (the person loaded the entry 'installer schedule install' printed). */
+  runner_ticking: async (home) => ((await (await lifecycle()).runnerTicking(home, now())) ? { ok: true } : { ok: false, hint: "The runner has not ticked in the last five minutes: run 'installer schedule install' and ask the person to run the commands it prints, then verify again" }),
 };
 
 export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);

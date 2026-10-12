@@ -25,7 +25,7 @@ interface StepJson {
   readonly next?: StepJson;
 }
 
-const MAX_CALLS = 60;
+const MAX_CALLS = 100;
 
 const writeMarker = (path: string) => async (home: string): Promise<void> => {
   await mkdir(join(home, "config"), { recursive: true });

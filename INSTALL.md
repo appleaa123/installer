@@ -79,6 +79,13 @@ A workflow is a file in the installer's home, `workflows/<id>/workflow.json`. Th
 4. **A run by hand.** `installer run <workflow>` runs one now; add `--sandbox` to record every message instead of sending it. A run that needs an approval waits; once a person decides, the runner continues it within a minute.
 
 A scheduled run that could not start on time (the computer was asleep or off) is never run late: it is recorded as missed, and the person gets one "back online" message that names what was missed.
+
+## 9. New workflows, dry runs and going live
+
+1. **Choose.** `installer workflow suggestions` lists the workflows the recipe suggests. Tell the person what each one does and add the ones they choose with `installer workflow add <id>`. For anything else, ask the person to describe the task in their own words and run `installer workflow add <id> --value '{"description":"<their words>","tools":["memo.list","memo.add"]}'`: the model then chooses each call among those tools, and every call still goes through the same approvals.
+2. **Dry run.** A new workflow runs in sandbox: nothing it does is real. Run `installer dryrun <id>` and show the person what it would have done (`would_have`). Only the person confirms it, in their own terminal: `installer dryrun confirm <id>`. Never run that yourself.
+3. **Sandbox.** `installer sandbox status` shows whether the engine is in sandbox; `installer sandbox on` puts it back in. Only the person turns it off, in their own terminal.
+4. **Later.** `installer harden <id>` shows when the runner can turn calls the model repeats into fixed steps, and whether they pass the replay check; the person applies it in their own terminal. `installer autonomy` shows how many approvals in a row a step has; only the decision maker grants earned autonomy. `installer alerts` lists urgent alerts (the decision maker answers K<id> in Telegram to acknowledge one), and `installer learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
 ## Removing the connection
 
 `installer disconnect skillswiki` removes the Skills Wiki server from your configuration and deletes the key from the keychain. `installer disconnect google-sheets` deletes the Google sign-in from the keychain; the person removes the app's access from their Google account at https://myaccount.google.com/connections. `installer disconnect telegram` and `installer disconnect email` delete the bot token or the app password and the channel's settings; stop the gateway first with `installer gateway stop`.

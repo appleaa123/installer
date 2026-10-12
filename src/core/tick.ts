@@ -2,6 +2,7 @@ import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { ToolRefusal } from "./approvals.js";
+import { remindApprovals, repeatAlerts } from "./alerts.js";
 import { appendAudit } from "./audit.js";
 import { MINUTE_MS, cronTimes } from "./cron.js";
 import { dueReports } from "./daily-report.js";
@@ -9,6 +10,7 @@ import { readConfig, writeConfig } from "./data-source.js";
 import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { listInbox, type InboxItem } from "./inbox.js";
+import { collectLearnings, submitLearnings } from "./learning.js";
 import { InputError } from "./inputs.js";
 import { resumeRun, startRun } from "./runner.js";
 import { listRuns, recordMissed, runForKey, type OnDamaged, type RunRecord } from "./runs.js";
@@ -42,6 +44,12 @@ export interface TickResult {
   readonly resumed: string[];
   readonly events: number;
   readonly back_online: boolean;
+  /** Urgent alerts sent again, approvals reminded, and event runs not started because of the rate limits (D95, D96). */
+  readonly alerts: number;
+  readonly reminded: number[];
+  readonly rate_limited: number;
+  /** Learnings sent to Skills Wiki (D97). */
+  readonly learnings: number;
   readonly errors: string[];
 }
 
@@ -127,26 +135,47 @@ async function backOnline(tick: Tick, last: string): Promise<void> {
   tick.result.back_online = true;
 }
 
-function wants(workflow: Workflow, item: InboxItem): boolean {
+export function wants(workflow: Workflow, item: InboxItem): boolean {
   if (workflow.trigger.kind !== "event") return false;
   const route = workflow.trigger.from === "external" ? "event" : "conversation";
   return item.route === route && (workflow.trigger.channel === undefined || workflow.trigger.channel === item.channel);
+}
+/** D96: a sender may start EVENT_RUNS_PER_SENDER runs of one workflow an hour, and a workflow EVENT_RUNS_PER_HOUR event runs. */
+export const EVENT_RUNS_PER_SENDER = 3;
+export const EVENT_RUNS_PER_HOUR = 30;
+
+async function eventLimited(tick: Tick, workflow: Workflow, item: InboxItem, inbox: readonly InboxItem[]): Promise<string | null> {
+  const since = new Date(Date.parse(tick.at) - 60 * MINUTE_MS).toISOString();
+  const recent = (await listRuns(tick.home, workflow.id)).filter((run) => run.trigger.kind === "event" && run.started_at > since);
+  const sender = (run: RunRecord): InboxItem | undefined => inbox.find((entry) => entry.id === run.trigger.inbox_id);
+  const bySender = recent.filter((run) => sender(run)?.channel === item.channel && sender(run)?.from === item.from).length;
+  if (bySender >= EVENT_RUNS_PER_SENDER) return `${item.channel} sender ${item.from} started ${bySender} runs of '${workflow.id}' in the last hour`;
+  return recent.length >= EVENT_RUNS_PER_HOUR ? `'${workflow.id}' started ${recent.length} event runs in the last hour` : null;
+}
+
+async function startEvent(tick: Tick, workflow: Workflow, item: InboxItem, inbox: readonly InboxItem[]): Promise<void> {
+  const limited = await eventLimited(tick, workflow, item, inbox);
+  if (limited !== null) {
+    await appendAudit(tick.home, { ts: tick.at, actor: "engine", event: "run.rate_limited", ref: `inbox:${item.id}`, payload: { workflow: workflow.id, reason: limited } });
+    tick.result.rate_limited += 1;
+    return;
+  }
+  const key = `${workflow.id}:inbox:${item.id}`;
+  tick.result.started.push(label(await startRun({ home: tick.home, workflow, key, trigger: { kind: "event", inbox_id: item.id }, now: tick.now, ...(tick.env ? { env: tick.env } : {}) })));
+  tick.result.events += 1;
 }
 
 /** D88: each new inbox message starts the workflows whose event trigger it matches; the first tick only sets the cursor. */
 async function events(tick: Tick, loaded: readonly Workflow[]): Promise<void> {
   const cursor = (await readConfig(tick.home, EVENTS_CURSOR)) as { last_id?: number } | null;
-  const items = (await listInbox(tick.home)).filter((item) => cursor?.last_id === undefined || item.id > cursor.last_id).reverse();
+  const inbox = await listInbox(tick.home);
+  const items = inbox.filter((item) => cursor?.last_id === undefined || item.id > cursor.last_id).reverse();
   if (cursor?.last_id === undefined) {
     await writeConfig(tick.home, EVENTS_CURSOR, { last_id: items.at(-1)?.id ?? 0 });
     return;
   }
   for (const item of items) {
-    for (const workflow of loaded.filter((entry) => wants(entry, item))) {
-      const key = `${workflow.id}:inbox:${item.id}`;
-      tick.result.started.push(label(await startRun({ home: tick.home, workflow, key, trigger: { kind: "event", inbox_id: item.id }, now: tick.now, ...(tick.env ? { env: tick.env } : {}) })));
-      tick.result.events += 1;
-    }
+    for (const workflow of loaded.filter((entry) => wants(entry, item))) await startEvent(tick, workflow, item, inbox);
     await writeConfig(tick.home, EVENTS_CURSOR, { last_id: item.id });
   }
 }
@@ -178,7 +207,7 @@ async function guard(tick: Tick, name: string, task: () => Promise<void>): Promi
 }
 
 export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env): Promise<TickResult> {
-  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, errors: [] };
+  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, errors: [] };
   const lock = await lockTick(home);
   if (lock === null) return { ...result, status: "busy" };
   try {
@@ -199,6 +228,14 @@ export async function tick(home: string, now: () => string = () => new Date().to
     await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: state.at, pid: process.pid });
     await guard(state, "events", () => events(state, loaded));
     await guard(state, "resume", () => resumable(state, loaded));
+    await guard(state, "alerts", async () => {
+      result.alerts = await repeatAlerts(await toolContext(home, "runner", DEFAULT_TOOLS, now), (await loadState(home))?.roles);
+      result.reminded = await remindApprovals(await toolContext(home, "gateway", DEFAULT_TOOLS, now));
+    });
+    await guard(state, "learning", async () => {
+      await collectLearnings(home, state.at);
+      result.learnings = (await submitLearnings(home, (await loadState(home))?.skillswiki?.url, state.at)).length;
+    });
     await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: now(), pid: process.pid });
     return { ...result };
   } finally {

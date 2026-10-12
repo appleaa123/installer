@@ -64,7 +64,7 @@ function whatWillHappen({ tool, args }: ApprovalItem["action"]): string {
  * The gateway's mark, the decision codes, what will happen (the engine's view), then the agent's preview and why,
  * labelled as the agent's. A text too long for one message is cut, and says so.
  */
-function announcement(item: ApprovalItem): string {
+export function announcement(item: ApprovalItem): string {
   const editable = typeof item.action.args.text === "string" ? `, or E${item.id} <new text> to change the text` : "";
   const preview = item.preview === previewOf(item.action) ? "" : `\nThe agent says: ${item.preview}`;
   const text = `${GATEWAY_MARK} ${item.urgent ? "URGENT " : ""}Approval ${item.id} (${item.level}). Reply A${item.id} to approve, R${item.id} <reason> to reject${editable}. It expires at ${item.expires_at}.
@@ -72,15 +72,15 @@ What will happen: ${whatWillHappen(item.action)}${preview}\nWhy, as the agent sa
   return text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - CUT.length)}${CUT}`;
 }
 
-const canDecideThere = (member: Member): boolean => member.identity !== undefined && CHANNEL_FACTS[requireChannelId(member.identity.channel)].risk.sender_verified;
+export const canDecideThere = (member: Member): boolean => member.identity !== undefined && CHANNEL_FACTS[requireChannelId(member.identity.channel)].risk.sender_verified;
 
 /** Tells each member on their own; one member who cannot be reached never stops the others. */
-async function tellEach(ctx: ToolContext, item: ApprovalItem, targets: Iterable<Member>): Promise<{ sent: boolean; error: unknown }> {
+export async function tellEach(ctx: ToolContext, item: ApprovalItem, targets: Iterable<Member>, text = announcement(item)): Promise<{ sent: boolean; error: unknown }> {
   let sent = false;
   let error: unknown = null;
   for (const member of targets) {
     try {
-      const result = await invokeTool(ctx, "channel.notify", { member: member.name, text: announcement(item), channel: member.identity?.channel });
+      const result = await invokeTool(ctx, "channel.notify", { member: member.name, text, channel: member.identity?.channel });
       sent ||= (result.deliveries as readonly Delivery[]).some((delivery) => delivery.status === "sent");
     } catch (caught) {
       error ??= caught;

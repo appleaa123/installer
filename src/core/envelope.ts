@@ -78,16 +78,16 @@ export function joinCodeIn(text: string): string | null {
 }
 
 export interface ReplyCode {
-  readonly decision: "approve" | "edit" | "reject";
+  readonly decision: "approve" | "edit" | "reject" | "acknowledge";
   readonly id: number;
   /** The new text of an edit, or the reason of a rejection. */
   readonly text: string;
 }
 
-const REPLY = /^([aer])([1-9]\d{0,8})(?=\s|$)\s*([\s\S]*)$/i;
-const DECISIONS = { a: "approve", e: "edit", r: "reject" } as const;
+const REPLY = /^([aerk])([1-9]\d{0,8})(?=\s|$)\s*([\s\S]*)$/i;
+const DECISIONS = { a: "approve", e: "edit", r: "reject", k: "acknowledge" } as const;
 
-/** §11.9 universal reply codes: `A42`, `E42 <new text>`, `R42 <reason>`. */
+/** §11.9 universal reply codes: `A42`, `E42 <new text>`, `R42 <reason>`; `K7` acknowledges urgent alert 7 (§11.7, D95). */
 export function replyCodeIn(text: string): ReplyCode | null {
   const match = REPLY.exec(text.trim());
   if (!match) return null;
