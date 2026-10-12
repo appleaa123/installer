@@ -1,11 +1,13 @@
 import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+
+const LIVE_RETRY_PATH = resolve("tests/fixtures/live-retry.json");
 
 describe("installer CLI", () => {
   it("start prints the first actionable step", async () => {
@@ -21,11 +23,20 @@ describe("installer CLI", () => {
     expect((await stat(home)).mode & 0o777).toBe(0o700);
   });
 
-  it.skipIf(process.platform === "win32")("keeps the mode of a pre-existing home", async () => {
+  it.skipIf(process.platform === "win32")("refuses an existing home other users can open, and leaves its mode alone (D34)", async () => {
     const home = await makeTempHome();
     await chmod(home, 0o755);
-    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const result = runCli(["start", "--solution", FIXTURE_REF], { home });
+    expect(result.code).toBe(2);
+    expect(result.json).toEqual({ error: `${home} can be opened by other users (mode 755); run 'chmod 700 ${home}' or use a different --home`, code: 2 });
     expect((await stat(home)).mode & 0o777).toBe(0o755);
+    await expect(readdir(home)).resolves.toEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32")("accepts an existing home that only its owner can open", async () => {
+    const home = await makeTempHome();
+    await chmod(home, 0o700);
+    expect(runCli(["start", "--solution", FIXTURE_REF], { home }).code).toBe(0);
   });
 
   it.each([
@@ -96,6 +107,17 @@ describe("installer CLI", () => {
     runCli(["submit", "mode.report-time", "--value", '"09:00"'], { home });
     const failed = runCli(["verify", "brain.register"], { home });
     expect(failed.json).toMatchObject({ status: "failed", retry: true, next: { status: "step" } });
+  });
+
+  it("accepts a negative number in the --value=<json> form", async () => {
+    const home = await makeTempHome();
+    await mkdir(join(home, "config"));
+    await writeFile(join(home, "config", "late-marker.txt"), "ok\n", "utf8");
+    runCli(["start", "--solution", `file:${LIVE_RETRY_PATH}`], { home });
+    runCli(["submit", "mode.name", "--value", '"North team"'], { home });
+    const result = runCli(["submit", "mode.size", "--value=-5"], { home });
+    expect(result.code).toBe(0);
+    expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.manual" } } });
   });
 
   it("exits 3 and leaves the audit file untouched when its last line is damaged", async () => {

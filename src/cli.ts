@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -15,6 +15,7 @@ import type { InstallState, Solution } from "./core/types.js";
 
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
+const GROUP_OTHER_BITS = 0o077;
 const COMMANDS = "start, next, submit, verify, resume, report";
 
 class NoInstallError extends Error {
@@ -107,12 +108,22 @@ async function requireSameContent(home: string, existing: InstallState, text: st
   }
 }
 
+/** D34: never loosen or silently change a folder the engine did not create; refuse it instead. */
+async function requirePrivateHome(home: string): Promise<void> {
+  if (process.platform === "win32") return;
+  const mode = (await stat(home)).mode & 0o777;
+  if (mode & GROUP_OTHER_BITS) {
+    throw new InputError(`${home} can be opened by other users (mode ${mode.toString(8)}); run 'chmod 700 ${home}' or use a different --home`);
+  }
+}
+
 async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
   const { solution, text } = await loadSolutionSource(ref);
   const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
   if (created !== undefined) await chmod(home, HOME_MODE);
+  else await requirePrivateHome(home);
   const existing = await loadState(home);
   if (existing) await requireSameContent(home, existing, text);
   else await writePinnedSolution(home, text);

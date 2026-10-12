@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EngineError, advance, initialState, resume, start, submit, verifyStep } from "../../src/core/engine.js";
 import { InputError } from "../../src/core/inputs.js";
+import { buildReport } from "../../src/core/report.js";
 import { parseSolution } from "../../src/core/solution.js";
 import { FIXTURE_REF, basicSolution, memoryDeps } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -44,6 +45,7 @@ describe("submit", () => {
     const count = saved.length;
     await expect(submit(deps, state, "mode.report-time", { kind: "value", value: "09:00" })).rejects.toThrow(/current step is 'mode.shared-work'/);
     await expect(submit(deps, state, "no.such.step", { kind: "done" })).rejects.toThrow(/Unknown step/);
+    await expect(verifyStep(deps, state, "brain.register")).rejects.toThrow(/current step is 'mode.shared-work'/);
     expect(saved).toHaveLength(count);
   });
 
@@ -114,6 +116,17 @@ describe("verifyStep and resume", () => {
     expect(last?.next).toEqual({ status: "complete" });
     expect(state.steps["channels.optional-extra"]?.status).toBe("blocked");
     expect(state.steps["report.final"]?.status).toBe("done");
+  });
+
+  it("resume reopens a given-up optional step, so the report is in progress again", async () => {
+    const ctx = await atBrainStep();
+    await touch(ctx.home, "config/agent-marker.txt");
+    let state = (await verifyStep(ctx.deps, ctx.state, "brain.register")).state;
+    for (let i = 0; i < 3; i += 1) state = (await verifyStep(ctx.deps, state, "channels.optional-extra")).state;
+    expect(buildReport(ctx.deps.solution, state).overall).toBe("ready_with_limits");
+    const resumed = await resume(ctx.deps, state);
+    expect(resumed.result).toMatchObject({ status: "step", view: { step: { step_id: "channels.optional-extra" }, attempts: 0 } });
+    expect(buildReport(ctx.deps.solution, resumed.state).overall).toBe("in_progress");
   });
 
   it("completes a human_action without a check through --done", async () => {

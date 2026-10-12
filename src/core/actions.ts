@@ -1,5 +1,5 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { access, lstat, mkdir, writeFile } from "node:fs/promises";
+import { dirname, relative as relativePath, resolve, sep } from "node:path";
 import { InputError } from "./inputs.js";
 import type { Action, Check } from "./types.js";
 
@@ -20,6 +20,22 @@ export function resolveInHome(home: string, relative: string): string {
   return target;
 }
 
+/** resolveInHome, plus a refusal of any link below the home that could lead outside it (D34). */
+export async function confinedPath(home: string, relative: string): Promise<string> {
+  const target = resolveInHome(home, relative);
+  let path = resolve(home);
+  for (const part of relativePath(path, target).split(sep)) {
+    path = resolve(path, part);
+    try {
+      if ((await lstat(path)).isSymbolicLink()) throw new InputError(`Path '${relative}' goes through a symbolic link`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return target;
+      throw error;
+    }
+  }
+  return target;
+}
+
 function stringArg(args: Args, key: string): string {
   const value = args[key];
   if (typeof value !== "string") throw new InputError(`Argument '${key}' must be a string`);
@@ -29,7 +45,7 @@ function stringArg(args: Args, key: string): string {
 const ACTIONS: Readonly<Record<string, (home: string, args: Args) => Promise<void>>> = {
   noop: async () => undefined,
   write_file: async (home, args) => {
-    const target = resolveInHome(home, stringArg(args, "path"));
+    const target = await confinedPath(home, stringArg(args, "path"));
     const content = args.content === undefined ? "" : stringArg(args, "content");
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
@@ -40,7 +56,7 @@ const CHECKS: Readonly<Record<string, (home: string, args: Args) => Promise<Chec
   file_exists: async (home, args) => {
     const path = stringArg(args, "path");
     try {
-      await access(resolveInHome(home, path));
+      await access(await confinedPath(home, path));
       return { ok: true };
     } catch (error) {
       if (error instanceof InputError) throw error;
