@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
 import { parseChannelPolicy } from "./channel-policy.js";
+import { CONNECTOR_PINS } from "./connectors.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
@@ -62,7 +63,15 @@ function parseHints(value: unknown, where: string): Readonly<Record<string, read
   );
 }
 
-function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">> {
+/** A step's guide names a connector of the catalog; whether it has a setup block is `installer guide`'s check. */
+function parseGuide(value: unknown, where: string): string {
+  if (typeof value !== "string" || !Object.hasOwn(CONNECTOR_PINS, value)) {
+    throw new SolutionError(`${where} must name a connector in this installer's catalog (${Object.keys(CONNECTOR_PINS).join(", ")}), got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">> {
   const result: Record<string, unknown> = {};
   if (Array.isArray(value.instructions)) {
     result.instructions = value.instructions.map((line) => text(line, `${where}.instructions`));
@@ -88,7 +97,10 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   if (value.hints !== undefined) {
     result.hints = parseHints(value.hints, `${where}.hints`);
   }
-  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">>;
+  if (value.guide !== undefined) {
+    result.guide = parseGuide(value.guide, `${where}.guide`);
+  }
+  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">>;
 }
 
 function parseStep(value: unknown, index: number): StepDef {
