@@ -91,7 +91,7 @@ export interface Roles {
   readonly decision_maker: string;
 }
 
-/** Result of `installer probe` (spec §7.3). C6 is probed by Plan 3. */
+/** Result of `installer probe` (spec §7.3); C6 is filled in by the BRAIN phase's probe_mcp step (D54). */
 export interface CapabilityMap {
   readonly profile: string | null;
   readonly agent_version: string | null;
@@ -99,7 +99,7 @@ export interface CapabilityMap {
   readonly c4_headless: boolean;
   readonly c4_schema: boolean;
   readonly c5_resume: boolean;
-  readonly c6_mcp: "not_probed";
+  readonly c6_mcp: boolean | "not_probed";
   readonly support_level: number;
   readonly tier: "compatible" | "unknown";
   readonly notes: readonly string[];
@@ -114,6 +114,10 @@ export interface InstallState {
   readonly mode?: Mode;
   readonly roles?: Roles;
   readonly runtime?: CapabilityMap;
+  /** The per-client Skills Wiki MCP URL from `start --url`; not a secret, the key lives in the keychain (D51). */
+  readonly skillswiki?: { readonly url: string };
+  /** Where the agent ran `installer start`: the folder its MCP trust applies to (D54). */
+  readonly work_dir?: string;
 }
 
 /** What an auto action may change in the install state, merged in the same save as its step record. */

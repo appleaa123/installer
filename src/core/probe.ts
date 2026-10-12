@@ -13,7 +13,7 @@ export interface ProbeOptions {
   readonly timeoutMs?: number;
 }
 
-interface ProbeCheck {
+export interface ProbeCheck {
   readonly ok: boolean;
   readonly note?: string;
 }
@@ -58,6 +58,34 @@ export async function detectAgent(profiles: readonly RuntimeProfile[], cwd: stri
   return null;
 }
 
+export interface McpProbeOptions {
+  readonly profile: RuntimeProfile;
+  /** The agent's own working folder: MCP trust is per folder (D52, D54). */
+  readonly cwd: string;
+  readonly serverName: string;
+  /** What the engine's own get_active_combo call returned. */
+  readonly expectedSlug: string;
+  readonly timeoutMs?: number;
+}
+
+export const mcpToolName = (serverName: string): string => `mcp__${serverName}__get_active_combo`;
+
+/** C6: the agent calls the registered server's get_active_combo and must report the same slug the engine saw (fact 5). */
+export async function probeMcp(options: McpProbeOptions): Promise<ProbeCheck> {
+  const tool = mcpToolName(options.serverName);
+  if (!options.profile.headless.allow_tool) return { ok: false, note: `C6 MCP: the ${options.profile.name} profile has no headless.allow_tool template` };
+  const request: HeadlessRequest = { prompt: `Call the tool ${tool} (no arguments) and reply with only the value of its combo_slug field, nothing else.`, allowTool: tool };
+  const result = await runHeadless(options.profile, request, { cwd: options.cwd, timeoutMs: options.timeoutMs ?? HEADLESS_TIMEOUT_MS });
+  if (result.ok && result.text.trim() === options.expectedSlug) return { ok: true };
+  const detail = result.ok ? `the agent answered '${result.text.trim().slice(0, 80)}' instead of '${options.expectedSlug}'` : `the agent ${result.error}`;
+  return { ok: false, note: `C6 MCP: ${detail}; workspace trust may be missing in ${options.cwd} (open the agent there once and accept the folder)` };
+}
+
+/** Records the C6 result and recounts the support level (C4, C5, C6). */
+export function withMcpProbe(runtime: CapabilityMap, check: ProbeCheck): CapabilityMap {
+  const notes = [...runtime.notes.filter((note) => !note.startsWith("C6 MCP:")), ...(check.note ? [check.note] : [])];
+  return { ...runtime, c6_mcp: check.ok, notes, support_level: [runtime.c4_headless, runtime.c5_resume, check.ok].filter(Boolean).length };
+}
 export function unknownRuntime(note: string): CapabilityMap {
   return {
     profile: null, agent_version: null, c2_shell: true, c4_headless: false, c4_schema: false, c5_resume: false,

@@ -19,7 +19,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:live": "INSTALLER_LIVE=1 vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

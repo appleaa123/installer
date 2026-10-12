@@ -5,11 +5,16 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
-import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type SubmitPayload } from "./core/engine.js";
+import { disconnect } from "./core/disconnect.js";
+import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
+import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
+import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
+import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
-import { SolutionError, loadSolutionSource } from "./core/solution.js";
+import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
+import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
@@ -18,7 +23,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect";
 
 class NoInstallError extends Error {
   constructor() {
@@ -34,13 +39,14 @@ interface Flags {
   readonly done?: boolean;
   readonly json?: boolean;
   readonly profile?: string;
+  readonly url?: string;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
   stream.write(`${typeof value === "string" ? value : JSON.stringify(value)}\n`);
 }
 
-const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" } } as const;
+const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" }, url: { type: "string" } } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
 /** Node's own unknown-option message suggests '--', which does not apply here. */
@@ -120,17 +126,38 @@ async function requirePrivateHome(home: string): Promise<void> {
   }
 }
 
+/** A `skillswiki:` ref needs the stored key and the URL before anything is fetched or created (D46). */
+async function solutionSource(ref: string, flags: Flags): Promise<{ solution: Solution; text: string }> {
+  if (!ref.startsWith("skillswiki:")) return loadSolutionSource(ref);
+  const key = await getSecret(SKILLSWIKI_SECRET_ID);
+  if (!key) throw new InputError(KEY_MISSING_HINT);
+  const url = requireSkillswikiUrl(flags.url);
+  return loadSolutionSource(ref, fetchHttps, (target) => fetchSkillswikiSolution({ url, key }, target));
+}
+
+function requireSameUrl(existing: InstallState, url: string | undefined): void {
+  if (url !== undefined && existing.skillswiki?.url !== url) {
+    throw new EngineError(`This home already has an install started ${existing.skillswiki ? `with the Skills Wiki URL '${existing.skillswiki.url}'` : "without a Skills Wiki URL"}; use a different --home`);
+  }
+}
+
 async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
-  const { solution, text } = await loadSolutionSource(ref);
+  const { solution, text } = await solutionSource(ref, flags);
+  const url = flags.url === undefined && !usesSkillswiki(solution) ? undefined : requireSkillswikiUrl(flags.url);
   const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
   if (created !== undefined) await chmod(home, HOME_MODE);
   else await requirePrivateHome(home);
   const existing = await loadState(home);
-  if (existing) await requireSameContent(home, existing, text);
-  else await writePinnedSolution(home, text);
-  return (await start(depsFor(home, solution), existing, ref, sha256(text))).result;
+  if (existing) {
+    await requireSameContent(home, existing, text);
+    requireSameUrl(existing, url);
+  } else {
+    await writePinnedSolution(home, text);
+  }
+  const extras: StartExtras = { work_dir: process.cwd(), ...(url ? { skillswiki: { url } } : {}) };
+  return (await start(depsFor(home, solution), existing, ref, sha256(text), extras)).result;
 }
 
 /** Runs the probe in a throwaway folder; it reads no install and writes no state. */
@@ -144,39 +171,80 @@ async function probeCommand(flags: Flags): Promise<CapabilityMap> {
   }
 }
 
+/** `installer secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
+async function secretCommand(id: string): Promise<unknown> {
+  const { url, pid } = await launchSecretPage(requireSecretId(id));
+  const hint = headlessHint(url);
+  if (!hint) openBrowser(url);
+  return { status: "waiting", url, pid, ...(hint ? { hint } : {}) };
+}
+
+/** The detached page process: serves the form, writes the keychain once, then exits. Never touches the engine home. */
+async function secretServeCommand(id: string): Promise<number> {
+  const page = await startSecretPage({ id: requireSecretId(id), store: (value) => setSecret(id, value) });
+  if (process.send) {
+    process.send({ url: page.url });
+    process.disconnect();
+  } else {
+    emit(process.stdout, { url: page.url });
+  }
+  await page.done;
+  return EXIT.OK;
+}
+
+/** Run by the agent for every Skills Wiki request (D52): the header line, or exit 1 and no output when the key is missing. */
+async function headersCommand(id: string): Promise<number> {
+  const key = await getSecret(requireSecretId(id));
+  if (key === null) return EXIT.INTERNAL;
+  emit(process.stdout, JSON.stringify({ Authorization: `Bearer ${key}` }));
+  return EXIT.OK;
+}
+
+type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
+type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined) => Promise<unknown>;
+
+/** Commands that need no install state. */
+const STANDALONE: Readonly<Record<string, Standalone>> = {
+  start: (home, flags) => startCommand(home, flags),
+  probe: (_home, flags) => probeCommand(flags),
+  secret: (_home, _flags, arg) => secretCommand(requireArg(arg, "secret")),
+  disconnect: (home, _flags, arg) => disconnect(home, requireArg(arg, "disconnect"), () => new Date().toISOString()),
+};
+
+/** Commands that run on the install in the home. */
+const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
+  next: async ({ state, deps }) => (await advance(deps, state)).result,
+  submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
+  verify: async ({ state, deps }, _flags, arg) => {
+    const verified = await verifyStep(deps, state, requireArg(arg, "verify"));
+    return { ...verified.result, next: verified.next };
+  },
+  resume: async ({ state, deps }) => (await resume(deps, state)).result,
+  report: async ({ state, deps }, flags) => {
+    const report = buildReport(deps.solution, state);
+    return flags.json ? report : renderReport(report);
+  },
+};
+
 async function run(argv: readonly string[]): Promise<number> {
   const { flags, positionals } = parse(argv);
   const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
-  const [command, arg] = positionals;
-  if (command === "start") {
-    emit(process.stdout, await startCommand(home, flags));
+  const [command = "", arg] = positionals;
+  if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
+  if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
+  if (Object.hasOwn(STANDALONE, command)) {
+    emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;
   }
-  if (command === "probe") {
-    emit(process.stdout, await probeCommand(flags));
-    return EXIT.OK;
-  }
-  if (!command || !["next", "submit", "verify", "resume", "report"].includes(command)) {
-    throw new InputError(`Unknown command '${command ?? ""}'. Commands: ${COMMANDS}`);
-  }
-  const { state, deps } = await loadInstall(home);
-  if (command === "next") emit(process.stdout, (await advance(deps, state)).result);
-  if (command === "submit") emit(process.stdout, (await submit(deps, state, requireArg(arg, command), submitPayload(flags))).result);
-  if (command === "verify") {
-    const verified = await verifyStep(deps, state, requireArg(arg, command));
-    emit(process.stdout, { ...verified.result, next: verified.next });
-  }
-  if (command === "resume") emit(process.stdout, (await resume(deps, state)).result);
-  if (command === "report") {
-    const report = buildReport(deps.solution, state);
-    emit(process.stdout, flags.json ? report : renderReport(report));
-  }
+  if (!Object.hasOwn(ON_INSTALL, command)) throw new InputError(`Unknown command '${command}'. Commands: ${COMMANDS}`);
+  emit(process.stdout, await ON_INSTALL[command](await loadInstall(home), flags, arg));
   return EXIT.OK;
 }
 
 function exitCodeFor(error: unknown): number {
   if (error instanceof StateCorruptError || error instanceof AuditCorruptError) return EXIT.STATE_CORRUPT;
-  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError || error instanceof ProfileError) return EXIT.USAGE;
+  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError) return EXIT.USAGE;
+  if (error instanceof ProfileError || error instanceof ActionFailure) return EXIT.USAGE;
   return EXIT.INTERNAL;
 }
 

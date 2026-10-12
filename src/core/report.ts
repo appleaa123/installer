@@ -44,6 +44,7 @@ export function runtimeLimits(runtime: CapabilityMap | undefined): readonly stri
     ...(runtime.c4_headless ? [] : ["no headless calls"]),
     ...(runtime.c4_headless && !runtime.c4_schema ? ["no structured output"] : []),
     ...(runtime.c5_resume ? [] : ["no session resume"]),
+    ...(runtime.c6_mcp === false ? ["no MCP client; Skills Wiki content is inlined"] : []),
   ];
 }
 

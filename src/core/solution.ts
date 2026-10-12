@@ -132,6 +132,30 @@ function checkProbeArgs(steps: readonly StepDef[]): void {
   }
 }
 
+/** BRAIN steps read what earlier engine steps recorded (the probed profile, the registration). */
+const NEEDS_EARLIER: Readonly<Record<string, string>> = { register_mcp: "probe_runtime", probe_mcp: "register_mcp" };
+
+function checkBrainOrder(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    const action = step.auto?.action ?? "";
+    if (!Object.hasOwn(NEEDS_EARLIER, action)) return;
+    const needed = NEEDS_EARLIER[action];
+    if (!steps.slice(0, index).some((earlier) => earlier.auto?.action === needed)) throw new SolutionError(`Step '${step.step_id}': ${action} needs an earlier ${needed} step`);
+  });
+}
+const SECRET_ID = /^[a-z0-9-]+$/;
+
+/** A secret step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
+function checkSecretSteps(steps: readonly StepDef[]): void {
+  for (const step of steps) {
+    if (step.type !== "human_action" || step.input?.kind !== "secret") continue;
+    const provider = step.input.provider;
+    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a secret step needs input.provider, the secret id entered with 'installer secret <provider>'`);
+    if (step.verify?.check !== "secret_present" || step.verify.args?.id !== provider) {
+      throw new SolutionError(`Step '${step.step_id}': a secret step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
+    }
+  }
+}
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -149,6 +173,8 @@ export function parseSolution(raw: unknown): Solution {
   }, 0);
   checkModeReferences(steps);
   checkProbeArgs(steps);
+  checkSecretSteps(steps);
+  checkBrainOrder(steps);
   return { id, version, steps };
 }
 
@@ -192,9 +218,12 @@ async function readLocal(path: string): Promise<string> {
   }
 }
 
-export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps): Promise<{ solution: Solution; text: string }> {
+/** `fetchSkillswiki` is the key-bearing fetcher the CLI builds once the key and URL are known (D46). */
+export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps, fetchSkillswiki?: FetchText): Promise<{ solution: Solution; text: string }> {
   if (ref.startsWith("skillswiki:")) {
-    throw new SolutionError("'skillswiki:' references need the Skills Wiki key step, which arrives in a later version; use a file: or https: reference");
+    if (!fetchSkillswiki) throw new SolutionError("'skillswiki:' references need the Skills Wiki key and URL: run 'installer secret skillswiki', then start with --url <MCP URL>");
+    const text = await fetchSkillswiki(ref);
+    return { solution: parseSolutionText(text, ref), text };
   }
   if (ref.startsWith("https:")) {
     const text = await fetchText(ref);

@@ -42,7 +42,13 @@ describe("https: solution refs", () => {
     await expect(loadSolutionSource(ref)).rejects.toThrow(/use file:<path> or https:/);
   });
 
-  it("explains that skillswiki: refs need the Skills Wiki key step", async () => {
-    await expect(loadSolutionSource("skillswiki:pack/skill/recipe.json")).rejects.toThrow(/Skills Wiki key step/);
+  it("explains what a skillswiki: ref needs when no key-bearing fetcher is given", async () => {
+    await expect(loadSolutionSource("skillswiki:pack/skill/recipe.json")).rejects.toThrow(/run 'installer secret skillswiki', then start with --url/);
+  });
+
+  it("loads a skillswiki: ref through the given fetcher and keeps its exact text", async () => {
+    const loaded = await loadSolutionSource("skillswiki:pack/skill/recipe.json", fetchHttps, async () => FIXTURE_TEXT);
+    expect(loaded.solution.id).toBe("fixture-basic");
+    expect(loaded.text).toBe(FIXTURE_TEXT);
   });
 });

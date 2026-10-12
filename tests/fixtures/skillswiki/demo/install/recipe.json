@@ -1,0 +1,9 @@
+{
+  "id": "fixture-skillswiki",
+  "version": "1.0.0",
+  "steps": [
+    { "step_id": "mode.name", "phase": "MODE", "type": "ask", "title": "Team name", "why": "Used in reports.", "blocking": true, "input": { "kind": "text" } },
+    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } } }
+  ]
+}

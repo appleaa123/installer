@@ -12,6 +12,17 @@
       "input": { "kind": "text" } },
     { "step_id": "mode.derive", "phase": "MODE", "type": "auto", "title": "Choose the setup", "why": "Your answers decide between a personal, team host or hybrid setup.", "blocking": true,
       "auto": { "action": "derive_mode", "args": { "shared_work": "mode.shared-work", "always_on": "mode.always-on", "decision_maker": "mode.decision-maker" } } },
+    { "step_id": "brain.key", "phase": "BRAIN", "type": "human_action", "title": "Store your Skills Wiki key", "why": "The installer reaches Skills Wiki with this key; it stays in your keychain and never passes through the agent.", "blocking": true,
+      "instructions": ["Open the page that 'installer secret skillswiki' printed (the agent runs that command for you)", "Paste the API key from your Skills Wiki dashboard and press Save", "Tell the agent when the page says Done"],
+      "input": { "kind": "secret", "provider": "skillswiki" },
+      "verify": { "check": "secret_present", "args": { "id": "skillswiki" } } },
+    { "step_id": "brain.register", "phase": "BRAIN", "type": "auto", "title": "Connect your agent to Skills Wiki", "why": "Your agent reads its skills from Skills Wiki through this connection; the key is read from the keychain on every request.", "blocking": true,
+      "auto": { "action": "register_mcp" } },
+    { "step_id": "brain.combo", "phase": "BRAIN", "type": "human_action", "title": "Activate your combo in the Skills Wiki dashboard", "why": "The active combo decides which skills your agent uses.", "blocking": true,
+      "instructions": ["Open your Skills Wiki dashboard", "Activate the combo for this solution", "Tell the agent when it is active"],
+      "verify": { "check": "combo_active" } },
+    { "step_id": "brain.probe-mcp", "phase": "BRAIN", "type": "auto", "title": "Check that your agent reaches Skills Wiki", "why": "Confirms the connection works from the folder your agent runs in; if it does not, Skills Wiki content is inlined instead.", "blocking": true,
+      "auto": { "action": "probe_mcp" } },
     { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,
       "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } } }
   ]

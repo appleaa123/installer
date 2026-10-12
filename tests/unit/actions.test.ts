@@ -1,8 +1,9 @@
 import { access, mkdir, readFile, readdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveInHome, runAction, runCheck } from "../../src/core/actions.js";
 import { InputError } from "../../src/core/inputs.js";
+import { setSecret } from "../../src/core/keychain.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 describe("resolveInHome (D34 confinement)", () => {
@@ -75,6 +76,25 @@ describe("runCheck", () => {
   it("rejects prototype member lookups like toString", async () => {
     const home = await makeTempHome();
     await expect(runCheck(home, { check: "toString" })).rejects.toThrow(InputError);
+  });
+});
+
+describe("secret_present", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("fails with a hint naming the secret command until the key is stored, then passes", async () => {
+    const home = await makeTempHome();
+    vi.stubEnv("INSTALLER_KEYCHAIN_DIR", await makeTempHome());
+    const check = { check: "secret_present", args: { id: "demo" } };
+    await expect(runCheck(home, check)).resolves.toEqual({ ok: false, hint: expect.stringContaining("run 'installer secret demo'") });
+    await setSecret("demo", "k-1");
+    await expect(runCheck(home, check)).resolves.toEqual({ ok: true });
+  });
+
+  it("refuses an id that is not a secret id", async () => {
+    await expect(runCheck(await makeTempHome(), { check: "secret_present", args: { id: "../x" } })).rejects.toThrow(InputError);
   });
 });
 

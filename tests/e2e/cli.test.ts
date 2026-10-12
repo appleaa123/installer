@@ -1,14 +1,29 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
+import { getSecret, setSecret } from "../../src/core/keychain.js";
+import { KEY_REJECTED_HINT } from "../../src/core/mcp.js";
+import { KEY_MISSING_HINT } from "../../src/core/skillswiki.js";
 import { loadState, statePath } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
+import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
+import { formHeaders, request, waitForExit } from "../helpers/http.js";
 import { FIXTURE_PATH, FIXTURE_REF } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const LIVE_RETRY_PATH = resolve("tests/fixtures/live-retry.json");
+const RECIPE_PATH = resolve("tests/fixtures/skillswiki/demo/install/recipe.json");
+const SKILLSWIKI_REF = "skillswiki:demo/install/recipe.json";
+
+/** A private keychain folder for one test, holding the Skills Wiki key when given. */
+async function keychainEnv(key?: string): Promise<Record<string, string>> {
+  const dir = await makeTempHome();
+  if (key) await setSecret("skillswiki", key, { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: dir });
+  return { INSTALLER_KEYCHAIN_DIR: dir };
+}
 
 describe("installer CLI", () => {
   it("start prints the first actionable step", async () => {
@@ -91,7 +106,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
@@ -101,11 +116,76 @@ describe("installer CLI", () => {
     expect((await loadState(home))?.solution.recipe_version).toBe(sha);
   });
 
-  it.each(["http://example.test/s.json", "skillswiki:pack/skill/recipe.json"])("refuses %s with exit 2 and creates nothing", async (ref) => {
+  it("refuses http://example.test/s.json with exit 2 and creates nothing", async () => {
     const home = join(await makeTempHome(), "engine");
-    const result = runCli(["start", "--solution", ref], { home });
+    const result = runCli(["start", "--solution", "http://example.test/s.json"], { home });
     expect(result.code).toBe(2);
     await expect(access(home)).rejects.toThrow();
+  });
+
+  describe("skillswiki: references (D46)", () => {
+    const servers: FakeMcp[] = [];
+
+    afterEach(() => {
+      servers.splice(0).forEach((fake) => fake.stop());
+    });
+
+    async function fakeWiki(env: Record<string, string> = {}): Promise<FakeMcp> {
+      const fake = await startFakeMcp(env);
+      servers.push(fake);
+      return fake;
+    }
+
+    it("refuses to start without the key, names the secret command and creates nothing (Review Focus 4)", async () => {
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", "https://wiki.test/mcp"], { home, env: await keychainEnv() });
+      expect(result.code).toBe(2);
+      expect(result.json).toEqual({ error: KEY_MISSING_HINT, code: 2 });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it.each([
+      ["no --url", []],
+      ["a plain http url", ["--url", "http://wiki.test/mcp"]],
+    ])("refuses to start with %s once the key exists, exit 2, creates nothing (Review Focus 4)", async (_name, urlArgs) => {
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, ...urlArgs], { home, env: await keychainEnv("k-1") });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: expect.stringContaining("--url") });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it("fetches the recipe, pins it and records the url, the working folder and the content sha", async () => {
+      const fake = await fakeWiki();
+      const [home, cwd] = [await makeTempHome(), await makeTempHome()];
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", fake.url], { home, cwd, env: await keychainEnv(fake.key) });
+      expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "mode.name" } } });
+      const recipe = await readFile(RECIPE_PATH, "utf8");
+      expect(await loadState(home)).toMatchObject({
+        solution: { ref: SKILLSWIKI_REF, id: "fixture-skillswiki", recipe_version: createHash("sha256").update(recipe).digest("hex") },
+        skillswiki: { url: fake.url },
+        work_dir: await realpath(cwd),
+      });
+      await expect(readFile(join(home, "solution", "solution.json"), "utf8")).resolves.toBe(recipe);
+    });
+
+    it("names a rejected key and creates nothing (Review Focus 3)", async () => {
+      const fake = await fakeWiki();
+      const home = join(await makeTempHome(), "engine");
+      const result = runCli(["start", "--solution", SKILLSWIKI_REF, "--url", fake.url], { home, env: await keychainEnv("not-the-key") });
+      expect(result.code).toBe(2);
+      expect(result.json).toEqual({ error: KEY_REJECTED_HINT, code: 2 });
+      await expect(access(home)).rejects.toThrow();
+    });
+
+    it("refuses a second start with a different url", async () => {
+      const home = await makeTempHome();
+      expect(runCli(["start", "--solution", FIXTURE_REF, "--url", "https://one.test/mcp"], { home }).code).toBe(0);
+      expect(runCli(["start", "--solution", FIXTURE_REF], { home }).code).toBe(0);
+      const other = runCli(["start", "--solution", FIXTURE_REF, "--url", "https://two.test/mcp"], { home });
+      expect(other.code).toBe(2);
+      expect(other.json).toMatchObject({ error: expect.stringContaining("already has an install started with the Skills Wiki URL 'https://one.test/mcp'") });
+    });
   });
 
   describe("runtime probe", () => {
@@ -169,6 +249,89 @@ describe("installer CLI", () => {
     });
   });
 
+  describe("installer secret (D47)", () => {
+    const pids: number[] = [];
+
+    afterEach(() => {
+      for (const pid of pids.splice(0)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone, which is what the tests expect
+        }
+      }
+    });
+
+    it("prints a waiting url and exits; the page stores one key in the keychain, then exits too", async () => {
+      const dir = await makeTempHome();
+      const result = runCli(["secret", "skillswiki"], { env: { INSTALLER_KEYCHAIN_DIR: dir } });
+      expect(result.code).toBe(0);
+      const { status, url, pid } = result.json as { status: string; url: string; pid: number };
+      pids.push(pid);
+      expect(status).toBe("waiting");
+      expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/s\/[0-9a-f]{64}$/);
+      expect((await request(url)).status).toBe(200);
+      const reply = await request(url, { method: "POST", headers: formHeaders(new URL(url).origin), body: "value=sw_live_123" });
+      expect(reply.text).toContain("Done, you can close this tab.");
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: dir })).resolves.toBe("sw_live_123");
+      await waitForExit(pid);
+    });
+
+    it("refuses an id that is not a secret id, exit 2, and starts no page", () => {
+      const result = runCli(["secret", "Skills Wiki"], {});
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: "Secret id 'Skills Wiki' must be lowercase letters, digits and dashes" });
+    });
+  });
+  describe("installer mcp-headers (D52)", () => {
+    it("prints exactly the Authorization header line from the keychain", async () => {
+      const result = runCli(["mcp-headers", "skillswiki"], { env: await keychainEnv("sw_live_123") });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe('{"Authorization":"Bearer sw_live_123"}\n');
+    });
+
+    it("prints nothing and exits 1 when the key is missing", async () => {
+      const result = runCli(["mcp-headers", "skillswiki"], { env: await keychainEnv() });
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+    });
+  });
+  describe("installer disconnect", () => {
+    it("deletes the key even when this home has no install, and reports it", async () => {
+      const env = await keychainEnv("k-1");
+      expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: false, secret_deleted: true });
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
+    });
+
+    it("removes the agent's Skills Wiki registration even from a home with no install (review finding 2a)", async () => {
+      const agentHome = await makeTempHome();
+      const fake = resolve("tests/fakes/fake-agent.mjs");
+      spawnSync(process.execPath, [fake, "mcp", "add-json", "-s", "user", "skillswiki", '{"type":"http","url":"https://wiki.test/mcp"}'], { env: { ...process.env, FAKE_AGENT_HOME: agentHome } });
+      await expect(access(join(agentHome, "mcp", "skillswiki.json"))).resolves.toBeUndefined();
+      const env = { ...(await keychainEnv("k-1")), FAKE_AGENT_HOME: agentHome };
+      expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: true, secret_deleted: true });
+      await expect(access(join(agentHome, "mcp", "skillswiki.json"))).rejects.toThrow();
+    });
+
+    it("still deletes the key when the recorded agent profile cannot be loaded (review finding 2b)", async () => {
+      const home = await makeTempHome();
+      const runtime = { profile: "ghost", agent_version: null, c2_shell: true, c4_headless: false, c4_schema: false, c5_resume: false, c6_mcp: "not_probed", support_level: 0, tier: "unknown", notes: [] };
+      await mkdir(join(home, "state"), { recursive: true });
+      await writeFile(statePath(home), JSON.stringify({ schema: 1, solution: { ref: "file:/s.json", id: "s", version: "1" }, started_at: "2026-01-01T00:00:00.000Z", steps: {}, runtime }), "utf8");
+      const env = await keychainEnv("k-1");
+      const result = runCli(["disconnect", "skillswiki"], { home, env });
+      expect(result.code).toBe(0);
+      expect(result.json).toMatchObject({ status: "disconnected", unregistered: false, secret_deleted: true });
+      await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
+    });
+
+    it("only knows skillswiki in this version, exit 2", async () => {
+      const result = runCli(["disconnect", "gmail"], { home: await makeTempHome() });
+      expect(result.code).toBe(2);
+      expect(result.json).toMatchObject({ error: "Only 'skillswiki' can be disconnected in this version" });
+    });
+  });
   it("report prints text by default and JSON with --json", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });

@@ -43,6 +43,35 @@ describe("parseSolution", () => {
   });
 });
 
+describe("secret steps (§8.3)", () => {
+  const secret = (extra: Record<string, unknown>) => ({ id: "s", version: "1", steps: [{ step_id: "brain.key", phase: "BRAIN", type: "human_action", title: "Key", why: "Needed.", blocking: true, input: { kind: "secret", provider: "demo" }, ...extra }] });
+
+  it("accepts a step whose provider matches its secret_present check", () => {
+    expect(parseSolution(secret({ verify: { check: "secret_present", args: { id: "demo" } } })).steps).toHaveLength(1);
+  });
+
+  it.each([
+    ["no provider", { input: { kind: "secret" }, verify: { check: "secret_present", args: { id: "demo" } } }, /needs input\.provider/],
+    ["a provider that is not a secret id", { input: { kind: "secret", provider: "Demo Key" }, verify: { check: "secret_present", args: { id: "Demo Key" } } }, /needs input\.provider/],
+    ["no check", {}, /must verify with/],
+    ["a check for another id", { verify: { check: "secret_present", args: { id: "other" } } }, /must verify with/],
+    ["a different check", { verify: { check: "file_exists", args: { path: "x" } } }, /must verify with/],
+  ])("refuses a secret step with %s", (_name, extra, message) => {
+    expect(() => parseSolution(secret(extra))).toThrow(SolutionError);
+    expect(() => parseSolution(secret(extra))).toThrow(message);
+  });
+});
+describe("BRAIN step order", () => {
+  const auto = (step_id: string, action: string) => ({ step_id, phase: "BRAIN", type: "auto", title: step_id, why: "Needed.", blocking: true, auto: { action } });
+
+  it("refuses register_mcp before probe_runtime", () => {
+    expect(() => parseSolution({ id: "b", version: "1", steps: [auto("brain.register", "register_mcp")] })).toThrow("Step 'brain.register': register_mcp needs an earlier probe_runtime step");
+  });
+
+  it("accepts register_mcp after probe_runtime", () => {
+    expect(parseSolution({ id: "b", version: "1", steps: [auto("pre.probe", "probe_runtime"), auto("brain.register", "register_mcp")] }).steps).toHaveLength(2);
+  });
+});
 describe("loadSolution", () => {
   it("loads a file: reference", async () => {
     await expect(loadSolution(`file:${FIXTURE}`)).resolves.toMatchObject({ id: "fixture-basic" });

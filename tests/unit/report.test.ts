@@ -98,6 +98,18 @@ describe("runtime line", () => {
     expect(renderReport(report)).toContain("🤖 Agent      unknown agent — level 0 of 3 (no known agent profile; fallbacks apply, MCP not checked yet)");
   });
 
+  it("counts a working MCP client as the third level with nothing missing", () => {
+    const report = buildReport(basicSolution(), { ...allDone(), runtime: { ...runtime, c6_mcp: true, support_level: 3 } });
+    expect(report.overall).toBe("ready");
+    expect(renderReport(report).split("\n")[2]).toBe("🤖 Agent      claude-code 2.1.294 — level 3 of 3");
+  });
+
+  it("turns a failed MCP probe into READY WITH LIMITS that names the inlining fallback (D54)", () => {
+    const report = buildReport(basicSolution(), { ...allDone(), runtime: { ...runtime, c6_mcp: false } });
+    expect(report.overall).toBe("ready_with_limits");
+    expect(report.runtime_limits).toEqual(["no MCP client; Skills Wiki content is inlined"]);
+    expect(renderReport(report)).toContain("level 2 of 3 (no MCP client; Skills Wiki content is inlined)");
+  });
   it("prints no agent line before the probe has run", () => {
     const report = buildReport(basicSolution(), allDone());
     expect(report.runtime).toBeNull();

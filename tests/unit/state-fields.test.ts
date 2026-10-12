@@ -17,11 +17,17 @@ describe("install state fields added by Plan 2", () => {
     expect(isInstallState(base)).toBe(true);
   });
 
+  it("accepts the Plan 3 fields skillswiki and work_dir", () => {
+    expect(isInstallState({ ...base, skillswiki: { url: "https://wiki.test/mcp" }, work_dir: "/work" })).toBe(true);
+  });
+
   it.each([
     ["an unknown mode", { ...base, mode: "boss" }],
     ["roles without a decision maker", { ...base, roles: {} }],
     ["a non-string recipe_version", { ...base, solution: { ...base.solution, recipe_version: 5 } }],
     ["a runtime without a support level", { ...base, runtime: { profile: null } }],
+    ["a skillswiki entry without a url", { ...base, skillswiki: {} }],
+    ["a non-string work_dir", { ...base, work_dir: 7 }],
   ])("rejects %s", (_name, state) => {
     expect(isInstallState(state)).toBe(false);
   });

@@ -14,9 +14,20 @@ export interface RuntimeProfile {
   readonly name: string;
   readonly min_version: string;
   readonly detect: { readonly cmd: readonly string[]; readonly match: string };
-  readonly headless: { readonly cmd: readonly string[]; readonly result_path: string; readonly session_path: string; readonly error_path?: string };
+  readonly headless: {
+    readonly cmd: readonly string[];
+    readonly result_path: string;
+    readonly session_path: string;
+    readonly error_path?: string;
+    /** Appended to every headless call except the C6 probe, which uses allow_tool instead (D52, D54). */
+    readonly tools_off?: readonly string[];
+    readonly allow_tool?: readonly string[];
+  };
   readonly schema?: { readonly flag: readonly string[]; readonly result_path: string };
   readonly resume?: { readonly flag: readonly string[] };
+  /** Run by the engine, never by the agent, to add or remove an MCP server (D46, D52). */
+  readonly mcp_register?: { readonly cmd: readonly string[] };
+  readonly mcp_remove?: { readonly cmd: readonly string[] };
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -39,15 +50,21 @@ function str(value: unknown, where: string): string {
 const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "detect.cmd": ["profile_dir"],
   "headless.cmd": ["profile_dir", "prompt"],
+  "headless.tools_off": [],
+  "headless.allow_tool": ["tool"],
   "schema.flag": ["schema_json"],
   "resume.flag": ["session_id"],
+  "mcp_register.cmd": ["profile_dir", "name", "config_json"],
+  "mcp_remove.cmd": ["profile_dir", "name"],
 };
 
-function argv(value: unknown, where: string, placeholder?: string): readonly string[] {
+function argv(value: unknown, where: string, ...placeholders: string[]): readonly string[] {
   if (!Array.isArray(value) || value.length === 0 || !value.every((part) => typeof part === "string")) {
     throw new ProfileError(`Profile ${where} must be a non-empty list of strings`);
   }
-  if (placeholder && !value.some((part: string) => part.includes(placeholder))) throw new ProfileError(`Profile ${where} must contain ${placeholder}`);
+  for (const placeholder of placeholders) {
+    if (!value.some((part: string) => part.includes(placeholder))) throw new ProfileError(`Profile ${where} must contain ${placeholder}`);
+  }
   const unknown = (value as string[]).flatMap((part) => [...part.matchAll(/\{([a-z_]+)\}/g)].map((match) => match[1])).find((name) => !(ALLOWED[where] ?? []).includes(name));
   if (unknown) throw new ProfileError(`Profile ${where} uses {${unknown}}, which it cannot use`);
   return value as string[];
@@ -58,6 +75,26 @@ function obj(value: unknown, where: string): Raw {
   return value;
 }
 
+function headlessPart(raw: Raw): RuntimeProfile["headless"] {
+  const headless = obj(raw.headless, "headless");
+  return {
+    cmd: argv(headless.cmd, "headless.cmd", "{prompt}"),
+    result_path: str(headless.result_path, "headless.result_path"),
+    session_path: str(headless.session_path, "headless.session_path"),
+    ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
+    ...(headless.tools_off === undefined ? {} : { tools_off: argv(headless.tools_off, "headless.tools_off") }),
+    ...(headless.allow_tool === undefined ? {} : { allow_tool: argv(headless.allow_tool, "headless.allow_tool", "{tool}") }),
+  };
+}
+
+function mcpParts(raw: Raw): Pick<RuntimeProfile, "mcp_register" | "mcp_remove"> {
+  const register = raw.mcp_register === undefined ? undefined : obj(raw.mcp_register, "mcp_register");
+  const remove = raw.mcp_remove === undefined ? undefined : obj(raw.mcp_remove, "mcp_remove");
+  return {
+    ...(register ? { mcp_register: { cmd: argv(register.cmd, "mcp_register.cmd", "{name}", "{config_json}") } } : {}),
+    ...(remove ? { mcp_remove: { cmd: argv(remove.cmd, "mcp_remove.cmd", "{name}") } } : {}),
+  };
+}
 function optionalParts(raw: Raw): Pick<RuntimeProfile, "schema" | "resume"> {
   const schema = raw.schema === undefined ? undefined : obj(raw.schema, "schema");
   const resume = raw.resume === undefined ? undefined : obj(raw.resume, "resume");
@@ -72,7 +109,6 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
   const id = str(raw.id, "id");
   if (!ID_PATTERN.test(id)) throw new ProfileError(`Profile id must be lowercase letters, digits and dashes, got '${id}'`);
   const detect = obj(raw.detect, "detect");
-  const headless = obj(raw.headless, "headless");
   const tos = obj(raw.tos_review, "tos_review");
   if (!(TOS_STATUSES as readonly unknown[]).includes(tos.status)) throw new ProfileError(`Profile tos_review.status must be one of ${TOS_STATUSES.join(", ")}`);
   return {
@@ -80,13 +116,9 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     name: str(raw.name, "name"),
     min_version: str(raw.min_version, "min_version"),
     detect: { cmd: argv(detect.cmd, "detect.cmd"), match: str(detect.match, "detect.match") },
-    headless: {
-      cmd: argv(headless.cmd, "headless.cmd", "{prompt}"),
-      result_path: str(headless.result_path, "headless.result_path"),
-      session_path: str(headless.session_path, "headless.session_path"),
-      ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
-    },
+    headless: headlessPart(raw),
     ...optionalParts(raw),
+    ...mcpParts(raw),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };
