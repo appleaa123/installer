@@ -6,7 +6,8 @@ import type { RuntimeProfile } from "./profile.js";
 
 /** `claude mcp add-json` health-checks nothing, but a slow agent start is still possible. */
 export const MCP_COMMAND_TIMEOUT_MS = 60_000;
-const shellQuote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
+/** Single quotes for a POSIX shell. */
+export const shellQuote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
 
 /** The test suite runs from src/, so it points this at the built CLI; the package needs no override. */
 export const CLI_PATH_ENV = "INSTALLER_CLI";

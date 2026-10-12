@@ -13,8 +13,8 @@ export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "used"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 const TOKEN_PATTERN = /^([1-9]\d*)\.[0-9a-f]{64}$/;
-/** Which surface made a tool call: the agent over MCP, the shell (`installer tool`), or the gateway itself (D79). */
-export type Via = "mcp" | "cli" | "gateway";
+/** Which surface made a tool call: the agent over MCP, the shell (`installer tool`), the gateway itself (D79), or a workflow run (D81). */
+export type Via = "mcp" | "cli" | "gateway" | "runner";
 
 export interface ProposedAction {
   readonly tool: string;
@@ -39,10 +39,17 @@ export interface Decision {
   readonly original?: ProposedAction;
 }
 
-/** Spec §11.5. `source.via` says which surface asked; workflows add their run and step in Plan 7. */
+/** The workflow run and step that asked for an approval (D87). */
+export interface RunRef {
+  readonly workflow: string;
+  readonly run_id: string;
+  readonly step: string;
+}
+
+/** Spec §11.5. `source.via` says which surface asked; a workflow's request also names its run and step. */
 export interface ApprovalItem {
   readonly id: number;
-  readonly source: { readonly via: Via };
+  readonly source: { readonly via: Via; readonly run?: RunRef };
   readonly level: Level;
   readonly urgent: boolean;
   readonly action: ProposedAction;
@@ -67,6 +74,7 @@ export interface ApprovalRequest {
   readonly evidence?: readonly string[];
   readonly urgent?: boolean;
   readonly via: Via;
+  readonly run?: RunRef;
 }
 
 /** Who decides at the terminal, and with which role (D60). */
@@ -122,7 +130,7 @@ export async function requestApproval(home: string, request: ApprovalRequest, no
   if (!needsApproval(prepared.level)) throw new InputError(`${prepared.tool} is ${prepared.level} and needs no approval: call it directly`);
   const action = { tool: prepared.tool, args: prepared.args };
   const item = await createRecord<ApprovalItem>(home, APPROVALS_DIR, (id) => ({
-    id, source: { via: request.via }, level: prepared.level, urgent: request.urgent ?? false, action,
+    id, source: { via: request.via, ...(request.run ? { run: request.run } : {}) }, level: prepared.level, urgent: request.urgent ?? false, action,
     expected_values: prepared.expected_values, action_hash: prepared.action_hash,
     preview: request.preview?.trim() || previewOf(action), why, evidence: request.evidence ?? [],
     required_role: requiredRole(prepared.level) ?? "member", created_at: now,

@@ -15,7 +15,7 @@ import { makeTempHome } from "../helpers/temp-home.js";
 import { STARTER_REF, operate, starterScript } from "../operator/scripted-operator.js";
 
 const DOC = readFileSync("INSTALL.md", "utf8");
-const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "disconnect", "tool", "approvals", "connect", "map", "channel", "invite", "members", "gateway"];
+const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "disconnect", "tool", "approvals", "connect", "map", "channel", "invite", "members", "gateway", "run", "schedule", "model"];
 
 describe("INSTALL.md", () => {
   it("states the five operator rules from spec §6.1", () => {

@@ -27,6 +27,10 @@ import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import { serveStdio } from "./core/mcp-server.js";
 import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
+import { modelCommand } from "./core/model.js";
+import { runCommand } from "./core/run-commands.js";
+import { scheduleCommand } from "./core/scheduler.js";
+import { tick } from "./core/tick.js";
 import { DEFAULT_TOOLS } from "./core/tool-set.js";
 import { describeTools, invokeTool, toolContext } from "./core/tools.js";
 import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
@@ -34,7 +38,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -54,6 +58,7 @@ interface Flags {
   readonly as?: string;
   readonly reason?: string;
   readonly sheet?: string;
+  readonly sandbox?: boolean;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
@@ -63,6 +68,7 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
 const OPTIONS = {
   home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
   profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" }, sheet: { type: "string" },
+  sandbox: { type: "boolean" },
 } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
@@ -281,6 +287,10 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   invite: async ({ state, deps }, _flags, arg) => inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now),
   members: async ({ deps }, _flags, arg, extra) => membersCommand(deps.home, { sub: arg, id: extra, interactive: process.stdin.isTTY === true }, deps.now),
   gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),
+  run: async ({ deps }, flags, arg) => runCommand(deps.home, arg, flags.sandbox === true, deps.now),
+  tick: async ({ deps }) => tick(deps.home, deps.now),
+  schedule: async ({ deps }, flags, arg) => scheduleCommand(deps.home, arg, flags.value, deps.now),
+  model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now, process.stdin.isTTY === true),
 };
 
 async function run(argv: readonly string[]): Promise<number> {

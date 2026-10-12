@@ -51,6 +51,12 @@ describe("channel.notify, an internal message (L1, D79)", () => {
     expect((await events(home)).slice(-2)).toEqual(["channel.recorded", "tool.executed"]);
   });
 
+  it("is only recorded in a sandbox run, even once the install is finished (D90)", async () => {
+    const home = await channelHome(true);
+    const result = await invokeTool({ ...(await context(home)), sandbox: true }, "channel.notify", { member: "Owner", text: "A sandbox summary" });
+    expect(result).toEqual({ member: "Owner", deliveries: [{ channel: "telegram", status: "recorded", outbox_id: 1, reason: "a sandbox run: messages are recorded, never sent (D90)" }] });
+    expect(await sentTo("1002")).not.toContain("A sandbox summary");
+  });
   it("is sent once the install is finished, with no approval", async () => {
     const home = await channelHome(true);
     await invokeTool(await context(home), "channel.notify", { member: "Owner", text: "The weekly summary is ready" });
