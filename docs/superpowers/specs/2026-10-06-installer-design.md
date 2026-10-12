@@ -143,9 +143,12 @@ or any other business uses the same engine with a different recipe.
     install-state.json             # install state machine (§6.4)
     install-state.json.bak         # previous state (Plan 1)
   solution/solution.json           # pinned solution (Plan 1)
+  state/approvals/<id>.json        # approval items, one file each; <id>.claimed = token spent (Plan 4, D57)
+  data/memos/<id>.json             # memo tool records (Plan 4, D63)
   runtime/probe/                   # working folder for headless probe calls (Plan 2)
-    ops.sqlite                     # approvals, runs, idempotency, sessions,
-                                   # autonomy stats, pending events
+  ops.sqlite                       # runs, idempotency, sessions, autonomy stats,
+                                   # pending events (store decided in Plan 7, D57)
+  audit/audit.lock                 # one audit writer at a time (Plan 4, D57)
   runs/<workflow>/<run_id>/        # per-run artifacts (§10.6)
   audit/audit.jsonl                # hash-chained (§11.8)
   sandbox/outbox/                  # recording sink in sandbox mode (§15.5)
@@ -381,7 +384,9 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer invite` | Create per-member join links (channel identity + optional personal sign-ins) |
 | `installer run <workflow> [--sandbox]` | Run a workflow now |
 | `installer harden <workflow>` | Review and apply hardening proposals (§10.8) |
-| `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4) |
+| `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4); prints the tool's result, exits 2 on a refusal (D63) |
+| `installer approvals list \| approve <id> \| edit <id> --value <json> \| reject <id>` | Decide approval items in a person's own terminal (`--as <name>`, `--reason`; D60, D61) |
+| `installer mcp-serve` | Run by the agent's MCP client: the local MCP server on stdio (D56) |
 | `installer gateway start|stop|status` | Manage the gateway daemon |
 | `installer doctor` | Health checks (§16.1) |
 | `installer pause` / `installer unpause` | Kill switch (§14.4) |
@@ -472,7 +477,9 @@ Output: capability map in the install state (`runtime`) and the report;
   OpenAI-compatible, Gemini). Default for runtimes whose terms forbid
   third-party invocation (e.g. Antigravity, D32).
 - **CLI tool surface (C6):** `installer tool records.find '{"entity":"customer","where":{"email":"…"}}'`.
-  Same approval-token enforcement as MCP (§11.1).
+  Same approval-token enforcement as MCP (§11.1): both call one gate. The
+  tool's result is printed on stdout; a refusal exits 2 with the reason
+  (D63). Plan 4 ships `memo.*` and `approvals.request | list | get`.
 - **Skills inlining (C6):** the engine is itself an MCP client of Skills
   Wiki. When the host agent cannot use MCP, the runner fetches the combo
   harness and the named skill (plus required references) and inlines them
@@ -567,7 +574,7 @@ risk:
 | Kind | Examples | Home |
 |---|---|---|
 | Business records | Customers, sites, orders, campaigns | **Client's system of record** via a data connector; local SQLite only if the client chooses it |
-| Operational state | Approvals, runs, idempotency keys, sessions, autonomy stats | Always local `ops.sqlite` |
+| Operational state | Approvals, runs, idempotency keys, sessions, autonomy stats | Always local: approval items as files under `state/approvals/` (D57); the store for the rest is decided in Plan 7 |
 | Audit | Requests, decisions, actions, refusals, steps, setup events | Local hash-chained `audit.jsonl` |
 | Secrets | Tokens, keys | OS keychain |
 
@@ -832,6 +839,14 @@ describe (plain words) → v1 agentic → dry run (sandbox, human confirms)
   refusal is audited.
 - Applies identically via MCP and via `installer tool` (§7.4).
 - Chat-originated writes use the same queue (D23).
+- The agent asks with `approvals.request` (tool, args, `why`); once a person
+  approved, `approvals.get` returns the token and the agent repeats the call
+  with the same arguments plus `approval_token`, which is not part of the
+  hash. Expected values are re-read when the token is used, so a value that
+  changed since the approval refuses (§9.6). The token is spent before the
+  tool runs: a crash can lose an approved action, never repeat it (D58).
+- No tool can decide an approval, and the model never supplies a level:
+  tool arguments are parsed strictly (D59, D61).
 
 ### 11.2 Levels
 
@@ -870,7 +885,9 @@ tags written`, `floor category match`, `client-added rules` `)`.
 
 Floor category match uses declared tool metadata (e.g. `category:
 legal_notice`) and field tags — never model output. A tool with no
-declared level defaults to L2.
+declared level defaults to L2. Field tags come from the data contract
+(Plan 5); client rules live in `config/approval-rules.json`
+(`{"tools":{"<tool>":"L2"}}`) and can only raise a level (D59).
 
 ### 11.5 Approval item (D23)
 
@@ -891,7 +908,9 @@ declared level defaults to L2.
 }
 ```
 
-`why` is mandatory; items without it are rejected at creation.
+`why` is mandatory; items without it are rejected at creation. Statuses:
+`pending` → `approved` | `rejected` | `expired`; `approved` → `used` |
+`expired` (D58, D62).
 
 Decisions:
 
@@ -900,7 +919,7 @@ Decisions:
 | Approve | Token issued for the exact `action_hash` |
 | Edit | Human-edited action → new hash → approved as edited; diff stored → learning candidate |
 | Reject | Step marked rejected; optional reason → learning candidate |
-| Expire | Reminder, then escalation to the next role |
+| Expire | Reminder, then escalation to the next role (Plan 6). Plan 4: an open item expires 24 h after the request, on the first read after that, with one audit line (D62) |
 
 ### 11.6 Earned autonomy (D25)
 - Tracked per action type (tool + target audience + template class).
@@ -943,6 +962,11 @@ Decisions:
   refused and audited.
 - Default role requirements (adjustable upward in phase 1): L2 → `member`
   with approve permission; L3 → `decision_maker`.
+- Plan 4, before `invite`: decisions are made with `installer approvals
+  approve | edit | reject` in the person's own terminal; a command run
+  without a terminal on stdin (an agent's shell) is refused and audited.
+  The decision maker is whoever passes `--as` with the MODE phase's
+  decision maker name; everyone else is a member (D60, D61).
 
 ---
 

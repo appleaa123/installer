@@ -4,6 +4,8 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { approvalsCommand } from "./core/approval-commands.js";
+import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { disconnect } from "./core/disconnect.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
@@ -16,16 +18,19 @@ import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
+import { serveStdio } from "./core/mcp-server.js";
 import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
+import { DEFAULT_TOOLS } from "./core/tool-set.js";
+import { describeTools, invokeTool, toolContext } from "./core/tools.js";
 import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals";
 
-class NoInstallError extends Error {
+class NoInstallError extends InputError {
   constructor() {
     super("No install found in this home; run 'installer start --solution <ref>' first");
     this.name = "NoInstallError";
@@ -40,13 +45,18 @@ interface Flags {
   readonly json?: boolean;
   readonly profile?: string;
   readonly url?: string;
+  readonly as?: string;
+  readonly reason?: string;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
   stream.write(`${typeof value === "string" ? value : JSON.stringify(value)}\n`);
 }
 
-const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" }, url: { type: "string" } } as const;
+const OPTIONS = {
+  home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
+  profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" },
+} as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
 /** Node's own unknown-option message suggests '--', which does not apply here. */
@@ -200,8 +210,32 @@ async function headersCommand(id: string): Promise<number> {
   return EXIT.OK;
 }
 
+/** `installer tool <name> '<json>'`: the C6 fallback, through the same gate as the MCP server (§7.4). */
+async function toolCommand(home: string, name: string | undefined, json: string | undefined): Promise<unknown> {
+  if (!name) throw new InputError(`tool needs a tool name and its arguments as JSON, for example: installer tool memo.list '{}'`);
+  let args: unknown = {};
+  if (json !== undefined) {
+    try {
+      args = JSON.parse(json);
+    } catch {
+      throw new InputError(`The arguments of '${name}' must be JSON, for example '{"id":1}'`);
+    }
+  }
+  return invokeTool(await toolContext(home, "cli", DEFAULT_TOOLS), name, args);
+}
+
+/** Run by the agent's MCP client (D56): JSON-RPC on stdin/stdout and nothing else on stdout; each call reads the install afresh. */
+async function mcpServeCommand(home: string): Promise<number> {
+  const call = async (name: string, args: unknown) => {
+    if (!(await loadState(home))) throw new NoInstallError();
+    return invokeTool(await toolContext(home, "mcp", DEFAULT_TOOLS), name, args);
+  };
+  await serveStdio({ list: () => describeTools(DEFAULT_TOOLS), call }, process.stdin, process.stdout);
+  return EXIT.OK;
+}
+
 type Standalone = (home: string, flags: Flags, arg: string | undefined) => Promise<unknown>;
-type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined) => Promise<unknown>;
+type OnInstall = (install: { state: InstallState; deps: EngineDeps }, flags: Flags, arg: string | undefined, extra: string | undefined) => Promise<unknown>;
 
 /** Commands that need no install state. */
 const STANDALONE: Readonly<Record<string, Standalone>> = {
@@ -224,27 +258,31 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     const report = buildReport(deps.solution, state);
     return flags.json ? report : renderReport(report);
   },
+  tool: async ({ deps }, _flags, arg, extra) => toolCommand(deps.home, arg, extra),
+  approvals: async ({ state, deps }, flags, arg, extra) =>
+    approvalsCommand(deps.home, state.roles, { sub: arg, id: extra, as: flags.as, reason: flags.reason, value: flags.value, interactive: process.stdin.isTTY === true }, deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {
   const { flags, positionals } = parse(argv);
   const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
-  const [command = "", arg] = positionals;
+  const [command = "", arg, extra] = positionals;
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
   if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
+  if (command === "mcp-serve") return mcpServeCommand(home);
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;
   }
   if (!Object.hasOwn(ON_INSTALL, command)) throw new InputError(`Unknown command '${command}'. Commands: ${COMMANDS}`);
-  emit(process.stdout, await ON_INSTALL[command](await loadInstall(home), flags, arg));
+  emit(process.stdout, await ON_INSTALL[command](await loadInstall(home), flags, arg, extra));
   return EXIT.OK;
 }
 
 function exitCodeFor(error: unknown): number {
   if (error instanceof StateCorruptError || error instanceof AuditCorruptError) return EXIT.STATE_CORRUPT;
   if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError) return EXIT.USAGE;
-  if (error instanceof ProfileError || error instanceof ActionFailure) return EXIT.USAGE;
+  if (error instanceof ProfileError || error instanceof ActionFailure || error instanceof ToolRefusal) return EXIT.USAGE;
   return EXIT.INTERNAL;
 }
 

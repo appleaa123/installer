@@ -133,7 +133,7 @@ function checkProbeArgs(steps: readonly StepDef[]): void {
 }
 
 /** BRAIN steps read what earlier engine steps recorded (the probed profile, the registration). */
-const NEEDS_EARLIER: Readonly<Record<string, string>> = { register_mcp: "probe_runtime", probe_mcp: "register_mcp" };
+const NEEDS_EARLIER: Readonly<Record<string, string>> = { register_mcp: "probe_runtime", probe_mcp: "register_mcp", register_tools_mcp: "probe_runtime" };
 
 function checkBrainOrder(steps: readonly StepDef[]): void {
   steps.forEach((step, index) => {
