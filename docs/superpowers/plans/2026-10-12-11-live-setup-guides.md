@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-12-live-setup-guides-design.md` (approved 2026-10-12). One deliberate deviation: the spec says the solution loader checks that a step's `guide` names a connector that has a `setup` block. The loader runs synchronously and cannot read the connector file, so it checks **catalog membership** only (`CONNECTOR_PINS`); a missing `setup` block is reported by `installer guide` (exit 2) and pinned by a test that parses the shipped starter and runs `guide` for every `guide` it names (Task 7).
 
+## Review by Opus 5.5 (2026-10-12)
+
+This plan was applied task by task in a throwaway copy before execution: no task failed or broke an existing test (102 files, 1397 tests green). Its seven Important findings and the useful minor ones are folded in below (the sign-in page test, the `access_denied` path, the double-verify intent, the missing-scope symptom, the feature branch, the Task 1 gate, the live-guide cleanup order, an exact `NOT_FOUND` check, an exact code match, `means` in the help, and the contradictory test-user wording).
+
 ## Global Constraints
 
 - Node ≥ 22, TypeScript strict, ESM imports with the `.js` suffix; **zero runtime dependencies**.
@@ -22,6 +26,8 @@
 - `connectors/google-sheets/1/connector.json` is pinned by sha256 in `CONNECTOR_PINS`: any edit to the file must update the pin in the same commit.
 - The connector's OAuth client must be a **Desktop app**; the app must be out of Testing status before the first sign-in (the guide text says so).
 - Never merge to `main` without the owner's word. Open a PR.
+- Work on the branch `feat/live-setup-guides`, created from `spec/live-setup-guides` (which holds the approved spec and this plan): `git switch -c feat/live-setup-guides`.
+- Task 6 must not start until the spec contains a line `Confirmed live on` (Task 1 result).
 - `D122` is used by PR #12 (not merged yet); this work uses `D123`. If `DECISIONS.md` conflicts, keep both rows.
 
 ## Review Focus
@@ -31,8 +37,8 @@ The spec implies these inputs and conditions but the main tasks would not exerci
 1. A `sources` entry on a look-alike domain (`https://evilgoogle.com/`, `https://google.com.evil.example/`) or on `http:` must be refused when the connector loads. [Task 2]
 2. `installer guide` given an id that is empty, unknown, or object-prototype-like (`__proto__`, `constructor`) must exit 2 with the catalog listed, never crash or print `undefined`. [Task 3]
 3. A connector in the catalog that has **no** `setup` block must make `installer guide` exit 2 with a plain sentence, not print an empty guide. [Task 3]
-4. A Google refusal whose code matches no symptom (`temporarily_unavailable`) must read exactly as it did before; and a refused sign-in on the sign-in **page** must carry the same help as one found later by `verify`. [Task 5]
-5. The readiness probe getting an unexpected answer (HTTP 500), an unreachable server, or a revoked sign-in must fail the step with a retryable hint, never pass it. [Task 6]
+4. A Google refusal whose code matches no symptom (`temporarily_unavailable`) must read exactly as it did before; a refused sign-in on the sign-in **page** (both a refused client and the person pressing Deny, `access_denied`) must carry the same help as one found later by `verify`. [Task 5]
+5. The readiness probe getting an unexpected answer (HTTP 500), a refused token (401), a missing Sheets scope (403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT`), an unreachable server, or a revoked sign-in must fail the step with a hint that says what happened, never pass it. [Task 6]
 
 ---
 
@@ -60,7 +66,7 @@ The spec implies these inputs and conditions but the main tasks would not exerci
 
 ### Task 1: Confirm the two Google assumptions live (a person, no repository code)
 
-The readiness probe (Task 6) relies on this: a request for a spreadsheet that cannot exist answers **404** when the Sheets API is enabled and the token is good, and **403 with reason `SERVICE_DISABLED`** when the API is off. The spec says to confirm this before relying on it. This task changes no code; its result is written into the spec.
+The readiness probe (Task 6) relies on this: a request for a spreadsheet that cannot exist answers **404** when the Sheets API is enabled and the token is good, and **403 with reason `SERVICE_DISABLED`** when the API is off. The spec says to confirm this before relying on it. This task changes no code; its result is written into the spec. **The executor pauses here:** it needs the owner's `.env`, so the owner runs Steps 2 and 3. Tasks 2 to 5 do not depend on it and can run first; Task 6 starts only when the spec contains a line `Confirmed live on`.
 
 **Files:**
 - Create (outside the repo, not committed): `~/installer-probe-check.mjs`
@@ -142,14 +148,14 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
   }
   const valid = () => (JSON.parse(SHIPPED) as { setup: Record<string, unknown> }).setup;
 
-  it("ships an outcome checklist, Google-only sources and the five known symptoms", async () => {
+  it("ships an outcome checklist, Google-only sources and the six known symptoms", async () => {
     const def = await loadConnector("google-sheets", "1");
     expect(def.setup?.title).toBe("Your own Google app for Sheets");
     expect(def.setup?.outcome.length).toBeGreaterThanOrEqual(6);
     expect(def.setup?.outcome.join(" ")).toContain("Desktop app");
     expect(def.setup?.outcome.join(" ")).toContain("In production");
     expect(def.setup?.sources.every((url) => url.startsWith("https://"))).toBe(true);
-    expect(def.setup?.symptoms.map((symptom) => symptom.match)).toEqual(["redirect_uri_mismatch", "access_denied", "invalid_client", "invalid_grant", "SERVICE_DISABLED"]);
+    expect(def.setup?.symptoms.map((symptom) => symptom.match)).toEqual(["redirect_uri_mismatch", "access_denied", "invalid_client", "invalid_grant", "SERVICE_DISABLED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT"]);
     expect(def.setup?.symptoms.every((symptom) => symptom.fix && symptom.look && symptom.search && symptom.means)).toBe(true);
   });
 
@@ -287,7 +293,7 @@ Replace the file with exactly this content:
       "The Google Sheets API is enabled in that project",
       "An OAuth client of type Desktop app (never Web application), with no redirect URI added",
       "The scope https://www.googleapis.com/auth/spreadsheets is requested",
-      "The person's own Google address is allowed to sign in (a test user, or Workspace 'Internal')",
+      "The person's own Google address is allowed to sign in: while the app is in Testing it must be listed as a test user; once the app is In production, or the person uses Workspace 'Internal', no test-user list is needed",
       "The app's publishing status is 'In production' (or the person uses Workspace 'Internal'), set BEFORE the person signs in. Never leave it in 'Testing': a Testing app's sign-in expires after 7 days, which would stop an unattended assistant every week",
       "The console's 'AI-powered agent' option is left unchecked"
     ],
@@ -302,7 +308,7 @@ Replace the file with exactly this content:
         "look": "In the Google Cloud console, open the project's Credentials page and read the 'Type' column of the client.",
         "search": "Google OAuth redirect_uri_mismatch desktop app client type" },
       { "match": "access_denied", "means": "This Google address may not sign in to the app yet",
-        "fix": "Allow the address: add it as a test user on the consent screen, or use Workspace 'Internal'. If the app is already in production, read the message on Google's page word for word.",
+        "fix": "If the app is in Testing, add the address as a test user on the consent screen. If the app is in production, or the person pressed Deny, read the message on Google's page word for word and sign in again.",
         "look": "Open the consent screen settings (called 'Audience' in newer consoles) and check the publishing status and the list of test users.",
         "search": "Google OAuth access_denied app not verified test users" },
       { "match": "invalid_client", "means": "The client ID or secret is wrong",
@@ -310,13 +316,17 @@ Replace the file with exactly this content:
         "look": "Open the client's page under Credentials and compare the client ID with what was typed.",
         "search": "Google OAuth invalid_client client ID secret" },
       { "match": "invalid_grant", "means": "The stored sign-in was revoked or expired",
-        "fix": "Run 'installer secret google' again. If it keeps happening about every 7 days, the app is still in Testing status: switch it to In production first, then sign in again.",
+        "fix": "If it keeps happening about every 7 days, the app is still in Testing status: switch it to In production first, then sign in again.",
         "look": "Open the consent screen settings and read the publishing status; check https://myaccount.google.com/connections to see whether the app's access was removed.",
         "search": "Google OAuth refresh token expires 7 days testing publishing status" },
       { "match": "SERVICE_DISABLED", "means": "The Google Sheets API is not enabled in the project",
         "fix": "Enable the Google Sheets API in the same Google Cloud project, then verify again.",
         "look": "In the Google Cloud console open 'APIs & Services' and check that the Google Sheets API shows as enabled for this project.",
-        "search": "enable Google Sheets API Google Cloud project" }
+        "search": "enable Google Sheets API Google Cloud project" },
+      { "match": "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "means": "Access to Google Sheets was not allowed when signing in",
+        "fix": "Sign in again with 'installer secret google' and leave the Google Sheets box ticked on Google's page.",
+        "look": "On Google's sign-in page, check that the permission about Google Sheets spreadsheets is ticked before pressing Continue.",
+        "search": "Google OAuth ACCESS_TOKEN_SCOPE_INSUFFICIENT sheets scope" }
     ]
   }
 }
@@ -575,7 +585,7 @@ git commit -m "feat(solution): let a step name a guide" -m "Co-Authored-By: Clau
 
 **Interfaces:**
 - Consumes: `ConnectorSymptom` (Task 2).
-- Produces: `symptomHelp(code: string, symptoms?: readonly ConnectorSymptom[]): string` returning `""` or `". <fix> Look at: <look> Search for: "<search>""`; `clientOwnedTokens(auth, signIn, env?, symptoms?)`; `exchangeCode(auth, client, grant, env?, symptoms?)`.
+- Produces: `symptomHelp(code: string, symptoms?: readonly ConnectorSymptom[]): string` returning `""` or `". <means>. <fix> Look at: <look> Search for: "<search>""` (an exact match on the code); `clientOwnedTokens(auth, signIn, env?, symptoms?)`; `exchangeCode(auth, client, grant, env?, symptoms?)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -588,7 +598,7 @@ describe("Google's refusals carry the setup guide's help (live setup guides, 4.6
   it("adds the fix, where to look and what to search to a refused stored sign-in", async () => {
     const tokens = await connectorTokens(def, await env(WRONG_SECRET));
     await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'installer secret google' to sign in again");
-    await expect(tokens.accessToken()).rejects.toThrow("Copy both again from the client's page and enter them on the sign-in page. Look at: Open the client's page under Credentials and compare the client ID with what was typed. Search for: \"Google OAuth invalid_client client ID secret\"");
+    await expect(tokens.accessToken()).rejects.toThrow("The client ID or secret is wrong. Copy both again from the client's page and enter them on the sign-in page. Look at: Open the client's page under Credentials and compare the client ID with what was typed. Search for: \"Google OAuth invalid_client client ID secret\"");
   });
 
   it("adds the same help to a refused sign-in on the sign-in page", async () => {
@@ -609,6 +619,7 @@ describe("Google's refusals carry the setup guide's help (live setup guides, 4.6
       await setSecret("google", SIGNED_IN, value);
       const tokens = await connectorTokens(def, value);
       await expect(tokens.accessToken()).rejects.toThrow("the app is still in Testing status: switch it to In production first");
+      await expect(tokens.accessToken()).rejects.toThrow("The stored sign-in was revoked or expired.");
     } finally {
       second.stop();
     }
@@ -630,8 +641,8 @@ After the `again` helper add:
 ```ts
 /** The setup guide's help for Google's error code: the fix, where to look and what to search; empty when no symptom matches (live setup guides, 4.6). */
 export function symptomHelp(code: string, symptoms: readonly ConnectorSymptom[] = []): string {
-  const found = symptoms.find((symptom) => code.includes(symptom.match));
-  return found ? `. ${found.fix} Look at: ${found.look} Search for: "${found.search}"` : "";
+  const found = symptoms.find((symptom) => symptom.match === code);
+  return found ? `. ${found.means}. ${found.fix} Look at: ${found.look} Search for: "${found.search}"` : "";
 }
 ```
 
@@ -656,11 +667,40 @@ export async function exchangeCode(auth: ConnectorAuth, client: OAuthClient, gra
 ```
 (the rest of the function is unchanged).
 
-In `src/core/oauth-page.ts` line 89 change the call to pass the symptoms:
+In `src/core/oauth-page.ts`: add `symptomHelp` to the import from `./google-auth.js`; in `finishConsent` (around lines 82 to 86) the `?error=` redirect is answered before `exchangeCode` is ever called, so give it the same help: change the message to
+
+```ts
+`Google did not grant access (${denied ?? "no code"})${denied ? symptomHelp(denied, def.setup?.symptoms) : ""}. Try again.`
+```
+
+(read the surrounding lines first and keep the existing structure; `redirect_uri_mismatch` is shown on Google's own page and never comes back to the installer, so only the guide can help with that one). Then, at line 89, change the call to pass the symptoms:
 
 ```ts
     const refreshToken = await exchangeCode(def.auth, pending.client, { code, redirectUri: `${page.origin}/`, verifier: pending.verifier }, options.env, def.setup?.symptoms);
 ```
+
+- [ ] **Step 3b: Test the sign-in page itself (it passed vacuously without this)**
+
+Read `tests/unit/oauth-page.test.ts` for its helpers (`page`, `callback`, `consentUrl`) and add two tests in the same style:
+
+```ts
+it("shows the setup guide's help when Google refuses the client", async () => {
+  const { url } = await page();
+  const reply = await callback(await consentUrl(url, "client_id=client-1&client_secret=wrong"), "code=code-1");
+  expect(reply.status).toBe(400);
+  expect(reply.text).toContain("Google refused the sign-in (invalid_client)");
+  expect(reply.text).toContain("Search for:"); // the quotes are HTML-escaped (&#34;) by escapeHtml
+});
+
+it("shows the setup guide's help when the person pressed Deny", async () => {
+  const { url } = await page();
+  const reply = await callback(await consentUrl(url, "client_id=client-1&client_secret=secret-1"), "error=access_denied");
+  expect(reply.text).toContain("Google did not grant access (access_denied)");
+  expect(reply.text).toContain("Search for:");
+});
+```
+
+Run `npx vitest run tests/unit/oauth-page.test.ts` first and see the two fail; if a helper has a different name or shape, adapt the call, not the assertions. Both must fail before the `oauth-page.ts` change and pass after it.
 
 - [ ] **Step 4: Run the tests and see them pass**
 
@@ -670,13 +710,18 @@ Expected: all pass (the existing assertions on the old message prefix still hold
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/google-auth.ts src/core/oauth-page.ts tests/unit/google-auth.test.ts
+git add src/core/google-auth.ts src/core/oauth-page.ts tests/unit/google-auth.test.ts tests/unit/oauth-page.test.ts
 git commit -m "feat(google): add fix, look and search to errors" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
 ### Task 6: The readiness check `oauth_ready`
+
+- [ ] **Step 0 (gate): Task 1 must be done**
+
+Run: `grep -q 'Confirmed live on' docs/superpowers/specs/2026-10-12-live-setup-guides-design.md && echo ok`
+Expected: `ok`. If not, stop and ask the owner to run Task 1 (Steps 2 and 3); do not start Step 1.
 
 **Files:**
 - Modify: `tests/fakes/fake-google.mjs` (a switch that makes the Sheets API answer "disabled")
@@ -687,7 +732,7 @@ git commit -m "feat(google): add fix, look and search to errors" -m "Co-Authored
 
 **Interfaces:**
 - Consumes: `oauthConnectorFor` (connectors.ts), `connectorTokens`, `symptomHelp` (Task 5), `ConnectorDef`, `AccessTokenSource`.
-- Produces: `probeSheetsApi(def, tokens, env?): Promise<SheetsProbe>` with `SheetsProbe = {state:"enabled"} | {state:"disabled"} | {state:"refused"} | {state:"other"; status:number}`; `oauthReady(secretId, env?): Promise<CheckResult>`; the check name `oauth_ready` with args `{ "id": "<secret id>" }`.
+- Produces: `probeSheetsApi(def, tokens, env?): Promise<SheetsProbe>` with `SheetsProbe = {state:"enabled"} | {state:"disabled"} | {state:"refused"} | {state:"other"; status:number; reason:string}` (`reason` is Google's first error reason, else its error status, else `""`); `oauthReady(secretId, env?): Promise<CheckResult>`; the check name `oauth_ready` with args `{ "id": "<secret id>" }`.
 
 - [ ] **Step 1: Teach the fake Google server to be "disabled"**
 
@@ -713,7 +758,14 @@ and in `debug`, before the `/debug/sheets/` handling, add:
   }
 ```
 
-(An unknown spreadsheet id on `GET /v4/spreadsheets/<id>` already falls through to the 404 `NOT_FOUND` answer, which is the "enabled" case.)
+Also let `/debug/fail` carry a reason. In the `failing.times > 0` block of `sheetsApi`, replace `return googleError(res, failing.status, "The service is currently unavailable.", "UNAVAILABLE");` with:
+
+```js
+    const error = { code: failing.status, message: "The service is currently unavailable.", status: "UNAVAILABLE", ...(failing.reason ? { details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: failing.reason }] } : {}) };
+    return send(res, failing.status, { error });
+```
+
+and add `{"status":403,"times":1,"reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}` to the `/debug/fail` line of the header comment. (An unknown spreadsheet id on `GET /v4/spreadsheets/<id>` already falls through to the 404 answer with status `NOT_FOUND`, which is the "enabled" case.)
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -751,7 +803,7 @@ describe("oauthReady (live setup guides, 4.5)", () => {
       const result = await oauthReady("google", await env(SIGNED_IN));
       expect(result.ok).toBe(false);
       expect(result.hint).toContain("not enabled in your project");
-      expect(result.hint).toContain("Enable the Google Sheets API in the same Google Cloud project");
+      expect(result.hint).toContain("The Google Sheets API is not enabled in the project. Enable the Google Sheets API in the same Google Cloud project");
       expect(result.hint).toContain('Search for: "enable Google Sheets API Google Cloud project"');
     } finally {
       await fake.debug("/debug/enable-sheets", {});
@@ -762,6 +814,22 @@ describe("oauthReady (live setup guides, 4.5)", () => {
     await fake.debug("/debug/fail", { status: 500, times: 1 });
     const result = await oauthReady("google", await env(SIGNED_IN));
     expect(result).toEqual({ ok: false, hint: expect.stringContaining("answered HTTP 500") });
+    expect(result.hint).toContain("try again in a minute");
+  });
+
+  it("asks to sign in again when Sheets refuses the token", async () => {
+    await fake.debug("/debug/fail", { status: 401, times: 1 });
+    const result = await oauthReady("google", await env(SIGNED_IN));
+    expect(result).toEqual({ ok: false, hint: expect.stringContaining("run 'installer secret google' to sign in again") });
+  });
+
+  it("says when the Sheets permission was not ticked at sign-in", async () => {
+    await fake.debug("/debug/fail", { status: 403, times: 1, reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" });
+    const result = await oauthReady("google", await env(SIGNED_IN));
+    expect(result.ok).toBe(false);
+    expect(result.hint).toContain("(ACCESS_TOKEN_SCOPE_INSUFFICIENT)");
+    expect(result.hint).toContain("leave the Google Sheets box ticked");
+    expect(result.hint).not.toContain("try again in a minute");
   });
 
   it("carries the symptom's help when Google refuses the client", async () => {
@@ -813,19 +881,24 @@ export type SheetsProbe =
   | { readonly state: "enabled" }
   | { readonly state: "disabled" }
   | { readonly state: "refused" }
-  | { readonly state: "other"; readonly status: number };
+  | { readonly state: "other"; readonly status: number; readonly reason: string };
+
+/** Google's first error reason (`details[].reason`), else its error status, else empty. */
+function errorReason(body: unknown): string {
+  if (!isRecord(body) || !isRecord(body.error)) return "";
+  const details = Array.isArray(body.error.details) ? body.error.details : [];
+  const reason = details.find((detail): detail is Raw => isRecord(detail) && typeof detail.reason === "string");
+  return typeof reason?.reason === "string" ? reason.reason : typeof body.error.status === "string" ? body.error.status : "";
+}
 
 /** Google's answer for a project that never enabled the API: 403 with reason SERVICE_DISABLED (or its message). */
 function apiDisabled(body: unknown): boolean {
-  if (!isRecord(body) || !isRecord(body.error)) return false;
-  const details = body.error.details;
-  const byReason = Array.isArray(details) && details.some((detail) => isRecord(detail) && detail.reason === "SERVICE_DISABLED");
-  const byMessage = typeof body.error.message === "string" && /has not been used in project|is disabled/i.test(body.error.message);
-  return byReason || byMessage;
+  if (errorReason(body) === "SERVICE_DISABLED") return true;
+  return isRecord(body) && isRecord(body.error) && typeof body.error.message === "string" && /Sheets API has not been used in project/i.test(body.error.message);
 }
 
 /**
- * Live setup guides, 4.5: one GET for a spreadsheet that cannot exist. 404 = the API is enabled and the token works;
+ * Live setup guides, 4.5: one GET for a spreadsheet that cannot exist. 404 with Google's status NOT_FOUND = the API is enabled and the token works (a bare 404 from a proxy is not trusted);
  * 403 SERVICE_DISABLED = the API is off in the person's project; 401 = the token was refused. Anything else is reported
  * as it is, so the step fails and can be retried. It calls only the Sheets API.
  */
@@ -840,10 +913,10 @@ export async function probeSheetsApi(def: ConnectorDef, tokens: AccessTokenSourc
     throw new ActionFailure(`Cannot reach Google Sheets (${(error as Error).message})`);
   }
   const body: unknown = await response.json().catch(() => null);
-  if (response.status === 404) return { state: "enabled" };
+  if (response.status === 404 && errorReason(body) === "NOT_FOUND") return { state: "enabled" };
   if (response.status === 401) return { state: "refused" };
   if (response.status === 403 && apiDisabled(body)) return { state: "disabled" };
-  return { state: "other", status: response.status };
+  return { state: "other", status: response.status, reason: errorReason(body) };
 }
 ```
 
@@ -875,7 +948,7 @@ export async function oauthReady(secretId: string, env: Env = process.env): Prom
     case "refused":
       return { ok: false, hint: `${def.name} refused the sign-in: run 'installer secret ${def.auth.secret_id}' to sign in again` };
     case "other":
-      return { ok: false, hint: `${def.name} answered HTTP ${probe.status} to the readiness check; try again in a minute` };
+      return { ok: false, hint: `${def.name} answered HTTP ${probe.status}${probe.reason ? ` (${probe.reason})` : ""} to the readiness check${probe.status >= 500 ? "; try again in a minute" : ""}${symptomHelp(probe.reason, def.setup?.symptoms)}` };
   }
 }
 ```
@@ -957,7 +1030,7 @@ with:
       "input": { "kind": "oauth", "provider": "google" },
       "verify": { "check": "secret_present", "args": { "id": "google" } } },
     { "step_id": "data.google-ready", "phase": "DATA", "type": "agent_action", "title": "Check that the Google sign-in works", "why": "The installer proves the sign-in and the Google Sheets API work before it connects your sheet, so a setup mistake shows up now with its fix.", "blocking": true,
-      "intent": "Run 'installer verify data.google-ready'. If it fails, tell the person its hint word for word, including where to look and what to search for, help them fix it, and run it again.",
+      "intent": "Nothing to do before the check: run its verify. If it fails, tell the person its hint word for word, including where to look and what to search for, help them fix it, then verify again.",
       "verify": { "check": "oauth_ready", "args": { "id": "google" } } },
 ```
 
@@ -983,7 +1056,7 @@ Section 6, point 1 (line 54): replace the whole paragraph starting `1. **The per
 | D123 | **Live setup guides: client-owned Google apps, help read live (task 5, option 1).** A client creates their own Google OAuth client (R3 kept: no shared app, no dependence on the owner's Google account). The installer stores only facts that outlive a console redesign, in the pinned connector package's `setup` block (outcome checklist, official Google-only sources, symptom table with fix, where to look, what to search); `installer guide <connector>` prints it and a step names it with `"guide"`. The agent reads Google's current documentation itself and walks the person through, treating page text as untrusted (the source allowlist is guidance to the agent and a loader check, not enforcement). The app must not be left in Testing status (the sign-in would expire every 7 days): the guide sets In production, or Workspace Internal, before the first sign-in. A new starter step `data.google-ready` (`oauth_ready`) refreshes a token and asks the Sheets API for a spreadsheet that cannot exist (404 = enabled and working; 403 SERVICE_DISABLED = enable the API) so setup mistakes surface at once. Google's refusals carry the matching fix/look/search. No new network host. | 2026-10-12 |
 ```
 
-`docs/human-tasks.md`, task 5: replace the paragraph that begins `**Open product question (your decision):**` (through the end of that task) with:
+`docs/human-tasks.md`, task 5: in step 5 (which says only listed test users can sign in while the app is in Testing) add the clause `; the guide then moves the app to In production, after which the test-user list no longer matters`. Then replace the paragraph that begins `**Open product question (your decision):**` (through the end of that task) with:
 
 ```
 **Decided 2026-10-12 (D123):** clients keep their own Google app; there is no shared verified app. A client gets the step-by-step help from `installer guide google-sheets`, which the agent reads from Google's current documentation, so these steps stay in sync with Google without edits here. The two rules the guide insists on: the client type is **Desktop app**, and the app is set to **In production** (or Workspace **Internal**) before the first sign-in so it never expires after 7 days.
@@ -1051,7 +1124,7 @@ export T=~/installer-plan11-test
 export REPO=/Users/allenliu/Desktop/ML-Project/installer
 export PREFIX=$T/npm
 mkdir -p $T $PREFIX
-cd $REPO && git log --oneline -1
+cd $REPO && git switch feat/live-setup-guides && git log --oneline -1
 npm ci && npm run build && npm pack --pack-destination $T
 npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
@@ -1130,7 +1203,7 @@ cd ~ && rm -rf $T
 claude mcp list | grep -c installer
 ```
 
-**Expected:** `disconnect` prints `"status":"disconnected"`, and the last command prints `0`. Remove the app's access at https://myaccount.google.com/connections only after task 20 is done, if you plan to do it.
+**Expected:** `disconnect` prints `"status":"disconnected"`, and the last command prints `0`. If you are doing task 20, skip `disconnect` and keep `$T`, and run this test after task 20 ends: both delete the stored sign-in that task 20 needs. Remove the app's access at https://myaccount.google.com/connections only after task 20 is done.
 
 **Record:**
 - Pass / Fail:
@@ -1146,7 +1219,7 @@ Create `~/installer-plan11-test/solution-ready.json` with the Write tool:
       "input": { "kind": "oauth", "provider": "google" },
       "verify": { "check": "secret_present", "args": { "id": "google" } } },
     { "step_id": "data.google-ready", "phase": "DATA", "type": "agent_action", "title": "Check that the Google sign-in works", "why": "Proves the sign-in and the Sheets API.", "blocking": true,
-      "intent": "Run 'installer verify data.google-ready'.",
+      "intent": "Nothing to do before the check: run its verify. If it fails, tell the person its hint word for word, then verify again.",
       "verify": { "check": "oauth_ready", "args": { "id": "google" } } }
   ] }
 ```
@@ -1166,8 +1239,8 @@ git commit -m "docs(testing): add the setup guide live test" -m "Co-Authored-By:
 - [ ] **Step 4: Push and open the pull request (do not merge)**
 
 ```bash
-git push -u origin HEAD
-gh pr create --base main --title "feat: live setup guides for client-owned Google apps" --body "Implements docs/superpowers/specs/2026-10-12-live-setup-guides-design.md (plan: docs/superpowers/plans/2026-10-12-11-live-setup-guides.md). Test plan: full offline suite; live guide docs/testing/2026-10-12-plan-11-live-test.md; task 20 (a week-long check) in docs/human-tasks.md.
+git push -u origin feat/live-setup-guides
+gh pr create --base main --head feat/live-setup-guides --title "feat: live setup guides for client-owned Google apps" --body "Implements docs/superpowers/specs/2026-10-12-live-setup-guides-design.md (plan: docs/superpowers/plans/2026-10-12-11-live-setup-guides.md). Test plan: full offline suite; live guide docs/testing/2026-10-12-plan-11-live-test.md; task 20 (a week-long check) in docs/human-tasks.md.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 ```

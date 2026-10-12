@@ -98,13 +98,13 @@ A new optional `setup` object in the connector package. The package is already p
 ```
 
 The block holds **facts that outlive a redesign** (what must be true, which error means what). It holds no menu paths.
-`sources` may list only HTTPS URLs on Google's own domains; the loader rejects anything else. Each symptom has a `look`
+`sources` may list only HTTPS URLs on google.com (any host that is google.com or ends in `.google.com`); the loader rejects anything else. Each symptom has a `look`
 (where in the console or account to check) and a `search` (a phrase the person can search for). These are for the client
 to do their own research, with the agent's help; the installer does not try to detect the cause by itself.
 
 ### 4.3 `installer guide <connector>`
 
-A new read-only command: prints the connector's `setup` block as JSON (plus `id` and `version`). It makes no network
+A new read-only command: prints the connector's `setup` block as JSON (plus `connector`, `version` and a `note` with the rule for reading it). It makes no network
 call and writes nothing. It refuses an unknown connector (exit 2, listing the catalog) and a connector without a
 `setup` block. It works for an agent's shell (no terminal needed), because it only reads.
 
