@@ -93,3 +93,40 @@ describe("connectorUrl", () => {
     expect(() => connectorUrl("https://sheets.googleapis.com/v4", { INSTALLER_CONNECTOR_SERVER: "http://example.com", INSTALLER_KEYCHAIN: "file" })).toThrow("INSTALLER_CONNECTOR_SERVER must be http://127.0.0.1:<port>");
   });
 });
+
+describe("the connector's setup guide (live setup guides, 4.2)", () => {
+  /** Loads the shipped connector with its `setup` replaced, pinned to its own checksum. */
+  async function withSetup(setup: unknown) {
+    const text = edited((def) => ({ ...def, setup }));
+    return loadConnector("google-sheets", "1", await rootWith(text), { "google-sheets": { "1": sha256(text) } });
+  }
+  const valid = () => (JSON.parse(SHIPPED) as { setup: Record<string, unknown> }).setup;
+
+  it("ships an outcome checklist, Google-only sources and the six known symptoms", async () => {
+    const def = await loadConnector("google-sheets", "1");
+    expect(def.setup?.title).toBe("Your own Google app for Sheets");
+    expect(def.setup?.outcome.length).toBeGreaterThanOrEqual(6);
+    expect(def.setup?.outcome.join(" ")).toContain("Desktop app");
+    expect(def.setup?.outcome.join(" ")).toContain("In production");
+    expect(def.setup?.sources.every((url) => url.startsWith("https://"))).toBe(true);
+    expect(def.setup?.symptoms.map((symptom) => symptom.match)).toEqual(["redirect_uri_mismatch", "access_denied", "invalid_client", "invalid_grant", "SERVICE_DISABLED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT"]);
+    expect(def.setup?.symptoms.every((symptom) => symptom.fix && symptom.look && symptom.search && symptom.means)).toBe(true);
+  });
+
+  it("loads a connector that has no setup block, as before", async () => {
+    const text = edited(({ setup: _setup, ...rest }) => rest);
+    const def = await loadConnector("google-sheets", "1", await rootWith(text), { "google-sheets": { "1": sha256(text) } });
+    expect(def.setup).toBeUndefined();
+  });
+
+  it.each([
+    ["a source on a look-alike domain", { ...valid(), sources: ["https://evilgoogle.com/guide"] }, "setup.sources[0] must be on a google.com address"],
+    ["a source on a sub-domain of another site", { ...valid(), sources: ["https://google.com.evil.example/"] }, "setup.sources[0] must be on a google.com address"],
+    ["a source that is not https", { ...valid(), sources: ["http://console.cloud.google.com/"] }, "setup.sources[0] must be an https URL"],
+    ["an empty outcome list", { ...valid(), outcome: [] }, "setup.outcome must list at least one item"],
+    ["a symptom without a search phrase", { ...valid(), symptoms: [{ match: "x", means: "m", fix: "f", look: "l" }] }, "setup.symptoms[0].search must be a non-empty string"],
+    ["a setup that is not an object", "oops", "setup must be an object"],
+  ])("refuses %s", async (_name, setup, message) => {
+    await expect(withSetup(setup)).rejects.toThrow(message);
+  });
+});

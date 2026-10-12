@@ -13,5 +13,48 @@
     "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token"
   },
-  "risk": { "reads_personal_data": true, "outbound_external": false, "official_api": true }
+  "risk": { "reads_personal_data": true, "outbound_external": false, "official_api": true },
+  "setup": {
+    "title": "Your own Google app for Sheets",
+    "outcome": [
+      "A Google Cloud project that belongs to the person's own Google account",
+      "The Google Sheets API is enabled in that project",
+      "An OAuth client of type Desktop app (never Web application), with no redirect URI added",
+      "The scope https://www.googleapis.com/auth/spreadsheets is requested",
+      "The person's own Google address is allowed to sign in: while the app is in Testing it must be listed as a test user; once the app is In production, or the person uses Workspace 'Internal', no test-user list is needed",
+      "The app's publishing status is 'In production' (or the person uses Workspace 'Internal'), set BEFORE the person signs in. Never leave it in 'Testing': a Testing app's sign-in expires after 7 days, which would stop an unattended assistant every week",
+      "The console's 'AI-powered agent' option is left unchecked"
+    ],
+    "sources": [
+      "https://console.cloud.google.com/",
+      "https://developers.google.com/sheets/api/guides/concepts",
+      "https://support.google.com/cloud/answer/6158849"
+    ],
+    "symptoms": [
+      { "match": "redirect_uri_mismatch", "means": "The OAuth client is the wrong type",
+        "fix": "Create a new client of type Desktop app; a Web application client cannot be used.",
+        "look": "In the Google Cloud console, open the project's Credentials page and read the 'Type' column of the client.",
+        "search": "Google OAuth redirect_uri_mismatch desktop app client type" },
+      { "match": "access_denied", "means": "This Google address may not sign in to the app yet",
+        "fix": "If the app is in Testing, add the address as a test user on the consent screen. If the app is in production, or the person pressed Deny, read the message on Google's page word for word and sign in again.",
+        "look": "Open the consent screen settings (called 'Audience' in newer consoles) and check the publishing status and the list of test users.",
+        "search": "Google OAuth access_denied app not verified test users" },
+      { "match": "invalid_client", "means": "The client ID or secret is wrong",
+        "fix": "Copy both again from the client's page and enter them on the sign-in page.",
+        "look": "Open the client's page under Credentials and compare the client ID with what was typed.",
+        "search": "Google OAuth invalid_client client ID secret" },
+      { "match": "invalid_grant", "means": "The stored sign-in was revoked or expired",
+        "fix": "If it keeps happening about every 7 days, the app is still in Testing status: switch it to In production first, then sign in again.",
+        "look": "Open the consent screen settings and read the publishing status; check https://myaccount.google.com/connections to see whether the app's access was removed.",
+        "search": "Google OAuth refresh token expires 7 days testing publishing status" },
+      { "match": "SERVICE_DISABLED", "means": "The Google Sheets API is not enabled in the project",
+        "fix": "Enable the Google Sheets API in the same Google Cloud project, then verify again.",
+        "look": "In the Google Cloud console open 'APIs & Services' and check that the Google Sheets API shows as enabled for this project.",
+        "search": "enable Google Sheets API Google Cloud project" },
+      { "match": "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "means": "Access to Google Sheets was not allowed when signing in",
+        "fix": "Sign in again with 'installer secret google' and leave the Google Sheets box ticked on Google's page.",
+        "look": "On Google's sign-in page, check that the permission about Google Sheets spreadsheets is ticked before pressing Continue.",
+        "search": "Google OAuth ACCESS_TOKEN_SCOPE_INSUFFICIENT sheets scope" }
+    ]
+  }
 }

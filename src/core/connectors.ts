@@ -15,7 +15,7 @@ export const CONNECTORS_DIR = fileURLToPath(new URL("../../connectors/", import.
 /** The curated catalog (§8.2): id → version → sha256 of the definition file. */
 export type ConnectorPins = Readonly<Record<string, Readonly<Record<string, string>>>>;
 export const CONNECTOR_PINS: ConnectorPins = {
-  "google-sheets": { "1": "26b334d5e25e1379e295dc17dc943a86b476c8bf3d6e8c8ad251fe70fb230c10" },
+  "google-sheets": { "1": "5f5008a4cd1dc911c605cea454013af147778cd85c48ea10a6868513db334fea" },
 };
 
 /** Built-in adapters a definition may name; a connector is data, the code that speaks its API is the engine's. */
@@ -32,6 +32,23 @@ export interface ConnectorAuth {
   readonly token_url: string;
 }
 
+/** One known problem: Google's code, what it means, how to fix it, where to look and what to search for (live setup guides, 4.2). */
+export interface ConnectorSymptom {
+  readonly match: string;
+  readonly means: string;
+  readonly fix: string;
+  readonly look: string;
+  readonly search: string;
+}
+
+/** What a person needs to set the connector up, as facts that outlive a redesign of the provider's console (live setup guides, 4.2). */
+export interface ConnectorSetup {
+  readonly title: string;
+  readonly outcome: readonly string[];
+  readonly sources: readonly string[];
+  readonly symptoms: readonly ConnectorSymptom[];
+}
+
 export interface ConnectorDef {
   readonly id: string;
   readonly version: string;
@@ -41,6 +58,8 @@ export interface ConnectorDef {
   readonly api: { readonly base_url: string };
   readonly auth: ConnectorAuth;
   readonly risk: { readonly reads_personal_data: boolean; readonly outbound_external: boolean; readonly official_api: boolean };
+  /** The step-by-step help the agent reads at install time (`installer guide`); a connector may have none. */
+  readonly setup?: ConnectorSetup;
   /** The checksum the file matched when it was loaded. */
   readonly sha256: string;
 }
@@ -70,6 +89,47 @@ function parseAuth(value: unknown, fail: (message: string) => never): ConnectorA
   };
 }
 
+const GOOGLE_HOST = /(^|\.)google\.com$/;
+
+function googleUrl(value: unknown, where: string, fail: (message: string) => never): string {
+  const url = httpsUrl(value, where, fail);
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return fail(`${where} is not a valid URL`);
+  }
+  return GOOGLE_HOST.test(host) ? url : fail(`${where} must be on a google.com address`);
+}
+
+function setupText(value: unknown, where: string, fail: (message: string) => never): string {
+  return typeof value === "string" && value.trim() !== "" ? value : fail(`${where} must be a non-empty string`);
+}
+
+function setupList(value: unknown, where: string, fail: (message: string) => never): readonly unknown[] {
+  return Array.isArray(value) && value.length > 0 ? value : fail(`${where} must list at least one item`);
+}
+
+function parseSymptom(value: unknown, index: number, fail: (message: string) => never): ConnectorSymptom {
+  const where = `setup.symptoms[${index}]`;
+  if (!isRecord(value)) return fail(`${where} must be an object`);
+  return {
+    match: setupText(value.match, `${where}.match`, fail), means: setupText(value.means, `${where}.means`, fail),
+    fix: setupText(value.fix, `${where}.fix`, fail), look: setupText(value.look, `${where}.look`, fail), search: setupText(value.search, `${where}.search`, fail),
+  };
+}
+
+function parseSetup(value: unknown, fail: (message: string) => never): ConnectorSetup | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return fail("setup must be an object");
+  return {
+    title: setupText(value.title, "setup.title", fail),
+    outcome: setupList(value.outcome, "setup.outcome", fail).map((item, index) => setupText(item, `setup.outcome[${index}]`, fail)),
+    sources: setupList(value.sources, "setup.sources", fail).map((item, index) => googleUrl(item, `setup.sources[${index}]`, fail)),
+    symptoms: setupList(value.symptoms, "setup.symptoms", fail).map((item, index) => parseSymptom(item, index, fail)),
+  };
+}
+
 function parseConnector(text: string, id: string, version: string, checksum: string): ConnectorDef {
   const fail = (message: string): never => {
     throw new ActionFailure(`The connector package ${id}@${version} is not usable: ${message}`);
@@ -88,10 +148,12 @@ function parseConnector(text: string, id: string, version: string, checksum: str
   const risk = isRecord(raw.risk) ? raw.risk : {};
   const flags = ["reads_personal_data", "outbound_external", "official_api"] as const;
   if (!flags.every((flag) => typeof risk[flag] === "boolean")) fail(`risk must say true or false for ${flags.join(", ")}`);
+  const setup = parseSetup(raw.setup, fail);
   return {
     id, version, name: typeof raw.name === "string" ? raw.name : id, interface: ["records_source"], adapter: raw.adapter as Adapter,
     api: { base_url: httpsUrl(api.base_url, "api.base_url", fail) }, auth: parseAuth(raw.auth, fail),
     risk: { reads_personal_data: risk.reads_personal_data as boolean, outbound_external: risk.outbound_external as boolean, official_api: risk.official_api as boolean },
+    ...(setup ? { setup } : {}),
     sha256: checksum,
   };
 }
