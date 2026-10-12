@@ -30,13 +30,13 @@ evals in the shadow upgrade, Windows host checks, the agent in its own OS user (
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup: a team-host install with you as the decision maker | | |
-| 1 | The automated live read: a skill file's pin is stable | | |
-| 2 | Doctor and host readiness on your Mac | | |
-| 3 | The kill switch: pause from anywhere, unpause only in your terminal | | |
-| 4 | Boot service files, checked but not loaded | | |
-| 5 | Retention and the support bundle's redaction | | |
-| 6 | Uninstall, then clean up | | |
+| 0 | Setup: a team-host install with you as the decision maker | Pass | Commit 0437d9e, Node v22.14.0 |
+| 1 | The automated live read: a skill file's pin is stable | Pass | Pin stable on `maintenance_triage/maintenance-triage/references/priority-decision-tree.md` |
+| 2 | Doctor and host readiness on your Mac | Pass | Doctor `warn`; host readiness 1/3 on this laptop (FileVault off, no boot service); fixes not run |
+| 3 | The kill switch: pause from anywhere, unpause only in your terminal | Pass | Pause from a pipe, unpause refused without a terminal, tick paused, refusal audited |
+| 4 | Boot service files, checked but not loaded | Pass | Two plists linted OK, sudo commands printed and not run, remove cleaned the folder |
+| 5 | Retention and the support bundle's redaction | Pass | Retention 90 days; bundle written; no name, user, host, home path or address in it |
+| 6 | Uninstall, then clean up | Pass | Piped uninstall refused; audit export 18 lines, chain intact; real keychain and MCP untouched |
 
 ---
 
@@ -80,6 +80,8 @@ model or Skills Wiki is set up, so they are not listed).
 
 **Actual:**
 
+Report `READY (4 of 4 steps done) · plan9-live@1.0.0`, `Doctor never run`, `Host not checked yet`, `Data flow` and the support line, as predicted.
+
 ---
 
 ## Test 1: The automated live read
@@ -99,6 +101,8 @@ names different sha256s means content pinning would see a new version on every c
 
 **Actual:**
 
+`1 passed` on the live Skills Wiki: the sha256 pin was the same on two reads.
+
 ---
 
 ## Test 2: Doctor and host readiness on your Mac
@@ -114,12 +118,14 @@ hash chain intact`), `pause`, `secrets` (`this install stores no keychain items`
 ticked`, a `warn`), `gateway` (`no channel is set up, so no gateway is needed`), `disk` (`… GiB free`), `host`,
 `run_claims`, `run_records`, `recent_runs`, `retention`, `hardening`. The `host` check says `readiness N/5` and, for a
 laptop, names `no_sleep` (your Mac sleeps after some minutes) and `boot_service`. `installer host` shows each check
-with `"status"` `ok`, `fix`, `unknown` or `advice`: `no_sleep` with the fix `sudo pmset -a sleep 0`, `power_on`
+with `"status"` `ok`, `fix`, `unknown` or `advice` (the score counts only the checks with a definite answer, so a laptop shows `readiness 1/3` and not N/5): `no_sleep` with the fix `sudo pmset -a sleep 0`, `power_on`
 (`pmset autorestart`), `time_sync` (probably `unknown`: `systemsetup` needs administrator rights to read it),
 `disk_encryption` (`FileVault is on`, if it is), and the `dedicated_user` steps. Do not run the fixes on this laptop.
 The report now shows `🩺 Doctor     warn (…)` and `🖥️ Host       readiness N/5`.
 
 **Actual (paste the `host` checks):**
+
+`doctor`: status `warn` (runner never ticked; host readiness 1/3), all 13 checks in the predicted order. `host`: `no_sleep` ok (pmset sleep is 0), `power_on` unknown (autorestart cannot be read), `boot_service` fix, `time_sync` unknown, `disk_encryption` fix (FileVault off), `updates` and `power_network` advice, plus the dedicated-user steps. No fix was run.
 
 ---
 
@@ -142,6 +148,8 @@ and `exit 2`. `tick` answers `"status":"paused"` with nothing started. `pause st
 
 **Actual:**
 
+Exactly as predicted: paused by `agent`; unpause without a terminal exit 2; tick `paused`; `pause status` true; typed unpause `by terminal`; refusal count 1.
+
 ---
 
 ## Test 4: Boot service files, checked but not loaded
@@ -160,6 +168,8 @@ characters>.plist` with `KeepAlive`, `com.installer.tickd.<8 characters>.plist` 
 
 **Actual:**
 
+Two files, `com.installer.gateway.0e2cabb8.plist` and `com.installer.tickd.0e2cabb8.plist`, `plutil` OK for both; ten commands printed (none run); `remove` printed the four bootout and rm commands. Nothing was created under /Library/LaunchDaemons.
+
 ---
 
 ## Test 5: Retention and the support bundle
@@ -169,7 +179,7 @@ installer retention
 echo | installer retention --value 30; echo "exit $?"
 installer support bundle
 B=$(ls $INSTALLER_HOME/exports/support-*.json)
-grep -ci "<your last name>" $B; grep -c "$HOME" $B
+grep -ci "<your last name>" $B; grep -c "$HOME" $B   # use your real last name: a word such as `last` also matches the text "in the last 24 hours"
 less $B
 ```
 
@@ -180,6 +190,8 @@ may shorten it). `support bundle` answers `"status":"written"` with its file and
 `mode.decision-maker` has no `value`, and `work_dir` starts with `~`.
 
 **Actual:**
+
+`retention` 90 days; the piped 30 exit 2; bundle written with the 13 sections. With the placeholder word `Last`, `grep -ci` printed 1 (the text "in the last 24 hours"); with the real name pieces, user name, computer name, host name and the home path the counts were 0; `work_dir` starts with `~`; `mode.decision-maker` has no value.
 
 ---
 
@@ -198,6 +210,8 @@ both registrations `false` (the empty profile folder), every keychain item `"non
 boot services. Nothing was loaded in this test, so run none of them. Then delete the test folder.
 
 **Actual:**
+
+Piped uninstall exit 2; typed uninstall `uninstalled`, secrets all `none`, audit export 18 lines `intact` (equal to `wc -l`); the real `skills-wiki` MCP server, launchd and the real keychain were untouched.
 
 ---
 
