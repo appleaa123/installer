@@ -208,3 +208,5 @@ section 7 · `DECISIONS.md` (one new row) · `docs/human-tasks.md` (task 5).
 - Does an unverified app in production status keep a sign-in that lasts beyond 7 days for the Sheets scope? (Sources say
   yes; the week-long test in section 7 proves it for the owner's app.)
 - Does a `404` from the Sheets API for an unknown spreadsheet id mean "API enabled and token good" in practice? (4.5.)
+
+Confirmed live on 2026-10-12 (plan Task 1, the owner's own Google app): the token endpoint answered 200 with the keys `access_token,expires_in,scope,token_type,refresh_token_expires_in`, and the Sheets API answered a request for a spreadsheet id that cannot exist with `404`, error status `NOT_FOUND`, no reasons. So the `404 = API enabled and token good` probe is sound. `refresh_token_expires_in` was present because the owner's app was still in Testing status: it is Google's marker for a refresh token that expires. It is not used by this design (enforcement was decided against); it is noted as a possible follow-up. The API-disabled answer (`403 SERVICE_DISABLED`) was not tested live; the code reads both the reason and the message text.
