@@ -121,7 +121,7 @@ describe("Google's refusals carry the setup guide's help (live setup guides, 4.6
       await setSecret("google", SIGNED_IN, value);
       const tokens = await connectorTokens(def, value);
       await expect(tokens.accessToken()).rejects.toThrow("the app is still in Testing status: switch it to In production first");
-      await expect(tokens.accessToken()).rejects.toThrow("The stored sign-in was revoked or expired.");
+      await expect(tokens.accessToken()).rejects.toThrow("a stored sign-in that was revoked or expired");
     } finally {
       second.stop();
     }

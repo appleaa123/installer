@@ -129,12 +129,21 @@ export type SheetsProbe =
   | { readonly state: "refused" }
   | { readonly state: "other"; readonly status: number; readonly reason: string };
 
-/** Google's first error reason (`details[].reason`), else its error status, else empty. */
+/** Google's reason codes are upper-case words; anything else is never repeated (it would reach the agent's instructions). */
+const SAFE_REASON = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Google's error status (`error.status`), empty when absent. */
+function errorStatus(body: unknown): string {
+  return isRecord(body) && isRecord(body.error) && typeof body.error.status === "string" ? body.error.status : "";
+}
+
+/** Google's first error reason (`details[].reason`), else its error status, else empty; empty too when it is not a plain code. */
 function errorReason(body: unknown): string {
   if (!isRecord(body) || !isRecord(body.error)) return "";
   const details = Array.isArray(body.error.details) ? body.error.details : [];
   const reason = details.find((detail): detail is Raw => isRecord(detail) && typeof detail.reason === "string");
-  return typeof reason?.reason === "string" ? reason.reason : typeof body.error.status === "string" ? body.error.status : "";
+  const code = typeof reason?.reason === "string" ? reason.reason : errorStatus(body);
+  return SAFE_REASON.test(code) ? code : "";
 }
 
 /** Google's answer for a project that never enabled the API: 403 with reason SERVICE_DISABLED (or its message). */
@@ -160,7 +169,7 @@ export async function probeSheetsApi(def: ConnectorDef, tokens: AccessTokenSourc
     throw new ActionFailure(`Cannot reach Google Sheets (${(error as Error).message})`);
   }
   const body: unknown = await response.json().catch(() => null);
-  if (response.status === 404 && errorReason(body) === "NOT_FOUND") return { state: "enabled" };
+  if (response.status === 404 && errorStatus(body) === "NOT_FOUND") return { state: "enabled" };
   if (response.status === 401) return { state: "refused" };
   if (response.status === 403 && apiDisabled(body)) return { state: "disabled" };
   return { state: "other", status: response.status, reason: errorReason(body) };

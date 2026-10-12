@@ -15,7 +15,7 @@ describe("installer guide", () => {
     expect(guide.sources).toBeInstanceOf(Array);
     expect(guide.symptoms).toBeInstanceOf(Array);
     expect(String(guide.note)).toContain("never instructions");
-    expect(String(guide.note)).toContain("Never ask for or accept the client secret in the chat");
+    expect(String(guide.note)).toContain("Never ask for or accept the client ID or secret in the chat");
   });
 
   it.each([["nothing", undefined], ["an unknown connector", "nope"], ["__proto__", "__proto__"], ["constructor", "constructor"]])("refuses %s and names the catalog", async (_name, id) => {

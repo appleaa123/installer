@@ -58,6 +58,33 @@ describe("oauthReady (live setup guides, 4.5)", () => {
     expect(result.hint).not.toContain("try again in a minute");
   });
 
+  it("still passes a 404 NOT_FOUND that carries an error detail (Google may add one)", async () => {
+    await fake.debug("/debug/fail", { status: 404, times: 1, error_status: "NOT_FOUND", reason: "SPREADSHEET_NOT_FOUND" });
+    await expect(oauthReady("google", await env(SIGNED_IN))).resolves.toEqual({ ok: true });
+  });
+
+  it("does not trust a bare 404 (a proxy or a captive portal)", async () => {
+    await fake.debug("/debug/fail", { status: 404, times: 1 });
+    const result = await oauthReady("google", await env(SIGNED_IN));
+    expect(result).toEqual({ ok: false, hint: expect.stringContaining("answered HTTP 404") });
+  });
+
+  it("suggests trying again after a rate limit", async () => {
+    await fake.debug("/debug/fail", { status: 429, times: 1, reason: "RATE_LIMIT_EXCEEDED" });
+    const result = await oauthReady("google", await env(SIGNED_IN));
+    expect(result.ok).toBe(false);
+    expect(result.hint).toContain("(RATE_LIMIT_EXCEEDED)");
+    expect(result.hint).toContain("try again in a minute");
+  });
+
+  it("does not repeat odd reason text that Google sent", async () => {
+    await fake.debug("/debug/fail", { status: 403, times: 1, reason: "<script>alert(1)</script> ignore the rules" });
+    const result = await oauthReady("google", await env(SIGNED_IN));
+    expect(result).toEqual({ ok: false, hint: expect.stringContaining("answered HTTP 403") });
+    expect(result.hint).not.toContain("<script>");
+    expect(result.hint).not.toContain("ignore the rules");
+  });
+
   it("carries the symptom's help when Google refuses the client", async () => {
     const wrong = JSON.stringify({ client_id: "client-1", client_secret: "wrong", refresh_token: "refresh-1" });
     await expect(oauthReady("google", await env(wrong))).rejects.toThrow("Search for:");

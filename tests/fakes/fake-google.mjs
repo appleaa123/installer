@@ -7,7 +7,7 @@
 // Test-only endpoints, no auth: GET|PUT /debug/sheets/<id> reads or seeds a spreadsheet as
 // {"title":…,"tabs":{"<tab>":[[…row…],…]}} (the first tab is the first sheet); GET /debug/token-requests counts
 // token calls; POST /debug/revoke makes the refresh token invalid; POST /debug/fail {"status":500,"times":1}
-// makes the next Sheets answers fail (add "reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT" for a Google error reason);
+// makes the next Sheets answers fail (add "reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT" for a Google error reason, "error_status":"NOT_FOUND" for Google's error status, default UNAVAILABLE);
 // POST /debug/disable-sheets and /debug/enable-sheets switch the Sheets API off and on (403 SERVICE_DISABLED, like a
 // project that never enabled it).
 import { createServer } from "node:http";
@@ -129,7 +129,7 @@ function sheetsApi(req, res, url, body) {
   }
   if (failing.times > 0) {
     failing = { ...failing, times: failing.times - 1 };
-    const error = { code: failing.status, message: "The service is currently unavailable.", status: "UNAVAILABLE", ...(failing.reason ? { details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: failing.reason }] } : {}) };
+    const error = { code: failing.status, message: "The service is currently unavailable.", status: failing.error_status ?? "UNAVAILABLE", ...(failing.reason ? { details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: failing.reason }] } : {}) };
     return send(res, failing.status, { error });
   }
   if (req.method === "POST" && url.pathname === "/v4/spreadsheets") return createSpreadsheet(res, JSON.parse(body || "{}"));

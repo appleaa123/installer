@@ -23,6 +23,6 @@ export async function oauthReady(secretId: string, env: Env = process.env): Prom
     case "refused":
       return { ok: false, hint: `${def.name} refused the sign-in: run 'installer secret ${def.auth.secret_id}' to sign in again` };
     case "other":
-      return { ok: false, hint: `${def.name} answered HTTP ${probe.status}${probe.reason ? ` (${probe.reason})` : ""} to the readiness check${probe.status >= 500 ? "; try again in a minute" : ""}${symptomHelp(probe.reason, def.setup?.symptoms)}` };
+      return { ok: false, hint: `${def.name} answered HTTP ${probe.status}${probe.reason ? ` (${probe.reason})` : ""} to the readiness check${probe.status === 429 || probe.status >= 500 ? "; try again in a minute" : ""}${symptomHelp(probe.reason, def.setup?.symptoms)}` };
   }
 }
