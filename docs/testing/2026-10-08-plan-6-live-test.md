@@ -30,16 +30,16 @@ messages are really sent; its consent policy needs a contact to write first, and
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup | | |
-| 1 | The automated live tests (one Telegram message, one email to yourself) | | |
-| 2 | Telegram: the token page and `installer channel telegram` | | |
-| 3 | Email: the app password page and `installer channel email` | | |
-| 4 | The gateway runs, and you join with an invite code | | |
-| 5 | An approval announced in Telegram and approved with a reply code | | |
-| 6 | An approved message is sent; STOP ends it | | |
-| 7 | A reply code by email decides nothing | | |
-| 8 | A killed gateway is replaced by the next start | | |
-| 9 | Stop, disconnect and clean up | | |
+| 0 | Setup | Pass | Commit 85fc656, Node v22.14.0 |
+| 1 | The automated live tests (one Telegram message, one email to yourself) | Pass | Email passed at once; Telegram passed after `TELEGRAM_TEST_CHAT_ID` was corrected (it held a getUpdates URL, not the number) |
+| 2 | Telegram: the token page and `installer channel telegram` | Pass | Bot verified; token not in the config file (mode 600) |
+| 3 | Email: the app password page and `installer channel email` | Pass | Verified; wrong IMAP port gave `Cannot reach the mail server … (ETIMEDOUT)`, exit 2 |
+| 4 | The gateway runs, and you join with an invite code | Pass | Joined as `member` (this solution records no decision maker) |
+| 5 | An approval announced in Telegram and approved with a reply code | Pass | Reply code `A1` approved item 1 as Owner (role member) |
+| 6 | An approved message is sent; STOP ends it | Pass | Sent once; replay refused; STOP then blocked a new request |
+| 7 | A reply code by email decides nothing | Pass | JOIN needs a space; `A2` by email refused with the forged-sender text; item stayed pending |
+| 8 | A killed gateway is replaced by the next start | Pass | Stale detected; new gateway replaced it and read the message sent while it was down |
+| 9 | Stop, disconnect and clean up | Pass | Gateway stopped; both channels disconnected |
 
 ---
 
@@ -68,8 +68,8 @@ cd $T
 `"status":"complete"`.
 
 **Record:**
-- Commit shown by `git log`:
-- Pass / Fail:
+- Commit shown by `git log`: 85fc656 (fix(core): release the audit lock under the guard)
+- Pass / Fail: Pass (2026-10-12)
 
 ---
 
@@ -90,7 +90,7 @@ cd $T
 Telegram chat with the bot, and an email `installer live test …` in your test mailbox.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (email 2 of 2 at once; Telegram needed `TELEGRAM_TEST_CHAT_ID` to be the plain number: it had held a URL and gave `chat not found`)
 
 ---
 
@@ -114,7 +114,7 @@ second lists it with `"capabilities":{"buttons":false,…,"inbound":"long_poll"}
 and find nothing).
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (`@SA_AI_AGT_bot` verified; the config file has mode 600 and no token)
 
 ---
 
@@ -134,7 +134,7 @@ installer channel email --value '{"address":"<your test address>","imap":{"host"
 command. Run it once more with a wrong port (`"port":994` for IMAP): it exits 2 with `Cannot reach the mail server …`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (verified; `Cannot reach the mail server imap.zohocloud.ca:994 (ETIMEDOUT)`, exit 2 for the wrong port)
 
 ---
 
@@ -156,12 +156,12 @@ press **Start** (or send `/join <code>` to the bot). Within a few seconds:
 installer members
 ```
 
-**Expected:** member 1, `Owner`, `"role":"decision_maker"`, `"status":"joined"`. The bot writes `Welcome, Owner: you
-joined as the decision maker. …` (the install is finished, so it is sent). Sending the same code again gets no answer
+**Expected:** member 1, `Owner`, `"status":"joined"` and `"role":"member"` (this test solution has no `mode.decision-maker` step, so nobody is the decision maker; an install that recorded `Owner` as its decision maker would show `"role":"decision_maker"`). The bot writes `Welcome, Owner: you
+joined as a member. …` (the install is finished, so it is sent). Sending the same code again gets no answer
 and `installer members` still shows one member.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (invite, gateway start and status as expected; joined as `member`; a repeated code is redacted to `(join code)` and gets no answer)
 
 ---
 
@@ -180,10 +180,10 @@ request answers with item `id` 1, `"level":"L2"`. Within a few seconds the bot w
 Reply A1 to approve, R1 <reason> to reject, or E1 <new text> to change the text. …`. Answer `A1` in Telegram.
 
 **Expected:** the bot answers `Approval 1 is approved.`; `installer approvals list` shows item 1 `"approved"` with
-`"decision":{"by":"Owner","role":"decision_maker",…}`.
+`"decision":{"by":"Owner","role":"member",…}` (`decision_maker` only when the install recorded Owner as its decision maker).
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (reply code A1 approved item 1; the announcement waits for you to have written first)
 
 ---
 
@@ -204,7 +204,7 @@ it.) Between 21:00 and 08:00 Toronto time, the send is refused with `It is quiet
 token.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (sent once; replay `Approval 1 was already used`; after STOP: `opted out of messages on telegram (do-not-contact)`)
 
 ---
 
@@ -215,7 +215,7 @@ installer invite "Owner (email)"
 ```
 
 From another mailbox of yours (not the test address itself: the gateway ignores mail from its own address), email
-the test address with the first line `JOIN <code>` and wait about a minute.
+the test address with the first line `JOIN <code>` (with a space after `JOIN`: `JOINABCDE-FGHJK` is not recognized and is stored as an ordinary message) and wait about a minute.
 
 **Expected:** `installer members` shows member 2 joined on `email`. Then ask for an approval of an internal change:
 
@@ -226,11 +226,11 @@ installer tool approvals.request '{"tool":"memo.edit","args":{"id":1,"text":"Fin
 
 It answers with item `id` 2; nothing is announced by email. Email `A2` from your other mailbox. Within about a minute
 that mailbox gets an answer: `Approvals cannot be decided by email, because the sender of a message there can be
-forged: …`; `installer approvals list` still shows item 2 `"pending"`. Decide it in this terminal with `installer
+forged: answer in Telegram, or run 'installer approvals approve 2' in a terminal`; `installer approvals list` still shows item 2 `"pending"`. Decide it in this terminal with `installer
 approvals approve 2 --as Owner`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (the first mail with `JOINX45HL-NYXXC`, no space, did not join; with a space it did; `A2` by email: the forged-sender reply, item still pending until approved in the terminal). Observation F3: a pending item whose only decider is unreachable (opted out) is re-tried every minute, one audit line each
 
 ---
 
@@ -248,7 +248,7 @@ prints `"status":"started"` with a new pid and `"note":"Replaced a gateway that 
 (pid …)"`. Messages you sent to the bot while it was down are read now (Telegram keeps them for 24 hours).
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (`stale` after kill -9; start replaced pid 46060 with 57862; the message sent while down was read within a second)
 
 ---
 
@@ -266,4 +266,4 @@ the provider. If you want the test bot gone too, send `/deletebot` to @BotFather
 you made one only for this test.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (stopped; both channels disconnected with `secret_deleted:true`)

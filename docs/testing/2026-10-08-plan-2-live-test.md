@@ -21,12 +21,12 @@ It cannot yet connect Skills Wiki, enter keys, or install a `skillswiki:` soluti
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup and install | | |
-| 1 | Probe your real Claude Code | | |
-| 2 | Starter install end to end | | |
-| 3 | `http:` and failing `https:` links | | |
-| 4 | No known agent | | |
-| 5 | Clean up | | |
+| 0 | Setup and install | Pass | Commit 4a0c818, Node v22.14.0 |
+| 1 | Probe your real Claude Code | Pass | Agent 2.1.296 (guide: 2.1.294) |
+| 2 | Starter install end to end | Pass | Matches Expected; agent 2.1.296 |
+| 3 | `http:` and failing `https:` links | Pass | Terminal had no DNS: online `answered HTTP <status>` branch not exercised |
+| 4 | No known agent | Pass | Identical to Expected |
+| 5 | Clean up | Pass | Folder removed |
 
 ---
 
@@ -51,9 +51,9 @@ cd $T
 **Expected:** `which installer` prints `<your home>/installer-plan2-test/npm/bin/installer`.
 
 **Record:**
-- Commit shown by `git log`:
-- `which installer` printed:
-- Pass / Fail:
+- Commit shown by `git log`: 4a0c818 (fix(core): refuse MODE questions derive_mode cannot use)
+- `which installer` printed: /Users/allenliu/installer-plan2-test/npm/bin/installer
+- Pass / Fail: Pass (2026-10-12; Node v22.14.0)
 
 ---
 
@@ -74,8 +74,8 @@ echo $?
 Your `agent_version` may be newer. `support_level` is 2 of 3 because the MCP check (C6) comes with Plan 3.
 
 **Record:**
-- Output:
-- Pass / Fail:
+- Output: `{"profile":"claude-code","agent_version":"2.1.296","c2_shell":true,"c4_headless":true,"c4_schema":true,"c5_resume":true,"c6_mcp":"not_probed","support_level":2,"tier":"compatible","notes":[]}`, exit 0
+- Pass / Fail: Pass
 
 ---
 
@@ -104,9 +104,9 @@ node -e 'const s=require(process.argv[1]);console.log(JSON.stringify(s.mode),JSO
 Try other answers in a new home if you like: `"no"` + `"no"` gives `"personal"`, and `"both"` gives `"hybrid"`.
 
 **Record:**
-- Report:
-- Mode and roles:
-- Pass / Fail:
+- Report: `✅ READY  (6 of 6 steps done) · starter@1.0.0`; Agent line `claude-code 2.1.296 — level 2 of 3 (MCP not checked yet)`
+- Mode and roles: `"team_host" {"decision_maker":"Owner"}`
+- Pass / Fail: Pass
 
 ---
 
@@ -128,8 +128,8 @@ ls $T/h3
 - Both `ls` commands fail with `No such file or directory`: a refused link creates nothing.
 
 **Record:**
-- Second error (with the status):
-- Pass / Fail:
+- Second error (with the status): `Cannot fetch solution URL 'https://example.com/no-such-file.json' (fetch failed)`, exit 2. The tester's terminal could not resolve example.com (`curl: (6) Could not resolve host`), so no HTTP status was seen.
+- Pass / Fail: Pass for the refusal, the exit codes and the empty `ls`; the online `answered HTTP <status>` message was not exercised
 
 ---
 
@@ -150,8 +150,8 @@ echo $?
 The probe never fails because of the agent: a missing or broken agent is a result, not an error.
 
 **Record:**
-- Output:
-- Pass / Fail:
+- Output: identical to Expected, exit 0
+- Pass / Fail: Pass
 
 ---
 

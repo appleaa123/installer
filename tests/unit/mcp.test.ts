@@ -45,6 +45,11 @@ describe("callTool against the fake Skills Wiki (facts 5 and 6)", () => {
     await expect(callTool({ url: fake.url, key: "wrong" }, "get_active_combo")).rejects.toThrow(KEY_REJECTED_HINT);
   });
 
+  it("turns a 403 into the secret hint: the hosted server answers a wrong key with 403 since 2026-10-12", async () => {
+    const fake = await server({ FAKE_MCP_REJECT_STATUS: "403" });
+    await expect(callTool({ url: fake.url, key: "wrong" }, "get_active_combo")).rejects.toThrow(KEY_REJECTED_HINT);
+  });
+
   it("names the url when the server is unreachable", async () => {
     const fake = await server();
     fake.stop();
