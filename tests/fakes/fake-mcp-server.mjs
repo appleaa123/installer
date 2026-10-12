@@ -68,7 +68,7 @@ const server = createServer((req, res) => {
   });
   req.on("end", () => {
     if (req.headers.authorization !== `Bearer ${key}`) {
-      res.writeHead(401, { "content-type": "application/json" });
+      res.writeHead(Number(process.env.FAKE_MCP_REJECT_STATUS ?? 401), { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "unauthorized" }));
     }
     answer(req, res, JSON.parse(raw));
