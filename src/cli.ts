@@ -5,14 +5,17 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { approvalsCommand } from "./core/approval-commands.js";
+import { channelCommand } from "./core/channel-commands.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { disconnect } from "./core/disconnect.js";
+import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
+import { inviteCommand, membersCommand } from "./core/invite-commands.js";
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
@@ -31,7 +34,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -274,6 +277,10 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     approvalsCommand(deps.home, state.roles, { sub: arg, id: extra, as: flags.as, reason: flags.reason, value: flags.value, interactive: process.stdin.isTTY === true }, deps.now),
   connect: async ({ deps }, flags, arg) => connectEntity(deps.home, requireEntityArg(arg, "connect"), flags.sheet, deps.now),
   map: async ({ deps }, flags, arg) => mapEntity(deps.home, requireEntityArg(arg, "map"), flags.value, deps.now, process.env, process.stdin.isTTY === true),
+  channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now, process.env, process.stdin.isTTY === true),
+  invite: async ({ state, deps }, _flags, arg) => inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now),
+  members: async ({ deps }, _flags, arg, extra) => membersCommand(deps.home, { sub: arg, id: extra, interactive: process.stdin.isTTY === true }, deps.now),
+  gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {
@@ -283,6 +290,7 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
   if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
   if (command === "mcp-serve") return mcpServeCommand(home);
+  if (command === "gateway-serve") return serveGateway(home);
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;

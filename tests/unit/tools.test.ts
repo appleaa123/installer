@@ -156,13 +156,14 @@ describe("the default tool set", () => {
     expect([...DEFAULT_TOOLS.keys()]).toEqual([
       "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
+      "channel.list", "channel.inbox", "channel.notify", "channel.send",
     ]);
   });
 
   it("adds an optional approval_token to every gated tool's schema, and to no approvals tool", () => {
     const listed = describeTools(DEFAULT_TOOLS);
     const withToken = listed.filter((tool) => JSON.stringify(tool.inputSchema).includes('"approval_token"')).map((tool) => tool.name);
-    expect(withToken).toEqual(["memo.list", "memo.add", "memo.edit", "memo.delete", "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import"]);
+    expect(withToken).toEqual(["memo.list", "memo.add", "memo.edit", "memo.delete", "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import", "channel.list", "channel.inbox", "channel.notify", "channel.send"]);
   });
 
   it("refuses a registry with a duplicate or badly named tool", () => {

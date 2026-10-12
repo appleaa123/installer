@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
+import { parseChannelPolicy } from "./channel-policy.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
@@ -201,7 +202,8 @@ export function parseSolution(raw: unknown): Solution {
   checkBrainOrder(steps);
   const contract = parseDataContract(raw.data_contract);
   checkDataSteps(steps, contract);
-  return { id, version, steps, ...(contract ? { data_contract: contract } : {}) };
+  const policy = parseChannelPolicy(raw.channel_policy);
+  return { id, version, steps, ...(contract ? { data_contract: contract } : {}), ...(policy ? { channel_policy: policy } : {}) };
 }
 
 export function parseSolutionText(text: string, where: string): Solution {

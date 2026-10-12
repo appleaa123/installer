@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { appendAudit } from "./audit.js";
+import { CHANNEL_IDS, removeChannel, type ChannelId } from "./channels.js";
 import { CONNECTOR_SECRETS, type ConnectorDef, loadConnector, newestVersion } from "./connectors.js";
 import { InputError } from "./inputs.js";
 import { deleteSecret } from "./keychain.js";
@@ -63,7 +64,7 @@ async function connectorName(id: string): Promise<{ readonly name: string; reado
 
 /** `installer disconnect <connector>` (§14.2): delete its sign-in from the keychain first, then audit; the person removes the grant at the provider. */
 async function disconnectConnector(home: string, id: string, now: () => string): Promise<ConnectorDisconnected> {
-  if (!Object.hasOwn(CONNECTOR_SECRETS, id)) throw new InputError(`'${id}' cannot be disconnected; this version can disconnect: ${[SKILLSWIKI_SECRET_ID, ...Object.keys(CONNECTOR_SECRETS)].join(", ")}`);
+  if (!Object.hasOwn(CONNECTOR_SECRETS, id)) throw new InputError(`'${id}' cannot be disconnected; this version can disconnect: ${[SKILLSWIKI_SECRET_ID, ...CHANNEL_IDS, ...Object.keys(CONNECTOR_SECRETS)].join(", ")}`);
   const deleted = await deleteSecret(CONNECTOR_SECRETS[id] ?? id);
   const { name, problem } = await connectorName(id);
   if (await loadState(home)) await appendAudit(home, { ts: now(), actor: "human", event: "connector.disconnected", ref: id, payload: { secret_deleted: deleted } });
@@ -72,8 +73,22 @@ async function disconnectConnector(home: string, id: string, now: () => string):
   return { status: "disconnected", connector: id, secret_deleted: deleted, note };
 }
 
+const CHANNEL_NOTES: Readonly<Record<ChannelId, string>> = {
+  telegram: "The installer deleted the bot token and the channel's settings from this computer. If the token may have leaked, send /revoke to @BotFather so it stops working.",
+  email: "The installer deleted the app password and the channel's settings from this computer. Delete the app password at your mail provider too, so it can no longer sign in.",
+};
+
+/** `installer disconnect telegram | email` (§14.2): delete the secret and the channel's settings, and audit it. */
+async function disconnectChannel(home: string, id: ChannelId, now: () => string): Promise<ConnectorDisconnected> {
+  const deleted = await deleteSecret(id);
+  const removed = await removeChannel(home, id);
+  if (await loadState(home)) await appendAudit(home, { ts: now(), actor: "human", event: "channel.disconnected", ref: id, payload: { secret_deleted: deleted, settings_removed: removed } });
+  return { status: "disconnected", connector: id, secret_deleted: deleted, note: CHANNEL_NOTES[id] };
+}
+
 /** Revoke and delete (D34, §14.2): remove the server from the probed agent, delete the keychain item, record it in the audit. */
 export async function disconnect(home: string, id: string, now: () => string): Promise<Disconnected | ConnectorDisconnected> {
+  if ((CHANNEL_IDS as readonly string[]).includes(id)) return disconnectChannel(home, id as ChannelId, now);
   if (id !== SKILLSWIKI_SECRET_ID) return disconnectConnector(home, id, now);
   const state = await loadState(home);
   const { unregistered, note } = await unregisterEverywhere(home, state?.runtime?.profile);

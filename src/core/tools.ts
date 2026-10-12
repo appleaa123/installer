@@ -1,6 +1,6 @@
 import { appendAudit } from "./audit.js";
 import { contractTags } from "./contract.js";
-import { ToolRefusal, actionHash, redeemToken, type PreparedAction } from "./approvals.js";
+import { ToolRefusal, actionHash, redeemToken, type PreparedAction, type Via } from "./approvals.js";
 import { InputError } from "./inputs.js";
 import { loadPinnedContract } from "./pin.js";
 import { NO_TAGS, deriveLevel, loadClientRules, needsApproval, type ClientRules, type FieldRef, type FloorCategory, type Level, type TagSource } from "./levels.js";
@@ -12,7 +12,7 @@ export type ToolResult = Readonly<Record<string, unknown>>;
 export interface ToolContext {
   readonly home: string;
   readonly now: () => string;
-  readonly via: "mcp" | "cli";
+  readonly via: Via;
   readonly registry: ToolRegistry;
   readonly tags: TagSource;
   readonly rules: ClientRules;
@@ -37,6 +37,8 @@ export interface ToolDef {
   readonly writes?: (args: ToolArgs) => readonly FieldRef[];
   /** Current values the action depends on; part of the action hash, re-read when the token is used (§9.6). */
   readonly expected?: (ctx: ToolContext, args: ToolArgs) => Promise<ToolArgs>;
+  /** Why the call cannot run right now (quiet hours, D80), or null; checked before a token is spent, never at the request. */
+  readonly ready?: (ctx: ToolContext, args: ToolArgs) => Promise<string | null>;
   readonly run: (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 }
 
@@ -123,14 +125,24 @@ async function runLogged(ctx: ToolContext, tool: ToolDef, prepared: PreparedActi
   return result;
 }
 
+/** A tool that cannot run right now is refused before its token is spent, so the approval stays usable (D80). */
+async function refuseUnlessReady(ctx: ToolContext, tool: ToolDef, prepared: PreparedAction): Promise<void> {
+  const reason = (await tool.ready?.(ctx, prepared.args)) ?? null;
+  if (reason !== null) await refuse(ctx, prepared, reason);
+}
+
 /** The gate (§11.1): L2 and L3 need a token for exactly this action; the same path for MCP and the CLI. */
 export async function invokeTool(ctx: ToolContext, name: string, rawArgs: unknown): Promise<ToolResult> {
   const tool = requireTool(ctx.registry, name);
   const { [TOKEN_ARG]: token, ...args } = argsOf(rawArgs);
   if (tool.meta && token !== undefined) throw new InputError(`${name} takes no ${TOKEN_ARG}`);
   const prepared = await prepareAction(ctx, tool, args);
-  if (!needsApproval(prepared.level)) return runLogged(ctx, tool, prepared, null);
+  if (!needsApproval(prepared.level)) {
+    await refuseUnlessReady(ctx, tool, prepared);
+    return runLogged(ctx, tool, prepared, null);
+  }
   if (typeof token !== "string") return refuse(ctx, prepared, approvalNeeded(prepared));
+  await refuseUnlessReady(ctx, tool, prepared);
   let approval: number;
   try {
     approval = (await redeemToken(ctx.home, token, prepared, ctx.now())).id;
@@ -157,7 +169,7 @@ export function describeTools(registry: ToolRegistry): readonly { name: string; 
 }
 
 /** Field tags come from the data contract the install pinned (§9.3); a home without one has no tagged fields. */
-export async function toolContext(home: string, via: "mcp" | "cli", registry: ToolRegistry, now: () => string = () => new Date().toISOString()): Promise<ToolContext> {
+export async function toolContext(home: string, via: Via, registry: ToolRegistry, now: () => string = () => new Date().toISOString()): Promise<ToolContext> {
   const contract = await loadPinnedContract(home);
   return { home, now, via, registry, tags: contract ? contractTags(contract) : NO_TAGS, rules: await loadClientRules(home) };
 }

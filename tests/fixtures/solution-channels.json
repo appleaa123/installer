@@ -1,0 +1,13 @@
+{
+  "id": "fixture-channels",
+  "version": "1.0.0",
+  "channel_policy": {
+    "consent": "inbound_first",
+    "quiet_hours": { "start": "21:00", "end": "08:00", "tz": "America/Toronto" },
+    "opt_out_keywords": ["arret"]
+  },
+  "steps": [
+    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,
+      "auto": { "action": "noop" } }
+  ]
+}

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -43,6 +43,24 @@ describe("concurrent audit appends (D57)", () => {
       await expect(verifyAudit(home)).resolves.toEqual({ ok: true, lines: 30 });
     }
   }, 120_000);
+
+  it("releases its lock only under the takeover guard, so a stealer's read-then-remove cannot hit a fresh lock", async () => {
+    const home = await makeTempHome();
+    await mkdir(join(home, "audit"), { recursive: true });
+    const guard = `${join(home, AUDIT_LOCK_FILE)}.takeover`;
+    await writeFile(guard, "");
+    let finished = false;
+    const appending = appendAudit(home, entry("while-guarded")).then(() => {
+      finished = true;
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    expect(finished).toBe(false);
+    await expect(access(join(home, AUDIT_LOCK_FILE))).resolves.toBeUndefined();
+    await rm(guard);
+    await appending;
+    await expect(access(join(home, AUDIT_LOCK_FILE))).rejects.toThrow();
+    await expect(verifyAudit(home)).resolves.toEqual({ ok: true, lines: 1 });
+  });
 
   it("takes over a lock left by a process that is gone", async () => {
     const home = await makeTempHome();

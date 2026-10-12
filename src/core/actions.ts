@@ -1,5 +1,6 @@
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
+import { channelCheck } from "./channels.js";
 import { mappingCheck, sourceCheck } from "./data-source.js";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
@@ -139,6 +140,8 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
   source_present: async (home, args) => sourceCheck(home, stringArg(args, "entity")),
   /** §9.4: the person confirmed a mapping that `installer map` checked against the sheet (D68). */
   mapping_present: async (home, args) => mappingCheck(home, stringArg(args, "entity")),
+  /** §6.2 CHANNELS: the agent set the channel up with `installer channel <id>`, which checked it live (D73). */
+  channel_verified: async (home, args) => channelCheck(home, stringArg(args, "channel")),
 };
 
 export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);
