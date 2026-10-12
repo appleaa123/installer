@@ -183,8 +183,8 @@ export async function loadConnector(id: string, version: string, root: string = 
 /** Which keychain item each pinned connector signs in with, known without reading any connector file (review finding 3). */
 export const CONNECTOR_SECRETS: Readonly<Record<string, string>> = { "google-sheets": "google" };
 
-export function newestVersion(id: string): string | undefined {
-  return Object.keys(CONNECTOR_PINS[id] ?? {}).sort((a, b) => Number(b) - Number(a))[0];
+export function newestVersion(id: string, pins: ConnectorPins = CONNECTOR_PINS): string | undefined {
+  return Object.keys(Object.hasOwn(pins, id) ? (pins[id] ?? {}) : {}).sort((a, b) => Number(b) - Number(a))[0];
 }
 
 /** The newest pinned connector that signs in with this keychain item over OAuth, or null when none does. */

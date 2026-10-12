@@ -16,6 +16,7 @@ import { oauthConnectorFor } from "./core/connectors.js";
 import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { operationsView, renderOperations } from "./core/data-flow.js";
 import { disconnect } from "./core/disconnect.js";
+import { guideCommand } from "./core/guide-commands.js";
 import { doctorCommand } from "./core/doctor.js";
 import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { hardenCommand } from "./core/hardening.js";
@@ -54,7 +55,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -290,6 +291,8 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
   start: (home, flags) => startCommand(home, flags),
   probe: (_home, flags) => probeCommand(flags),
   secret: (_home, _flags, arg) => secretCommand(requireArg(arg, "secret")),
+  /** Live setup guides (4.3): the connector's setup block for the agent to walk the person through; read-only. */
+  guide: (_home, _flags, arg) => guideCommand(arg),
   disconnect: (home, _flags, arg) => disconnect(home, requireArg(arg, "disconnect"), () => new Date().toISOString()),
   /** D103: reads the state itself, so a damaged state is a finding, not an exit 3. */
   doctor: (home) => doctorCommand(home, () => new Date().toISOString()),
