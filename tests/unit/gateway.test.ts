@@ -41,7 +41,7 @@ describe("the gateway loop (D72)", () => {
 
   it("runs until stopped: a person joins while it runs, and it writes a heartbeat and a log without message text", async () => {
     const home = await channelHome(true);
-    const { code } = await createInvite(home, "Grace", ROLES, "2026-10-08T12:00:00.000Z");
+    const { code } = await createInvite(home, "Grace", ROLES, new Date().toISOString());
     const stop = new AbortController();
     const running = runGateway({ home, signal: stop.signal, pollSeconds: 1, pauseMs: 100 });
     await fake.message(9200, `/join ${code}`);
