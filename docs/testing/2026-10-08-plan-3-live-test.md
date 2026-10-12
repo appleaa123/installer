@@ -23,16 +23,16 @@ Registration writes the server `skillswiki` to your **user** Claude Code config;
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup and install | | |
-| 1 | The secret page stores the key in the keychain | | |
-| 2 | `mcp-headers` prints the header; nothing else sees the key | | |
-| 3 | Starter install through the BRAIN phase to level 3 of 3 | | |
-| 4 | Workspace trust missing: level 2 of 3 with the folder named | | |
-| 5 | A `skillswiki:` reference | | |
-| 6 | A wrong key is named, nothing is created | | |
-| 7 | `disconnect` removes the server and the key | | |
-| 8 | Opt-in live tests | | |
-| 9 | Clean up | | |
+| 0 | Setup and install | Pass | Commit 2fb8356 |
+| 1 | The secret page stores the key in the keychain | Pass | 47 chars stored; page process exited |
+| 2 | `mcp-headers` prints the header; nothing else sees the key | Pass | Header printed (key masked), exit 0 / exit 1 |
+| 3 | Starter install through the BRAIN phase to level 3 of 3 | Pass | Level 3 of 3, agent 2.1.296 |
+| 4 | Workspace trust missing: level 2 of 3 with the folder named | Pass | Level 3 of 3, no trust note: `claude -p` did not treat the new folder as untrusted |
+| 5 | A `skillswiki:` reference | Partial | Failure case passes (exit 2, no folder); message is `returned no content`; recipe case skipped (none published) |
+| 6 | A wrong key is named, nothing is created | Pass after fix | Live server answers a wrong key with 403 (F1, fixed); `installer resume` needed after 3 failed verifies (F2) |
+| 7 | `disconnect` removes the server and the key | Pass | Matches Expected |
+| 8 | Opt-in live tests | Pass after fix | Wrong-key live test failed on 403 before the fix; C6 rehearsal passed and cleaned up |
+| 9 | Clean up | Pass | Folder and keychain item gone |
 
 ---
 
@@ -196,11 +196,11 @@ installer --home $T/h3 start --solution $REF
 **Expected:** the first `start` fetches the recipe through `get_skill_resource` and prints its first step; the pinned
 file is the recipe's JSON without any `<skill_reference>` wrapper; the second `start` (no `--url`) prints the same step
 and changes nothing. `installer --home $T/h4 start --solution skillswiki:none/none/none.json --url "$SKILLSWIKI_MCP_URL"`
-exits `2` with `Skills Wiki could not serve 'skillswiki:none/none/none.json': …` and creates no `$T/h4`.
+exits `2` and creates no `$T/h4`. The message is `Skills Wiki could not serve 'skillswiki:none/none/none.json': …` when the server answers with an error, or `Skills Wiki returned no content for 'skillswiki:none/none/none.json'` when it answers with a success result that has no text (what the hosted server did on 2026-10-12).
 
 **Record:**
-- Ref used:
-- Pass / Fail:
+- Ref used: none published; the failure case only (`skillswiki:none/none/none.json`)
+- Pass / Fail: Partial: `Skills Wiki returned no content for …`, exit 2, no `h4` folder; the recipe case was skipped
 
 ---
 
@@ -218,10 +218,10 @@ installer --home $T/h5 verify brain.combo
 
 **Expected:** `verify brain.combo` prints
 `{"status":"failed","hint":"Skills Wiki key rejected: run `installer secret skillswiki`","retry":true,…}`.
-Enter the real key again through `installer secret skillswiki`, then `installer --home $T/h5 verify brain.combo` passes.
+The hosted server answers a wrong key with 403 since 2026-10-12 (it answered 401 on 2026-10-08); both give this hint. After three failed verifies the step is blocked: run `installer --home $T/h5 resume` first. Enter the real key again through `installer secret skillswiki`, then `installer --home $T/h5 verify brain.combo` passes.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass after the 403 fix. Before it, the hint was `Skills Wiki answered HTTP 403` (F1); after the third failure the step was blocked until `installer resume` (F2, documented above). The real key restored: 47 characters, verify passed.
 
 ---
 

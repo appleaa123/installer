@@ -30,13 +30,13 @@ read is tested. Not yet: conversations with the agent from a channel, model-chos
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup: an install whose probe found your Claude Code | | |
-| 1 | The automated live learning read | | |
-| 2 | A workflow from plain words, its dry run, and your confirmation | | |
-| 3 | Sandbox mode: on from anywhere, off only in your terminal | | |
-| 4 | Hardening: five runs, a proposal, the replay check, a new version | | |
-| 5 | An urgent alert, acknowledged in your terminal | | |
-| 6 | Clean up | | |
+| 0 | Setup: an install whose probe found your Claude Code | Pass | Commit 6ae6ecc, Node v22.14.0, Claude Code 2.1.296 |
+| 1 | The automated live learning read | Pass | `learning_list` answered (read only) |
+| 2 | A workflow from plain words, its dry run, and your confirmation | Pass | Dry run: one `memo.add` would-have; confirm refused without a terminal, accepted with one |
+| 3 | Sandbox mode: on from anywhere, off only in your terminal | Pass | Sandbox on by agent, run recorded only, off only by a person |
+| 4 | Hardening: five runs, a proposal, the replay check, a new version | Pass | Five runs, proposal `call_1 memo.list`, replay ok 5 of 5, version 2 applied; version 2 runs in sandbox until a new dry run is confirmed |
+| 5 | An urgent alert, acknowledged in your terminal | Pass | Urgent alert recorded (no channel), ack refused without a terminal, accepted with one |
+| 6 | Clean up | Pass | Test folder deleted |
 
 ---
 
@@ -81,8 +81,8 @@ cd $T
 `"ready_with_limits"` and `"runtime":{"profile":"claude-code",…,"c4_headless":true,…}`.
 
 **Record:**
-- Commit shown by `git log`:
-- Pass / Fail:
+- Commit shown by `git log`: 6ae6ecc (fix(core): keep one open urgent alert per workflow)
+- Pass / Fail: Pass (2026-10-12)
 
 ---
 
@@ -101,7 +101,7 @@ cd $T
 **Expected:** `Test Files  1 passed (1)` and `Tests  1 passed (1)` (the test passes when Learning Mode is off, too).
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass
 
 ---
 
@@ -125,7 +125,7 @@ exits 2 with `A dry run is confirmed by the person who read it, in their own ter
 `{"status":"confirmed","workflow":"count","version":1,…}`, and `workflow list` shows `"sandbox":false`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (dry run completed with 2 model calls; `would_have` = `memo.add "There is 1 memo."` at L1; real memos unchanged; confirm without a terminal exit 2; confirmed by Owner)
 
 ---
 
@@ -145,7 +145,7 @@ unchanged; `off` without a terminal exits 2 with `Leaving sandbox sends real mes
 prints `"status":"off"`; `status` shows `"mode":{"on":false,…}`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (run `sandbox:true`, memo list unchanged; `off` without a terminal exit 2; off by Owner)
 
 ---
 
@@ -166,11 +166,11 @@ ls $INSTALLER_HOME/workflows/count/versions
 `{"id":"call_1","tool":"memo.list","args":{}}` and `"agent_kept":true` (the memo's text is the model's own sentence),
 and `"replay":{"ok":true,"runs":[…5 runs, each "ok":true…]}`. The apply without a terminal exits 2; with your
 terminal it prints `{"status":"hardened","workflow":"count","version":2,"kept":"workflows/count/versions/1",…}`.
-The next run completes with `"version":2`; `ls` prints `1`.
+The next run completes and its steps start with `call_1` (the promoted fixed call) followed by `agent`; the run answer has no `"version"` field. Version 2 runs in sandbox (`"sandbox":true`) until a person dry-runs and confirms it again, so no real memo is added by that run. `ls` prints `1`.
 
 **Record:**
-- The proposal you got (copy `promoted`):
-- Pass / Fail:
+- The proposal you got (copy `promoted`): `[{"id":"call_1","tool":"memo.list","args":{}}]`, `agent_kept: true`
+- Pass / Fail: Pass (promoted `[{"id":"call_1","tool":"memo.list","args":{}}]`, `agent_kept:true`, replay ok for all 5 runs; apply without a terminal exit 2; hardened to version 2, version 1 kept)
 
 ---
 
@@ -197,7 +197,7 @@ your terminal it prints `"status":"acknowledged"` with `"acknowledged_by":"Owner
 `alert.acknowledged`).
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (alert 1 recorded with `sends:1`; ack without a terminal exit 2; acknowledged by Owner; audit count 2)
 
 ---
 
@@ -210,4 +210,4 @@ rm -rf $T
 **Expected:** nothing printed. No scheduler entry, keychain item or Skills Wiki data was created by this guide.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass

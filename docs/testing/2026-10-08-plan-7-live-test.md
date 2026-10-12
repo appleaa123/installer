@@ -28,15 +28,15 @@ Windows (Plan 9).
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup: an install whose probe found your Claude Code | | |
-| 1 | The automated live judge test | | |
-| 2 | A workflow by hand, and a sandbox run | | |
-| 3 | A judge step through your Claude Code, and an approve step | | |
-| 4 | The schedule: write it, load it yourself, see the runner tick | | |
-| 5 | A scheduled run starts on time, once | | |
-| 6 | Sleep through a scheduled run: missed, not run late, one back-online notice (O14) | | |
-| 7 | The twice-daily report | | |
-| 8 | Remove the schedule and clean up | | |
+| 0 | Setup: an install whose probe found your Claude Code | Pass | Commit 1400058, Node v22.14.0, Claude Code 2.1.296 |
+| 1 | The automated live judge test | Pass | One real judge call through `claude -p`, 4.6 s |
+| 2 | A workflow by hand, and a sandbox run | Pass | Sandbox run also writes the internal memo |
+| 3 | A judge step through your Claude Code, and an approve step | Pass | 4 memos labelled (the home already held 2 from Test 2); `context_calls` empty |
+| 4 | The schedule: write it, load it yourself, see the runner tick | Pass | LaunchAgent loaded by hand; one tick per minute; macOS showed a Background Items notice |
+| 5 | A scheduled run starts on time, once | Pass | One memo and one run, started 35 s after the scheduled minute |
+| 6 | Sleep through a scheduled run: missed, not run late, one back-online notice (O14) | Pass on 3rd attempt | Needs the Mac asleep more than 5 minutes past the scheduled minute (tolerance); then `missed`, no late run, one back-online line |
+| 7 | The twice-daily report | Pass | Two report runs failed with `No joined member is called 'Owner'` |
+| 8 | Remove the schedule and clean up | Pass | Agent unloaded and plist removed; ticks stopped |
 
 ---
 
@@ -72,8 +72,8 @@ cd $T
 `"overall":"ready"` or `"ready_with_limits"` and `"runtime":{"profile":"claude-code",…,"c4_headless":true,"c4_schema":true,…}`.
 
 **Record:**
-- Commit shown by `git log`:
-- Pass / Fail:
+- Commit shown by `git log`: 1400058 (fix(core): skip damaged runs in the report pass)
+- Pass / Fail: Pass (2026-10-12)
 
 ---
 
@@ -90,7 +90,7 @@ cd $T
 **Expected:** `Test Files  1 passed (1)` and `Tests  1 passed (1)`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass
 
 ---
 
@@ -113,7 +113,7 @@ second with `"sandbox":true`; `memo.list` shows two memos `Run <run id>`; the la
 `No workflow 'nothing': workflows/nothing/workflow.json does not exist in the home`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (two completed runs, the second with `"sandbox":true`; two memos; `No workflow 'nothing'` exit 2)
 
 ---
 
@@ -141,7 +141,7 @@ installer approvals list
 **Expected:** `installer run sort` takes up to a minute per memo (one `claude -p` call each) and prints
 `"status":"waiting"` with `"steps":[{"step":"memos","status":"done"},{"step":"label","status":"done"},{"step":"fix","status":"waiting","approval":1}]`
 and a `next` line; `approvals list` shows item 1 for `memo.edit` with the why above and `"source":{"via":"runner","run":{"workflow":"sort",…,"step":"fix"}}`.
-Look at the labels: `cat $INSTALLER_HOME/runs/sort/*/steps/label.json` shows an `output` like
+Your home may already hold memos from Test 2, so the judge labels every memo it finds (four after Test 2: four `claude -p` calls). Look at the labels: `cat $INSTALLER_HOME/runs/sort/*/steps/label.json` shows an `output` like
 `[{"label":"now",…},{"label":"later",…}]` and `"context_calls":[]`.
 
 Now decide it yourself and let the runner continue:
@@ -156,8 +156,8 @@ installer tool memo.list '{}'
 whatever labels your agent chose).
 
 **Record:**
-- Labels chosen:
-- Pass / Fail:
+- Labels chosen: later, later, now, later (confidence 0.85, 0.85, 0.75, 0.95)
+- Pass / Fail: Pass (`tick` resumed the run; memo 1 became the labels)
 
 ---
 
@@ -168,10 +168,10 @@ installer schedule list
 installer schedule install
 ```
 
-**Expected:** `list` says `"last_tick":null` and suggests `installer schedule install`. `install` prints
+**Expected:** `list` shows `"last_tick"` as `null` before any `installer tick` has run (after Test 3's manual tick it already shows that tick's time). `install` prints
 `{"backend":"launchd","label":"com.installer.tick.<8 hex>","file":"<home>/runtime/schedule/com.installer.tick.<8 hex>.plist","commands":["mkdir -p ~/Library/LaunchAgents","cp '…plist' ~/Library/LaunchAgents/com.installer.tick.<8 hex>.plist","launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.installer.tick.<8 hex>.plist"],…}`.
 
-Check the file, then run the three printed commands yourself, exactly as printed:
+Check the file, then run the three printed commands yourself, exactly as printed (macOS shows a "Background Items Added" notice and lists the item under System Settings → General → Login Items & Extensions; keep it switched on). launchd starts jobs with a minimal `PATH`, so a scheduled workflow that calls a judge needs `claude` on that path; these test workflows only add memos:
 
 ```bash
 plutil -lint $INSTALLER_HOME/runtime/schedule/com.installer.tick.*.plist
@@ -185,7 +185,7 @@ tail -3 $INSTALLER_HOME/runtime/schedule/tick.log
 `tick.log` has one JSON line per minute such as `{"status":"ran","started":[],"missed":[],…}`.
 
 **Record:**
-- Label:
+- Label: com.installer.tick.49e0f952
 - Pass / Fail:
 
 ---
@@ -212,14 +212,14 @@ ls $INSTALLER_HOME/runs/clock
 one memo `Scheduled for <that minute in UTC>` and one run folder.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (one memo `Scheduled for …18:14:00.000Z` created at 18:14:35; one run folder)
 
 ---
 
 ## Test 6: Sleep through a scheduled run (O14)
 
 Change the `clock` workflow to a minute five minutes from now, put the Mac to sleep two minutes before it (close the
-lid, or Apple menu → Sleep), and wake it at least ten minutes after it. Then, within a minute of waking:
+lid, or Apple menu → Sleep), and wake it at least ten minutes after it. A run that starts within 5 minutes of its scheduled minute (`tolerance_minutes`) still counts as on time, so waking sooner than that shows a normal `completed` run and tests nothing. Then, within a minute of waking:
 
 ```bash
 sleep 70
@@ -232,11 +232,11 @@ tail -3 $INSTALLER_HOME/runtime/schedule/tick.log
 **Expected:** a second run folder whose `run.json` has `"status": "missed"` (the grep counts 1); no new memo for that
 minute (the run was not run late); one `runner.back_online` line in the audit; and in `tick.log` the first line after
 waking has `"back_online":true` and the missed run (the notice itself goes nowhere: this home has no channel or
-decision maker). Note whether launchd ran the tick at once on waking or only at the next interval.
+decision maker). Note whether launchd ran the tick at once on waking or only at the next interval. (Observed: within seconds on a short sleep, and 15 to 35 seconds after a full wake on a long one.)
 
 **Record:**
-- When launchd fired after waking:
-- Pass / Fail:
+- When launchd fired after waking: about 15 to 35 seconds after a full wake (first tick 14:55:20, wake 14:54:45 / full wake 14:55:03)
+- Pass / Fail: Pass on the third attempt (see above); a first short sleep ended within the 5-minute tolerance and ran normally; the second was missed because the sleep was started late
 
 ---
 
@@ -258,7 +258,7 @@ send it to. (With Plan 6's Telegram setup and a joined member called Owner, it a
 finished.)
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (both reports `failed`: `No joined member is called 'Owner'; joined: nobody yet (installer invite)`)
 
 ---
 
@@ -275,4 +275,4 @@ rm -rf $T
 after you run them, `launchctl list | grep com.installer.tick` prints nothing.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (`launchctl bootout` and `rm` run by hand; nothing loaded afterwards; running them twice only gave `No such process`)
