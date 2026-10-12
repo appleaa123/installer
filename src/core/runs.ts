@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit, canonicalJson } from "./audit.js";
@@ -20,6 +20,7 @@ export const KEYS_DIR = join("state", "runner", "keys");
 export const RUN_STATUSES = ["running", "waiting", "completed", "partial", "failed", "missed"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export const FINISHED: readonly RunStatus[] = ["completed", "partial", "failed", "missed"];
+export const MISSED_REASON = "the host or the runner was not running at the scheduled time";
 /** Run folders that are not workflows (the twice-daily report, D89); a workflow id cannot start with `_`. */
 export const REPORT_RUNS = "_report";
 
@@ -53,6 +54,8 @@ export interface RunRecord {
   readonly fallback_from?: { readonly step: string; readonly error: string };
   /** A judge flagged something urgent (§11.7): approvals go first and are reminded often, and no grant approves them. */
   readonly urgent?: boolean;
+  /** A shadow run (D108): a sandbox run whose judges read this pack's candidate version instead of the pinned one. */
+  readonly shadow?: string;
 }
 
 export const STEP_STATUSES = ["done", "waiting", "rejected", "failed"] as const;
@@ -135,6 +138,12 @@ export async function claimRun(home: string, record: RunRecord): Promise<boolean
 
 export const saveStep = (home: string, record: RunRecord, log: StepLog): Promise<void> => writeConfig(home, stepFile(record, log.step), log);
 
+/** Retention (D102): the key goes first, then the folder, so a crash in between never leaves a claim without its run. */
+export async function removeRun(home: string, record: RunRecord): Promise<void> {
+  await rm(await confinedPath(home, keyFile(record.key)), { force: true });
+  await rm(await confinedPath(home, join(RUNS_DIR, record.workflow, record.run_id)), { recursive: true, force: true });
+}
+
 export async function loadStep(home: string, record: RunRecord, step: string): Promise<StepLog | null> {
   const raw = await readConfig(home, stepFile(record, step));
   if (raw === null) return null;
@@ -149,6 +158,41 @@ async function folderNames(home: string, relative: string): Promise<string[]> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
+}
+
+/** A claimed key whose run.json was never written (a crash between the two writes of `claimRun`). */
+export interface OrphanClaim {
+  readonly file: string;
+  readonly workflow: string | null;
+  readonly run_id: string | null;
+  readonly age_ms: number;
+}
+
+/** Claims without their run (D103): such a key can never be started again, so `doctor` clears the old ones. */
+export async function orphanClaims(home: string, now: string): Promise<OrphanClaim[]> {
+  let names: string[];
+  try {
+    names = (await readdir(await confinedPath(home, KEYS_DIR))).filter((name) => /^[0-9a-f]{64}$/.test(name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const found: OrphanClaim[] = [];
+  for (const name of names) {
+    const file = join(KEYS_DIR, name);
+    const claim = await readConfig(home, file).catch(() => null);
+    const ref = isRecord(claim) && typeof claim.workflow === "string" && typeof claim.run_id === "string" ? { workflow: claim.workflow, run_id: claim.run_id } : null;
+    // A damaged run.json is still a run: `doctor` names it, it is not an orphan.
+    if (ref && (await readConfig(home, runFile(ref.workflow, ref.run_id)).catch(() => "damaged")) !== null) continue;
+    const age = Date.parse(now) - (await stat(await confinedPath(home, file))).mtimeMs;
+    found.push({ file, workflow: ref?.workflow ?? null, run_id: ref?.run_id ?? null, age_ms: age });
+  }
+  return found;
+}
+
+export async function clearClaim(home: string, claim: OrphanClaim, now: string): Promise<void> {
+  await rm(await confinedPath(home, claim.file), { force: true });
+  await appendAudit(home, { ts: now, actor: "engine", event: "run.claim_cleared", ref: claim.file, payload: { workflow: claim.workflow, run_id: claim.run_id } });
 }
 
 /** Called with a damaged run record's error instead of throwing it, so one damaged file does not stop the rest. */
@@ -183,7 +227,7 @@ export async function recordMissed(home: string, workflow: string, version: numb
   const kind = workflow === REPORT_RUNS ? "report" : "cron";
   const record: RunRecord = {
     workflow, run_id: runIdFor(key, scheduledFor), key, trigger: { kind, scheduled_for: scheduledFor }, version, status: "missed",
-    started_at: now, finished_at: now, sandbox: false, pid: process.pid, actions: 0, needs_human: 0, reason: "the host or the runner was not running at the scheduled time",
+    started_at: now, finished_at: now, sandbox: false, pid: process.pid, actions: 0, needs_human: 0, reason: MISSED_REASON,
   };
   if (!(await claimRun(home, record))) return null;
   await auditRun(home, now, "run.missed", record, { scheduled_for: scheduledFor });

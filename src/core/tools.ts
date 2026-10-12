@@ -3,6 +3,7 @@ import { contractTags } from "./contract.js";
 import { ToolRefusal, actionHash, redeemToken, type PreparedAction, type Via } from "./approvals.js";
 import { InputError } from "./inputs.js";
 import { recordAction } from "./outbound.js";
+import { PAUSED_REASON, isPaused } from "./pause.js";
 import { loadPinnedContract } from "./pin.js";
 import { NO_TAGS, deriveLevel, loadClientRules, needsApproval, type ClientRules, type FieldRef, type FloorCategory, type Level, type TagSource } from "./levels.js";
 
@@ -149,6 +150,8 @@ export async function invokeTool(ctx: ToolContext, name: string, rawArgs: unknow
   const { [TOKEN_ARG]: token, ...args } = argsOf(rawArgs);
   if (tool.meta && token !== undefined) throw new InputError(`${name} takes no ${TOKEN_ARG}`);
   const prepared = await prepareAction(ctx, tool, args);
+  // The kill switch (D101): nothing above L0 acts while paused; a message tool still runs, into the recording sink.
+  if (prepared.level !== "L0" && !tool.outbound && (await isPaused(ctx.home))) return refuse(ctx, prepared, PAUSED_REASON);
   if (ctx.sandbox && prepared.level !== "L0" && token === undefined) return sandboxCall(ctx, tool, prepared);
   if (!needsApproval(prepared.level)) {
     await refuseUnlessReady(ctx, tool, prepared);

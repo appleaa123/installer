@@ -6,10 +6,12 @@ import { remindApprovals, repeatAlerts } from "./alerts.js";
 import { appendAudit } from "./audit.js";
 import { MINUTE_MS, cronTimes } from "./cron.js";
 import { dueReports } from "./daily-report.js";
+import { dailyDoctor } from "./doctor.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { listInbox, type InboxItem } from "./inbox.js";
+import { isPaused } from "./pause.js";
 import { collectLearnings, submitLearnings } from "./learning.js";
 import { InputError } from "./inputs.js";
 import { resumeRun, startRun } from "./runner.js";
@@ -38,7 +40,8 @@ export const BACK_ONLINE_GAP_MS = 5 * MINUTE_MS;
 type Env = Readonly<Record<string, string | undefined>>;
 
 export interface TickResult {
-  readonly status: "ran" | "busy";
+  /** `paused`: the kill switch is on (D101); the tick only notes that the host is alive. */
+  readonly status: "ran" | "busy" | "paused";
   readonly started: string[];
   readonly missed: string[];
   readonly resumed: string[];
@@ -50,6 +53,8 @@ export interface TickResult {
   readonly rate_limited: number;
   /** Learnings sent to Skills Wiki (D97). */
   readonly learnings: number;
+  /** The daily doctor's overall status when it ran in this tick (D103). */
+  readonly doctor: "ok" | "warn" | "fail" | null;
   readonly errors: string[];
 }
 
@@ -207,7 +212,7 @@ async function guard(tick: Tick, name: string, task: () => Promise<void>): Promi
 }
 
 export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env): Promise<TickResult> {
-  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, errors: [] };
+  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, doctor: null, errors: [] };
   const lock = await lockTick(home);
   if (lock === null) return { ...result, status: "busy" };
   try {
@@ -216,6 +221,8 @@ export async function tick(home: string, now: () => string = () => new Date().to
     const last = beat.last ?? null;
     const alive = beat.alive ?? last;
     await writeConfig(home, HEARTBEAT_FILE, { ...beat, alive: state.at, pid: process.pid });
+    // Paused (D101): no run starts or resumes; `last` stays, so slots that fall due meanwhile are recorded as missed afterwards.
+    if (await isPaused(home)) return { ...result, status: "paused" };
     const loaded = await workflows(state);
     for (const workflow of loaded) await guard(state, workflow.id, () => scheduled(state, workflow, last));
     await guard(state, "report", async () => {
@@ -235,6 +242,9 @@ export async function tick(home: string, now: () => string = () => new Date().to
     await guard(state, "learning", async () => {
       await collectLearnings(home, state.at);
       result.learnings = (await submitLearnings(home, (await loadState(home))?.skillswiki?.url, state.at)).length;
+    });
+    await guard(state, "doctor", async () => {
+      result.doctor = (await dailyDoctor(home, now, env))?.status ?? null;
     });
     await writeConfig(home, HEARTBEAT_FILE, { last: state.at, alive: now(), pid: process.pid });
     return { ...result };

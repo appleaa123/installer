@@ -9,6 +9,7 @@ import { judgeBackend } from "./model.js";
 import { loadPinnedContract } from "./pin.js";
 import { checkApproval, runApprove, runJudge, runTool, type Exec, type StepOutcome } from "./runner-steps.js";
 import { FINISHED, auditRun, claimRun, fingerprint, loadStep, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
+import { PAUSED_REASON, isPaused } from "./pause.js";
 import { runsInSandbox } from "./sandbox.js";
 import { loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -33,6 +34,8 @@ export interface RunRequest {
   readonly trigger: RunTrigger;
   readonly now: () => string;
   readonly sandbox?: boolean;
+  /** A shadow run of this pack's candidate version (D108); always a sandbox run. */
+  readonly shadow?: string;
   readonly env?: Env;
 }
 
@@ -83,8 +86,12 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   return runApprove(exec, record, step, scope, startedAt);
 }
 
-/** A step that throws a domain error fails the run; anything else (a bug, a damaged file) leaves it resumable. */
+/**
+ * A step that throws a domain error fails the run; anything else (a bug, a damaged file) leaves it resumable. A pause
+ * that came while the run was under way stops it before its next step (D101): no further model call or action.
+ */
 async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope: Scope): Promise<StepOutcome> {
+  if (await isPaused(exec.home)) return { kind: "stop", status: "partial", reason: PAUSED_REASON };
   try {
     return await runStep(exec, record, step, scope);
   } catch (error) {
@@ -158,12 +165,14 @@ export async function resumeRun(request: RunRequest, record: RunRecord): Promise
 
 /** Starts the run for this key; a key that already has a run is never started twice (§10.7). */
 export async function startRun(request: RunRequest): Promise<RunRecord> {
+  if (await isPaused(request.home)) throw new InputError(`No run starts: ${PAUSED_REASON}`);
   const existing = await runForKey(request.home, request.key);
   if (existing) return FINISHED.includes(existing.status) ? existing : resumeRun(request, existing);
   const at = request.trigger.scheduled_for ?? request.now();
   const record: RunRecord = {
     workflow: request.workflow.id, run_id: runIdFor(request.key, at), key: request.key, trigger: request.trigger, version: request.workflow.version,
-    status: "running", started_at: request.now(), sandbox: request.sandbox === true || (await runsInSandbox(request.home, request.workflow.id)), pid: process.pid, actions: 0, needs_human: 0,
+    status: "running", started_at: request.now(), sandbox: request.sandbox === true || request.shadow !== undefined || (await runsInSandbox(request.home, request.workflow.id)), pid: process.pid, actions: 0, needs_human: 0,
+    ...(request.shadow ? { shadow: request.shadow } : {}),
   };
   if (!(await claimRun(request.home, record))) {
     // Another process claimed the key first and runs it; this one never starts or resumes that run.

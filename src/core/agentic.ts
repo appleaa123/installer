@@ -4,6 +4,7 @@ import { InputError } from "./inputs.js";
 import { fenced, protectedFields, stripFields } from "./judge.js";
 import { validateSchema } from "./json-schema.js";
 import { needsApproval } from "./levels.js";
+import { PAUSED_REASON, isPaused } from "./pause.js";
 import type { Exec, StepOutcome } from "./runner-steps.js";
 import { fingerprint, saveStep, type AgentTurn, type RunRecord, type StepLog } from "./runs.js";
 import { MAX_TEXT, TOKEN_ARG, invokeTool, objectSchema, prepareAction, requireTool, type ToolArgs } from "./tools.js";
@@ -99,10 +100,14 @@ async function finishAgent(run: AgentRun, turns: readonly AgentTurn[], summary: 
   return { kind: "done", output, actions, needs_human: needs ? 1 : 0 };
 }
 
-/** Asks for calls until the agent is done, a call waits for a person, or the call budget is spent. */
+/** Asks for calls until the agent is done, a call waits for a person, the call budget is spent or the engine is paused (D101). */
 export async function continueAgent(run: AgentRun, turns: readonly AgentTurn[]): Promise<StepOutcome> {
   let done = turns;
   while (done.length < run.spec.max_turns) {
+    if (await isPaused(run.exec.home)) {
+      await saveAgent(run, done, { status: "failed", error: PAUSED_REASON });
+      return { kind: "stop", status: "partial", reason: PAUSED_REASON };
+    }
     const answer = await nextAnswer(run, done);
     if ("needs" in answer) return finishAgent(run, done, null, answer.needs);
     if (answer.tool === DONE) return finishAgent(run, done, answer.summary ?? "", null);

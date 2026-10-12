@@ -1,4 +1,7 @@
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { access, mkdir, open } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { confinedPath } from "./actions.js";
 import type { InboundEnvelope } from "./envelope.js";
 import type { Identity } from "./members.js";
 import { createRecord, listRecords } from "./numbered.js";
@@ -11,6 +14,8 @@ import { createRecord, listRecords } from "./numbered.js";
  */
 export const INBOX_DIR = join("data", "inbox");
 export const ROUTES = ["conversation", "event", "command"] as const;
+/** Who wrote first, kept as one empty file each when retention removes their messages (D102). */
+export const CONTACTS_DIR = join("data", "channels", "first-contact");
 export type Route = (typeof ROUTES)[number];
 
 export type InboxItem = InboundEnvelope & {
@@ -35,7 +40,27 @@ export async function listInbox(home: string): Promise<InboxItem[]> {
   return (await listRecords(home, INBOX_DIR, isItem)).reverse();
 }
 
+const contactFile = (home: string, identity: Identity): Promise<string> =>
+  confinedPath(home, join(CONTACTS_DIR, createHash("sha256").update(`${identity.channel}\n${identity.address}`).digest("hex")));
+
+/** Called before retention removes a message (D102), so `inbound_first` consent outlives the message itself. */
+export async function rememberContact(home: string, identity: Identity): Promise<void> {
+  const path = await contactFile(home, identity);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  try {
+    await (await open(path, "wx", 0o600)).close();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
 /** `consent: inbound_first` (D80): has this contact ever written to us on this channel? */
 export async function hasWrittenFirst(home: string, identity: Identity): Promise<boolean> {
-  return (await listRecords(home, INBOX_DIR, isItem)).some((item) => item.channel === identity.channel && item.from === identity.address);
+  if ((await listRecords(home, INBOX_DIR, isItem)).some((item) => item.channel === identity.channel && item.from === identity.address)) return true;
+  try {
+    await access(await contactFile(home, identity));
+    return true;
+  } catch {
+    return false;
+  }
 }

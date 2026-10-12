@@ -3,8 +3,9 @@ import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { raiseAlert } from "./alerts.js";
 import { approveByGrant, proposeIfEarned } from "./autonomy.js";
-import { askJudge, protectedFields, runContextTools, skillText, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
+import { askJudge, protectedFields, runContextTools, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
 import { needsApproval } from "./levels.js";
+import { pinnedSkill } from "./packs.js";
 import { fingerprint, saveStep, type RunRecord, type StepLog } from "./runs.js";
 import { TOKEN_ARG, invokeTool, prepareAction, requireTool, type ToolArgs, type ToolContext } from "./tools.js";
 import type { DataContract } from "./contract.js";
@@ -95,7 +96,8 @@ const declaredFields = ({ properties: declared }: Readonly<Record<string, unknow
 export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "judge" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.judge;
   const backend = await exec.backend();
-  const skill = spec.skill ? await skillText(exec.state?.skillswiki?.url, spec.skill) : null;
+  // D107: the pinned copy of the skill file, never whatever Skills Wiki serves today (a shadow run reads the candidate, D108).
+  const skill = spec.skill ? await pinnedSkill(exec.home, exec.state?.skillswiki?.url, spec.skill, now(exec), record.shadow) : null;
   const hidden = protectedFields(exec.contract);
   const [outputs, calls, needs, inputs]: [unknown[], ContextCall[], { index: number; reason: string }[], unknown[]] = [[], [], [], []];
   for (const [index, item] of items(step, scope).entries()) {

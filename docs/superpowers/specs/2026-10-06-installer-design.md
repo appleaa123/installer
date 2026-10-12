@@ -165,6 +165,14 @@ or any other business uses the same engine with a different recipe.
   audit/audit.jsonl                # hash-chained (§11.8)
   sandbox/outbox/                  # recording sink in sandbox mode (§15.5); every message until
                                    # the install is finished (Plan 6, D79)
+  config/pause.json                # the kill switch (Plan 9, D101)
+  config/retention.json            # retention period in days (Plan 9, D102)
+  data/channels/first-contact/     # who wrote first, kept when retention deletes messages (D102)
+  state/doctor/                    # last doctor run, its next time, host readiness (D103, D104)
+  runtime/service/                 # boot service files a person installs (Plan 9, D104)
+  config/packs.json                # pinned Skills Wiki packs and candidates (Plan 9, D107, D108)
+  packs/<pack>/<sha256>            # pinned skill file texts, by content (D107)
+  exports/                         # audit exports and support bundles (Plan 9, D109, D110)
 ```
 
 ---
@@ -231,6 +239,16 @@ restart, the host waits for a person to unlock it; the engine then sends
 the host-back-online notice (§10.3). Windows BitLocker with TPM unlocks at
 boot by design and satisfies the encryption check; no TPM or network
 auto-unlock is configured on Linux by default.
+
+**Plan 9 (D104, D105).** `installer host` reads these settings through a
+command runner (`pmset -g`, `systemsetup -getusingnetworktime`, `fdesetup
+status`; `systemctl is-enabled`, `timedatectl`, `lsblk`) and prints the fix
+for each one that is not right; a person with administrator rights runs it
+in their own terminal, so the `ask` steps above are printed fixes instead,
+and the engine never runs `sudo`. `installer host service install` writes
+the boot services (LaunchDaemons, a systemd unit) and prints their
+commands. The steps for a dedicated `installer-engine` OS user are printed
+too; the engine creates no user.
 
 ---
 
@@ -420,12 +438,15 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer tool <name> <json>` | Call any local MCP tool from the shell (C6 fallback, §7.4); prints the tool's result, exits 2 on a refusal (D63) |
 | `installer approvals list \| approve <id> \| edit <id> --value <json> \| reject <id>` | Decide approval items in a person's own terminal (`--as <name>`, `--reason`; D60, D61) |
 | `installer mcp-serve` | Run by the agent's MCP client: the local MCP server on stdio (D56) |
-| `installer gateway start|stop|status` | Manage the gateway: a detached process with a pid file under the engine home, replaced after a crash by the next start (D72); started at boot by the OS in Plan 9 |
-| `installer doctor` | Health checks (§16.1) |
-| `installer pause` / `installer unpause` | Kill switch (§14.4) |
+| `installer gateway start|stop|status` | Manage the gateway: a detached process with a pid file under the engine home, replaced after a crash by the next start (D72); started at boot by a service from `installer host service install` (D104) |
+| `installer doctor` | Health checks with a fix for each finding; clears run claims a crash left, deletes data past the retention period, tries new pack versions in shadow; daily from the tick (§16.1, D103) |
+| `installer host [service install \| remove]` | Host readiness with printed fixes and the dedicated-user steps; the boot service files and their `sudo` commands (§5.1, D104, D105) |
+| `installer packs [list \| check \| shadow <pack> \| switch <pack>]` | Pinned Skills Wiki packs, new versions, shadow runs; the decision maker switches in their terminal (§14.3, D107, D108) |
+| `installer retention [--value <days>]` | Show or set the retention period; shorter only in a person's terminal (§14.5, D102) |
+| `installer pause [status]` / `installer unpause` | Kill switch: anyone pauses, only a person's terminal unpauses (§14.4, D101) |
 | `installer disconnect <connector>` | Revoke access and delete stored credentials (`skillswiki`, or a pinned connector such as `google-sheets`: deletes its sign-in and names the provider page that removes the grant, D67) |
-| `installer uninstall` | Remove the body; keep business records (§16.4) |
-| `installer support bundle` | Redacted diagnostic package (§16.5) |
+| `installer uninstall` | Remove the body, export the audit, keep business records; a person's terminal only (§16.4, D109) |
+| `installer support bundle` | Redacted diagnostic file under `exports/` (§16.5, D110) |
 
 > **Naming (D36):** un-pausing is `installer unpause` / `/unpause`;
 > `installer resume` is reserved for resuming an install.
@@ -1216,6 +1237,9 @@ secrets, raw inbound messages, audit data.
   `real_estate_tenancy_assistant`).
 - Publish recipes as file resources in a pack.
 - Add a `<workflow>` block to combos that want `combo_gate`.
+- Serve each pack's `skill_pack_meta.commit_sha` with `get_skill_resource`
+  (or a tool of its own), so installs can record it next to their content
+  pins (D107).
 
 ---
 
@@ -1244,26 +1268,40 @@ secrets, raw inbound messages, audit data.
 | Model error | Schema validation; escalation causes (§10.9); dry runs; replay gates; drift alerts |
 
 ### 14.3 Pack version pinning and shadow upgrade
-- `instance.yaml` pins each Skills Wiki pack to a `commit_sha`.
+- Each Skills Wiki pack is pinned by content (Plan 9, D107): the text of
+  every skill file a judge uses is kept under `packs/` and recorded by its
+  sha256 in `config/packs.json`; judges read only the pinned copy. Skills
+  Wiki does not serve `commit_sha` yet (§13.4).
 - When a new version exists, `doctor` runs workflows in sandbox shadow with
   the new version alongside the pinned one, runs evals, and posts a
   comparison. Switching is a policy change (L3).
+- Plan 9 (D108): the shadow runs the workflows that read the pack twice in
+  sandbox (pinned and candidate); the eval in v1 compares them, hosted evals
+  are left for later (O11); the decision maker switches in their terminal.
 
 ### 14.4 Kill switch
 - `/pause` from the internal channel (decision-maker role) or
   `installer pause` on the host: stops all outbound sends and schedules
   immediately; inbound continues to be logged.
 - `/unpause` or `installer unpause` restores operation. Both audited.
+- Plan 9 (D101): while paused, messages are recorded, actions above L0 are
+  refused and runs do not start; `installer unpause` needs a person's
+  terminal; `/pause` and `/unpause` count only from the decision maker on a
+  channel that proves the sender.
 
 ### 14.5 Privacy
 - Judges receive only declared fields; `protected_ground` excluded from
   decision inputs; `personal` redacted elsewhere off-host.
-- Retention configurable (default: raw runs 90 days).
+- Retention configurable (default: raw runs 90 days). Plan 9 (D102): run
+  logs, inbound messages, recordings and sent counts; the audit is never
+  deleted; a shorter period needs a person's terminal.
 
 ### 14.6 Data-flow summary
 The report lists which field tags flow to which external party (model
 vendor via host agent, each connector, Skills Wiki). Required for clients'
-privacy obligations (e.g. PIPEDA, GDPR).
+privacy obligations (e.g. PIPEDA, GDPR). Plan 9 (D106): `installer report`
+shows it with the kill switch, the last doctor run and the host readiness
+score.
 
 ---
 
@@ -1325,6 +1363,9 @@ Connector health; logins nearing expiry; audit chain; schedules
 registered; missed runs and receipt delivery failures (D38, D39); gateway alive; pinned pack updates (shadow, §14.3); drift
 alerts (judge label distribution shift, approval edit-rate jump); disk
 space and retention. Findings posted to the decision maker's channel.
+Plan 9 (D103): failed findings are posted; also host readiness (D104), run
+claims a crash left behind (cleared) and damaged run records. Drift alerts
+and logins nearing expiry are left for later (D111).
 
 ### 16.2 Adding a workflow after install
 Same loop as phase 5–7 for one workflow: describe → connect missing
@@ -1337,11 +1378,15 @@ and data are unaffected (D12, D30).
 ### 16.4 Uninstall
 `installer uninstall`: remove OS schedules, MCP registrations, keychain
 entries, gateway; export audit; leave business records untouched.
+Plan 9 (D109): only in a person's terminal; it pauses first and prints the
+OS commands that unload the schedule and the boot services.
 
 ### 16.5 Support bundle (D34)
 `installer support bundle` → redacted archive: install state, report,
 errors, versions, config **without** secrets or `personal` /
 `protected_ground` values. The client sends it to Allen. No remote access.
+Plan 9 (D110): one JSON file under `exports/`, scrubbed of every known name,
+address and sheet id, email addresses and long numbers.
 
 ---
 
@@ -1396,8 +1441,8 @@ Same engine, same phases, same contracts.
 | O7 | ~~CI monthly budget cap amount~~ Resolved: no paid CI; local offline tests plus opt-in live tests (D48) | — |
 | O8 | ~~Final CLI / product name~~ Resolved: `installer` (D49) | — |
 | O10 | Whether Skills Wiki `enterprise` routes support team seats; v1 runs helper and keychain as the agent's OS user (D50) | Hybrid/personal seats |
-| O11 | Whether hosted evals can run unattended inside an install | §15.4 at install time |
-| O12 | ~~Default thresholds~~ First pass (D99): hardening N = 5, replay K = 10, autonomy streak 25, alert repeats 10 min × 6, reminders 12 h (urgent 5 min × 3), rate limits 3 a day per contact and 20 an hour; the 60 s cache and 90-day retention are Plan 9's | Tuning after pilot |
+| O11 | Whether hosted evals can run unattended inside an install (the shadow upgrade grades by its own comparison until then, D108) | §15.4 at install time, hosted evals in shadow upgrades |
+| O12 | ~~Default thresholds~~ First pass (D99): hardening N = 5, replay K = 10, autonomy streak 25, alert repeats 10 min × 6, reminders 12 h (urgent 5 min × 3), rate limits 3 a day per contact and 20 an hour; 90-day retention: D102; the 60 s cache is left for later (D111) | Tuning after pilot |
 | O14 | Approach resolved by D82 and D84 (the runner decides by the clock, so a coalesced or skipped firing changes nothing); still to verify on a real macOS and Linux host after sleep (human task 10) | §10.3 |
 | O15 | Skills Wiki combo activation by API key (would let phase 2 automate activation; today a dashboard `human_action`) | Phase 2 automation |
 
@@ -1409,7 +1454,7 @@ Same engine, same phases, same contracts.
 |---|---|
 | §1–3 | D1–D3, D5, D27 |
 | §4 | D1, D13, D30 |
-| §5 | D9, D12, D41–D43 |
+| §5 | D9, D12, D41–D43, D104, D105 |
 | §6 | D3, D4, D17, D20–D22, D36, D37, D98 |
 | §7 | D7, D32, D33 |
 | §8 | D8, D21, D22, D34, D65–D67 |
@@ -1417,7 +1462,7 @@ Same engine, same phases, same contracts.
 | §10 | D10–D19, D38–D40, D81–D93, D97, D99, D100 |
 | §11 | D23–D26, D35, D77, D78, D94–D96 |
 | §12 | D30, D72–D80, D96 |
-| §13 | D1, D6, D8, D19 |
-| §14 | D24, D34, D43 |
+| §13 | D1, D6, D8, D19, D107 |
+| §14 | D24, D34, D43, D101, D102, D106–D108 |
 | §15 | D31–D33, D91 |
-| §16 | D34 |
+| §16 | D34, D103, D109, D110 |

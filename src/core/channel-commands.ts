@@ -62,6 +62,15 @@ async function verifyEmail(home: string, value: string | undefined, now: string,
   return { ...setup, verified_at: now };
 }
 
+/** `doctor` (§16.1, D103): the channel still answers with its stored secret; nothing is sent and nothing is saved. */
+export async function checkChannel(config: ChannelConfig, env: Env = process.env): Promise<string> {
+  const secret = await channelSecret(config.channel, env);
+  if (config.channel === "telegram") return `@${(await telegramApi(secret, env).getMe()).username} answers`;
+  await withImap(config.imap, secret, (session) => session.examine(MAILBOX), env);
+  await smtpVerify(config.smtp, secret, env);
+  return "IMAP and SMTP sign-in work";
+}
+
 /** A channel as the person and the agent see it: never its secret. */
 export const describeChannel = (config: ChannelConfig) => ({
   channel: config.channel, verified_at: config.verified_at, ...CHANNEL_FACTS[config.channel],

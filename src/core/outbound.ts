@@ -3,6 +3,7 @@ import { appendAudit } from "./audit.js";
 import { loadChannel, openChannel, type ChannelId, type OutboundMessage } from "./channels.js";
 import { InputError } from "./inputs.js";
 import { createRecord, listRecords } from "./numbered.js";
+import { PAUSED_REASON, isPaused } from "./pause.js";
 import { loadPinnedSolution } from "./pin.js";
 import { buildReport } from "./report.js";
 import { SANDBOX_MODE_REASON, sandboxMode } from "./sandbox.js";
@@ -13,7 +14,8 @@ import { loadState } from "./state.js";
  * which sends it only when the install is finished (the report says ready, or ready with limits) and the channel
  * was verified by `installer channel`; otherwise it is recorded in `sandbox/outbox/` (the recording sink, §4.2)
  * and audited. No exception, not even for a join confirmation. Sandbox mode (D91) records them too, and a sandbox
- * run records every other action it would take as well (`recordAction`), so nothing it does is real.
+ * run records every other action it would take as well (`recordAction`), so nothing it does is real. While the
+ * engine is paused (the kill switch, D101) every message is recorded as well.
  */
 export const OUTBOX_DIR = join("sandbox", "outbox");
 
@@ -41,6 +43,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 /** Why a real send is not allowed yet, or null when it is. */
 export async function outboundBlock(home: string): Promise<string | null> {
+  if (await isPaused(home)) return PAUSED_REASON;
   if (await sandboxMode(home)) return SANDBOX_MODE_REASON;
   const state = await loadState(home);
   if (!state) return "there is no install in this home";

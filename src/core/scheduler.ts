@@ -44,7 +44,7 @@ export function tickEntry(home: string, node: string, cli: string): ScheduleEntr
   return { label, argv: [node, cli, "--home", absolute, "tick"], log: join(absolute, TICK_LOG) };
 }
 
-const xml = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export const xml = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** A LaunchAgent (launchd.plist(5)): ProgramArguments, StartInterval 60, output to the tick log. */
 export function plistText(entry: ScheduleEntry): string {

@@ -2,7 +2,7 @@
  * The inbound envelope (spec §12.4): every channel's message becomes `{ channel, from, thread, text, attachments,
  * received_at }`, marked untrusted and scanned for injection. A flag is information for the person and the agent;
  * nothing is ever obeyed because of a message's text (§14.2). The parsers below read only the first line a member
- * typed: a join code, a reply code (§11.9) or an opt-out keyword (§12.5).
+ * typed: a join code, a reply code (§11.9), an opt-out keyword (§12.5) or the kill switch (§14.4, D101).
  */
 export interface RawInbound {
   readonly channel: string;
@@ -93,6 +93,14 @@ export function replyCodeIn(text: string): ReplyCode | null {
   if (!match) return null;
   const letter = (match[1] ?? "a").toLowerCase() as keyof typeof DECISIONS;
   return { decision: DECISIONS[letter], id: Number(match[2]), text: (match[3] ?? "").trim() };
+}
+
+const SWITCH = /^\/(pause|unpause)(?:@[A-Za-z0-9_]+)?$/i;
+
+/** `/pause` or `/unpause` as the whole first line (Telegram may add `@<bot name>`): the kill switch (§14.4, D36). */
+export function killSwitchIn(text: string): "pause" | "unpause" | null {
+  const match = SWITCH.exec(commandLine(text));
+  return match?.[1] ? (match[1].toLowerCase() as "pause" | "unpause") : null;
 }
 
 /** The whole first line is an opt-out word (STOP, unsubscribe, a recipe's own), ignoring case and end punctuation. */

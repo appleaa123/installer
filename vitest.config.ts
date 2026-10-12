@@ -20,6 +20,8 @@ export default defineConfig({
       ...keychain,
       // `installer secret` must never open a browser tab during a test run.
       INSTALLER_BROWSER: "none",
+      // Host readiness never reads the real OS settings in a test run (D104); tests pass a fake CommandRunner.
+      INSTALLER_HOST_CHECKS: "none",
       // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
       INSTALLER_CLI: resolve("dist/cli.js"),
     },
