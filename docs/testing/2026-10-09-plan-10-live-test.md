@@ -6,7 +6,7 @@ to run, what you should see, and a place to record what you actually saw. If a r
 
 The **Expected** lines are predictions: the automated tests replace every suite and the agent with fakes, so
 `installer certify` has never run its real suites. The counts are those of the branch when this plan was written
-(100 test files, 1358 tests offline; 7 files, 20 tests live); later commits change them.
+(100 test files, 1358 tests offline; 7 files, 20 tests live; the run that certified Claude Code on 2026-10-12 saw 100 files, 1,360 tests offline and 7 files, 18 tests live with none skipped); later commits change them.
 
 **What this guide changes:** Test 1 and Test 2 run the offline suite (about three minutes, nothing leaves your
 machine) and then the live checks. Without keys (Test 1) the live checks make one `claude -p` call. With your keys
@@ -30,13 +30,13 @@ profiles for other agents (O5), clean VMs or repeated runs, publishing (D120).
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup: a clean checkout, built | | |
-| 1 | Certify without keys: Compatible, and the reasons name every missing key | | |
-| 2 | Certify with every key: Certified | | |
-| 3 | The record names the commit you tested | | |
-| 4 | The injection suite and the contract checks, by name | | |
-| 5 | Optional: Codex stays Unknown while its terms are pending | | |
-| 6 | The package: what `npm pack` would ship | | |
+| 0 | Setup: a clean checkout, built | Pass | Clean tree, commit 437692c, Node v22.14.0 |
+| 1 | Certify without keys: Compatible, and the reasons name every missing key | Skipped | Not needed once Test 2 passed |
+| 2 | Certify with every key: Certified | Pass | Certified: offline 1,360, live 18 of 18, no skips |
+| 3 | The record names the commit you tested | Pass | Record names commit 437692c, file mode 0600 |
+| 4 | The injection suite and the contract checks, by name | Pass | 3 files, 51 tests |
+| 5 | Optional: Codex stays Unknown while its terms are pending | Skipped | Codex is not installed (task 15) |
+| 6 | The package: what `npm pack` would ship | Pass | Package ships the profiles, connector, starter and INSTALL.md; no tests/ or src/ |
 
 ---
 
@@ -59,6 +59,8 @@ Certified). Node is v22 or later. `version` prints `{"installer":"0.1.0","node":
 
 **Actual:**
 
+Clean tree, commit `437692c`, Node v22.14.0, `version` printed `{"installer":"0.1.0","node":"v22.14.0"}`.
+
 ---
 
 ## Test 1: Certify without keys
@@ -77,6 +79,8 @@ value appears anywhere in it, only names.
 
 **Actual:**
 
+Skipped.
+
 ---
 
 ## Test 2: Certify with every key
@@ -91,14 +95,15 @@ export SKILLSWIKI_LIVE_FILE=<pack>/<skill>/<path>
 npm run certify -- --profile claude-code --home $C
 ```
 
-**Expected:** `"live":{"status":"passed","files":7,"tests":20,"passed":18,"failed":0,"skipped":2,"missing":[]}` (the two
-skipped checks are the Telegram reads, left out on purpose: a read would take a running gateway's updates),
+**Expected:** `"live":{"status":"passed","files":7,"tests":18,"passed":18,"failed":0,"skipped":0,"missing":[]}` (the guide first predicted 20 tests with two skipped Telegram reads; the real suite has 18 and none are skipped),
 `"dirty":false`, `"tier":"certified"` and `"reasons":[]`. One message arrives in your test chat and one email in your
 test mailbox, both starting `installer contract check`; you can delete them. If the tier is not `certified`, the
 `reasons` say why: a failed live check names itself in the vitest output only, so then also run
 `npm run test:live` and paste its failures.
 
 **Actual (paste the whole record):**
+
+First attempt: `"tier":"compatible"`, `"reasons":["the live checks failed"]`: the Google refresh token in `.env` had been revoked when the app's access was removed at the end of the Plan 5 guide (`invalid_grant`), so the Google file could not run. After signing in again and reloading the `.env` into the terminal (a running terminal keeps the old values), the second run: `"offline":{"status":"passed","files":100,"tests":1360,"passed":1360,"failed":0,"skipped":0}`, `"live":{"status":"passed","files":7,"tests":18,"passed":18,"failed":0,"skipped":0,"missing":[]}`, `"dirty":false`, probe C4, C4 schema and C5 true, `"tos_review":"ok"`, `"tier":"certified"`, `"reasons":[]`, Claude Code 2.1.296, `darwin x64`, commit `437692c33fc93d4d8df6b6b415440ea1c649ce23`. Do not remove the Google app's access before certifying.
 
 ---
 
@@ -116,6 +121,8 @@ ls -l $R
 
 **Actual:**
 
+`certified 437692c33fc93d4d8df6b6b415440ea1c649ce23 false 2.1.296 darwin x64`; `git rev-parse HEAD` printed the same commit; the file is `-rw-------`.
+
 ---
 
 ## Test 4: The injection suite and the contract checks, by name
@@ -131,6 +138,8 @@ email, a sheet cell, a judged message, a skill file and an agent's inbox; and th
 contracts against the fakes.
 
 **Actual:**
+
+`Test Files  3 passed (3)` and `Tests  51 passed (51)`.
 
 ---
 
@@ -148,6 +157,8 @@ the other conditions hold. Without Codex installed, `"tier":"unknown"` and the r
 
 **Actual:**
 
+Skipped (Codex is not installed).
+
 ---
 
 ## Test 6: The package
@@ -161,6 +172,8 @@ npm pack --dry-run 2>&1 | grep -E 'dist/cli.js|profiles/|connectors/|solutions/|
 `src/`. Nothing is published (`"private": true`).
 
 **Actual:**
+
+`dist/cli.js`, `profiles/claude-code.json`, `profiles/codex.json`, `connectors/google-sheets/1/connector.json`, `solutions/starter.json` and `INSTALL.md` are listed; nothing from `tests/` or `src/`. No `swtest-installer` or `skillswiki` server was left in Claude Code.
 
 ---
 
