@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { chmod, mkdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
@@ -11,12 +11,14 @@ import { buildReport, renderReport } from "./core/report.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { SolutionError, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
-import type { InstallState, Solution } from "./core/types.js";
+import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
+import { runProbe } from "./core/probe.js";
+import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report";
+const COMMANDS = "start, next, submit, verify, resume, report, probe";
 
 class NoInstallError extends Error {
   constructor() {
@@ -31,13 +33,14 @@ interface Flags {
   readonly value?: string;
   readonly done?: boolean;
   readonly json?: boolean;
+  readonly profile?: string;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
   stream.write(`${typeof value === "string" ? value : JSON.stringify(value)}\n`);
 }
 
-const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" } } as const;
+const OPTIONS = { home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" }, profile: { type: "string" } } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
 /** Node's own unknown-option message suggests '--', which does not apply here. */
@@ -127,7 +130,18 @@ async function startCommand(home: string, flags: Flags): Promise<unknown> {
   const existing = await loadState(home);
   if (existing) await requireSameContent(home, existing, text);
   else await writePinnedSolution(home, text);
-  return (await start(depsFor(home, solution), existing, ref)).result;
+  return (await start(depsFor(home, solution), existing, ref, sha256(text))).result;
+}
+
+/** Runs the probe in a throwaway folder; it reads no install and writes no state. */
+async function probeCommand(flags: Flags): Promise<CapabilityMap> {
+  const cwd = await mkdtemp(join(tmpdir(), "installer-probe-"));
+  try {
+    const profiles = flags.profile ? [await loadProfile(flags.profile)] : await listBundledProfiles();
+    return await runProbe({ profiles, cwd });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
 }
 
 async function run(argv: readonly string[]): Promise<number> {
@@ -136,6 +150,10 @@ async function run(argv: readonly string[]): Promise<number> {
   const [command, arg] = positionals;
   if (command === "start") {
     emit(process.stdout, await startCommand(home, flags));
+    return EXIT.OK;
+  }
+  if (command === "probe") {
+    emit(process.stdout, await probeCommand(flags));
     return EXIT.OK;
   }
   if (!command || !["next", "submit", "verify", "resume", "report"].includes(command)) {
@@ -158,7 +176,7 @@ async function run(argv: readonly string[]): Promise<number> {
 
 function exitCodeFor(error: unknown): number {
   if (error instanceof StateCorruptError || error instanceof AuditCorruptError) return EXIT.STATE_CORRUPT;
-  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError) return EXIT.USAGE;
+  if (error instanceof InputError || error instanceof EngineError || error instanceof SolutionError || error instanceof NoInstallError || error instanceof ProfileError) return EXIT.USAGE;
   return EXIT.INTERNAL;
 }
 

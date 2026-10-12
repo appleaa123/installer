@@ -8,7 +8,7 @@ property management for investor-owners. Must stay industry-agnostic.
 - Started: 2026-10-06
 - Process: superpowers brainstorming, **architectural path** (sectioned
   design → written spec → implementation plan).
-- Status: Design D1–D45. Implementation plans: `docs/superpowers/plans/` (roadmap + Plan 1). Plan 1 (engine core) implemented on branch `feat/engine-core`.
+- Status: Design D1–D46. Implementation plans: `docs/superpowers/plans/` (roadmap + Plans 1–2). Plan 1 (engine core) implemented on branch `feat/engine-core`.
 
 ---
 
@@ -171,6 +171,7 @@ Autonomy ladder (applies to any industry):
 | D43 | **Encryption kept + UPS (resolves §5.2 / O16), checked against D34.** Disk encryption stays required on the host (D34 unchanged). Physical team hosts are advised to use a UPS so short power cuts don't restart them. **The engine never stores the disk-unlock password or recovery key** (storing it would defeat encryption at rest; consistent with D8/R4). Planned restarts that need an unlock (e.g. macOS `fdesetup authrestart`) happen only when a human starts them and types the password at that moment, scheduled in the quiet window. After an unplanned restart the host waits for a human to unlock it; the engine then sends the host-back-online notice (D38). Windows BitLocker with TPM unlocks at boot by design and satisfies D34. No TPM/network auto-unlock is configured on Linux by default. | 2026-10-06 |
 | D44 | **Implementation language: TypeScript on Node ≥ 22 (resolves O9).** Node is present wherever Claude Code or Codex is installed (both ship via npm), while macOS (since 12.3) and Windows ship no Python — so a Node package adds no install step on client machines (R3, D2). Also: official MCP TypeScript SDK; reuse of `skills-wiki-agent` LLM clients (§7.4). Chosen during planning on advisor input; open to user override at plan review. | 2026-10-06 |
 | D45 | **Report adds `in_progress`** as an overall status for an unfinished install with no blocking problem (spec §6.5 listed only ready / ready_with_limits / blocked). | 2026-10-06 |
+| D46 | **Plan 2 needs no secret; BRAIN moves to Plan 3.** Plan 2 = runtime profiles (JSON data), `installer probe` (C2, C4, C4 schema, C5), `https:` refs with a content-sha `recipe_version`, MODE phase, per-runtime hints, `INSTALL.md`. Plan 3 = secrets page + keychain **and** the BRAIN phase (Skills Wiki key, MCP registration, C6 probe, `skillswiki:` refs, combo check). Connector framework moves to Plan 5. **The engine, not the agent, registers the Skills Wiki MCP**, running the profile's registration command with the key read from the keychain, so the key never enters the agent's context (R4/D8 take precedence over D7). Claude Code headless flags verified live on 2.1.294: `-p --output-format json` (`.result`, `.session_id`, `.is_error`), `--json-schema` (`.structured_output`), `-r <id>`, tools off with `--tools "" --strict-mcp-config`. O6 resolved: `claude mcp add [-s scope] --transport http <name> <url> --header "Authorization: Bearer <key>"`. | 2026-10-08 |
 
 ---
 

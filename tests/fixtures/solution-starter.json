@@ -1,0 +1,18 @@
+{
+  "id": "fixture-starter",
+  "version": "1.0.0",
+  "steps": [
+    { "step_id": "preflight.probe", "phase": "PREFLIGHT", "type": "auto", "title": "Check what your agent can do", "why": "Later steps adapt to what your agent supports.", "blocking": true,
+      "auto": { "action": "probe_runtime", "args": { "profile": "fake-agent" } } },
+    { "step_id": "mode.shared-work", "phase": "MODE", "type": "ask", "title": "Is there shared work, such as a shared inbox, customer list or team reports?", "why": "Shared work needs one machine the whole team uses.", "blocking": true,
+      "input": { "kind": "choice", "options": ["no", "yes", "both"] } },
+    { "step_id": "mode.always-on", "phase": "MODE", "type": "ask", "title": "Must anything run when every laptop is closed?", "why": "Scheduled jobs and round-the-clock replies need a machine that stays on.", "blocking": true,
+      "input": { "kind": "choice", "options": ["no", "yes"] } },
+    { "step_id": "mode.decision-maker", "phase": "MODE", "type": "ask", "title": "Who is the decision maker?", "why": "This person approves important actions and receives urgent alerts.", "blocking": true,
+      "input": { "kind": "text" } },
+    { "step_id": "mode.derive", "phase": "MODE", "type": "auto", "title": "Choose the setup", "why": "Your answers decide between a personal, team host or hybrid setup.", "blocking": true,
+      "auto": { "action": "derive_mode", "args": { "shared_work": "mode.shared-work", "always_on": "mode.always-on", "decision_maker": "mode.decision-maker" } } },
+    { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,
+      "auto": { "action": "write_file", "args": { "path": "config/finished.txt", "content": "done\n" } } }
+  ]
+}

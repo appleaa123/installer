@@ -1,0 +1,8 @@
+{
+  "id": "missing-agent",
+  "name": "Missing Agent",
+  "min_version": "1.0.0",
+  "detect": { "cmd": ["installer-test-no-such-agent", "--version"], "match": "Missing Agent" },
+  "headless": { "cmd": ["installer-test-no-such-agent", "-p", "{prompt}"], "result_path": "result", "session_path": "session_id" },
+  "tos_review": { "status": "ok", "note": "Test profile whose command does not exist." }
+}

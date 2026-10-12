@@ -1,7 +1,10 @@
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
-import { dirname, relative as relativePath, resolve, sep } from "node:path";
+import { dirname, join, relative as relativePath, resolve, sep } from "node:path";
 import { InputError } from "./inputs.js";
-import type { Action, Check } from "./types.js";
+import { deriveModeAction } from "./mode.js";
+import { listBundledProfiles, loadProfileById } from "./profile.js";
+import { runProbe } from "./probe.js";
+import type { Action, Check, InstallState, StatePatch } from "./types.js";
 
 export interface CheckResult {
   readonly ok: boolean;
@@ -42,14 +45,27 @@ function stringArg(args: Args, key: string): string {
   return value;
 }
 
-const ACTIONS: Readonly<Record<string, (home: string, args: Args) => Promise<void>>> = {
-  noop: async () => undefined,
+/** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
+export const PROBE_DIR = join("runtime", "probe");
+
+type ActionRun = (home: string, args: Args, state: InstallState | undefined) => Promise<StatePatch>;
+
+const ACTIONS: Readonly<Record<string, ActionRun>> = {
+  noop: async () => ({}),
   write_file: async (home, args) => {
     const target = await confinedPath(home, stringArg(args, "path"));
     const content = args.content === undefined ? "" : stringArg(args, "content");
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
+    return {};
   },
+  probe_runtime: async (home, args) => {
+    const cwd = await confinedPath(home, PROBE_DIR);
+    await mkdir(cwd, { recursive: true, mode: 0o700 });
+    const profiles = typeof args.profile === "string" ? [await loadProfileById(args.profile)] : await listBundledProfiles();
+    return { runtime: await runProbe({ profiles, cwd }) };
+  },
+  derive_mode: async (_home, args, state) => deriveModeAction(args, state),
 };
 
 const CHECKS: Readonly<Record<string, (home: string, args: Args) => Promise<CheckResult>>> = {
@@ -68,10 +84,10 @@ const CHECKS: Readonly<Record<string, (home: string, args: Args) => Promise<Chec
 export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);
 export const KNOWN_CHECKS: readonly string[] = Object.keys(CHECKS);
 
-export async function runAction(home: string, action: Action): Promise<void> {
+export async function runAction(home: string, action: Action, state?: InstallState): Promise<StatePatch> {
   if (!Object.hasOwn(ACTIONS, action.action)) throw new InputError(`Unknown action '${action.action}'`);
   const run = ACTIONS[action.action];
-  await run(home, action.args ?? {});
+  return run(home, action.args ?? {}, state);
 }
 
 export async function runCheck(home: string, check: Check): Promise<CheckResult> {

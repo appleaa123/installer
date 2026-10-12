@@ -2,7 +2,7 @@ import { chmod, copyFile, mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { crashPoint } from "./crash.js";
 import { removeStaleTemps, syncDirectory, syncFile, writeSynced } from "./durable.js";
-import { STEP_STATUSES, type InstallState } from "./types.js";
+import { MODES, STEP_STATUSES, type InstallState } from "./types.js";
 
 export const STATE_FILE = join("state", "install-state.json");
 
@@ -42,11 +42,20 @@ function isStepRecord(value: unknown): boolean {
   );
 }
 
+function hasValidExtras(value: Record<string, unknown>): boolean {
+  const { mode, roles, runtime } = value;
+  if (mode !== undefined && !(MODES as readonly unknown[]).includes(mode)) return false;
+  if (roles !== undefined && !(isRecord(roles) && typeof roles.decision_maker === "string")) return false;
+  return runtime === undefined || (isRecord(runtime) && typeof runtime.support_level === "number");
+}
+
 export function isInstallState(value: unknown): value is InstallState {
   if (!isRecord(value) || value.schema !== 1 || typeof value.started_at !== "string") return false;
   const { solution, steps, audit_head: head } = value;
   if (!isRecord(solution) || !["ref", "id", "version"].every((key) => typeof solution[key] === "string")) return false;
+  if (solution.recipe_version !== undefined && typeof solution.recipe_version !== "string") return false;
   if (!isRecord(steps) || !Object.values(steps).every(isStepRecord)) return false;
+  if (!hasValidExtras(value)) return false;
   return head === undefined || (isRecord(head) && typeof head.seq === "number" && typeof head.hash === "string");
 }
 

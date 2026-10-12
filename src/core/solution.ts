@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
+import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
 
 export class SolutionError extends Error {
@@ -46,7 +47,20 @@ function checkTypeRules(step: StepDef, where: string): void {
   if (step.type === "agent_action" && (!step.intent || !step.verify)) throw new SolutionError(`${where}: agent_action steps need an intent and a check`);
 }
 
-function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">> {
+const PROFILE_ID = /^[a-z0-9-]+$/;
+
+/** Per-runtime lines for an agent_action, keyed by runtime profile id (D7 hint files). */
+function parseHints(value: unknown, where: string): Readonly<Record<string, readonly string[]>> {
+  if (!isRecord(value)) throw new SolutionError(`${where} must map runtime profile ids to lists of lines`);
+  return Object.fromEntries(
+    Object.entries(value).map(([id, lines]) => {
+      if (!PROFILE_ID.test(id) || !Array.isArray(lines) || lines.length === 0) throw new SolutionError(`${where}.${id} must be a non-empty list of lines`);
+      return [id, lines.map((line) => text(line, `${where}.${id}`))];
+    }),
+  );
+}
+
+function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">> {
   const result: Record<string, unknown> = {};
   if (Array.isArray(value.instructions)) {
     result.instructions = value.instructions.map((line) => text(line, `${where}.instructions`));
@@ -69,7 +83,10 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   if (verify) {
     result.verify = { check: verify.name, args: verify.args };
   }
-  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify">>;
+  if (value.hints !== undefined) {
+    result.hints = parseHints(value.hints, `${where}.hints`);
+  }
+  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">>;
 }
 
 function parseStep(value: unknown, index: number): StepDef {
@@ -89,6 +106,32 @@ function parseStep(value: unknown, index: number): StepDef {
   return step;
 }
 
+/** derive_mode reads earlier answers; refuse a solution whose references point nowhere (Review Focus 4). */
+function checkModeReferences(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    if (step.auto?.action !== "derive_mode") return;
+    const earlierAsks = new Map(steps.slice(0, index).filter((earlier) => earlier.type === "ask").map((earlier) => [earlier.step_id, earlier]));
+    for (const key of MODE_ARGS) {
+      const ref = step.auto.args?.[key];
+      const asked = typeof ref === "string" ? earlierAsks.get(ref) : undefined;
+      if (!asked || !acceptsModeQuestion(key, asked.input)) {
+        const rule = MODE_QUESTION_RULE[key];
+        throw new SolutionError(`Step '${step.step_id}': derive_mode args.${key} must name an earlier ask step with ${rule}, got ${JSON.stringify(ref ?? null)}`);
+      }
+    }
+  });
+}
+
+/** probe_runtime may only name a runtime profile id, never a file (D34: solution text never grants capabilities). */
+function checkProbeArgs(steps: readonly StepDef[]): void {
+  for (const step of steps) {
+    const profile = step.auto?.action === "probe_runtime" ? step.auto.args?.profile : undefined;
+    if (profile !== undefined && (typeof profile !== "string" || !PROFILE_ID.test(profile))) {
+      throw new SolutionError(`Step '${step.step_id}': probe_runtime args.profile must be a runtime profile id such as 'claude-code', not a path`);
+    }
+  }
+}
+
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -104,6 +147,8 @@ export function parseSolution(raw: unknown): Solution {
     if (index < previous) throw new SolutionError(`Step '${step.step_id}' is in phase ${step.phase}, earlier than the previous step`);
     return index;
   }, 0);
+  checkModeReferences(steps);
+  checkProbeArgs(steps);
   return { id, version, steps };
 }
 
@@ -117,15 +162,47 @@ export function parseSolutionText(text: string, where: string): Solution {
   return parseSolution(json);
 }
 
-export async function loadSolutionSource(ref: string): Promise<{ solution: Solution; text: string }> {
-  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': only file:<path> is supported in this version`);
-  const path = ref.slice("file:".length);
-  let text: string;
+export const MAX_SOLUTION_BYTES = 1_000_000;
+const FETCH_TIMEOUT_MS = 30_000;
+
+export type FetchText = (url: string) => Promise<string>;
+
+/** HTTPS only, follows redirects but never to another scheme, size-capped (Review Focus 3). */
+export async function fetchHttps(url: string): Promise<string> {
+  let response: Response;
   try {
-    text = await readFile(path, "utf8");
+    response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (error) {
+    throw new SolutionError(`Cannot fetch solution URL '${url}' (${(error as Error).message})`);
+  }
+  if (!response.url.startsWith("https:")) throw new SolutionError(`Solution URL '${url}' redirected away from https`);
+  if (!response.ok) throw new SolutionError(`Solution URL '${url}' answered HTTP ${response.status}`);
+  const text = await response.text();
+  if (Buffer.byteLength(text, "utf8") > MAX_SOLUTION_BYTES) {
+    throw new SolutionError(`Solution at '${url}' is larger than ${MAX_SOLUTION_BYTES} bytes`);
+  }
+  return text;
+}
+
+async function readLocal(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
   } catch {
     throw new SolutionError(`Cannot read solution file '${path}'`);
   }
+}
+
+export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps): Promise<{ solution: Solution; text: string }> {
+  if (ref.startsWith("skillswiki:")) {
+    throw new SolutionError("'skillswiki:' references need the Skills Wiki key step, which arrives in a later version; use a file: or https: reference");
+  }
+  if (ref.startsWith("https:")) {
+    const text = await fetchText(ref);
+    return { solution: parseSolutionText(text, ref), text };
+  }
+  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': use file:<path> or https://…`);
+  const path = ref.slice("file:".length);
+  const text = await readLocal(path);
   return { solution: parseSolutionText(text, path), text };
 }
 

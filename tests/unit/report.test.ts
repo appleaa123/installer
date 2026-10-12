@@ -71,3 +71,36 @@ describe("renderReport", () => {
     expect(text).toContain("Connect an optional extra channel — Not connected");
   });
 });
+
+describe("runtime line", () => {
+  const runtime = {
+    profile: "claude-code", agent_version: "2.1.294", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true,
+    c6_mcp: "not_probed", support_level: 2, tier: "compatible", notes: [],
+  } as const;
+
+  it("shows the agent and keeps a full runtime READY", () => {
+    const report = buildReport(basicSolution(), { ...allDone(), runtime });
+    expect(report.overall).toBe("ready");
+    expect(report.runtime_limits).toEqual([]);
+    expect(renderReport(report).split("\n")[2]).toBe("🤖 Agent      claude-code 2.1.294 — level 2 of 3 (MCP not checked yet)");
+  });
+
+  it("turns a missing capability into READY WITH LIMITS", () => {
+    const report = buildReport(basicSolution(), { ...allDone(), runtime: { ...runtime, c5_resume: false, support_level: 1 } });
+    expect(report.overall).toBe("ready_with_limits");
+    expect(report.runtime_limits).toEqual(["no session resume"]);
+  });
+
+  it("says fallbacks apply when no agent was recognised (Review Focus 2)", () => {
+    const unknown = { ...runtime, profile: null, agent_version: null, c4_headless: false, c4_schema: false, c5_resume: false, support_level: 0, tier: "unknown" } as const;
+    const report = buildReport(basicSolution(), { ...allDone(), runtime: unknown });
+    expect(report.overall).toBe("ready_with_limits");
+    expect(renderReport(report)).toContain("🤖 Agent      unknown agent — level 0 of 3 (no known agent profile; fallbacks apply, MCP not checked yet)");
+  });
+
+  it("prints no agent line before the probe has run", () => {
+    const report = buildReport(basicSolution(), allDone());
+    expect(report.runtime).toBeNull();
+    expect(renderReport(report)).not.toContain("Agent");
+  });
+});

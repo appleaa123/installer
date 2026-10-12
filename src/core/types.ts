@@ -57,6 +57,7 @@ export interface StepDef {
   readonly intent?: string;
   readonly auto?: Action;
   readonly verify?: Check;
+  readonly hints?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface Solution {
@@ -83,10 +84,37 @@ export interface AuditHead {
   readonly hash: string;
 }
 
+export const MODES = ["personal", "team_host", "hybrid"] as const;
+export type Mode = (typeof MODES)[number];
+
+export interface Roles {
+  readonly decision_maker: string;
+}
+
+/** Result of `installer probe` (spec §7.3). C6 is probed by Plan 3. */
+export interface CapabilityMap {
+  readonly profile: string | null;
+  readonly agent_version: string | null;
+  readonly c2_shell: boolean;
+  readonly c4_headless: boolean;
+  readonly c4_schema: boolean;
+  readonly c5_resume: boolean;
+  readonly c6_mcp: "not_probed";
+  readonly support_level: number;
+  readonly tier: "compatible" | "unknown";
+  readonly notes: readonly string[];
+}
+
 export interface InstallState {
   readonly schema: 1;
-  readonly solution: { readonly ref: string; readonly id: string; readonly version: string };
+  readonly solution: { readonly ref: string; readonly id: string; readonly version: string; readonly recipe_version?: string };
   readonly started_at: string;
   readonly steps: Readonly<Record<string, StepRecord>>;
   readonly audit_head?: AuditHead;
+  readonly mode?: Mode;
+  readonly roles?: Roles;
+  readonly runtime?: CapabilityMap;
 }
+
+/** What an auto action may change in the install state, merged in the same save as its step record. */
+export type StatePatch = Partial<Pick<InstallState, "mode" | "roles" | "runtime">>;

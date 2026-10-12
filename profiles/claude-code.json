@@ -1,0 +1,15 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "min_version": "2.1.0",
+  "detect": { "cmd": ["claude", "--version"], "match": "Claude Code" },
+  "headless": {
+    "cmd": ["claude", "-p", "{prompt}", "--output-format", "json", "--tools", "", "--strict-mcp-config"],
+    "result_path": "result",
+    "session_path": "session_id",
+    "error_path": "is_error"
+  },
+  "schema": { "flag": ["--json-schema", "{schema_json}"], "result_path": "structured_output" },
+  "resume": { "flag": ["-r", "{session_id}"] },
+  "tos_review": { "status": "ok", "note": "First-party CLI used headless by the client on their own account." }
+}
