@@ -1,6 +1,6 @@
 # Live setup guides — design
 
-Status: **draft for your review** (2026-10-12). Nothing is built. After you approve this file the next step is a written
+Status: **updated with your answers of 2026-10-12; awaiting your final approval of this file**. Nothing is built. After you approve this file the next step is a written
 implementation plan (`docs/superpowers/plans/`), reviewed before any code.
 
 ## 1. Why this exists
@@ -42,7 +42,9 @@ Wiki; Skills Wiki guide plus live check.)
 1. The install reaches the Google step. The agent runs `installer guide google-sheets` (read-only, no network).
 2. It gets the **outcome checklist**, the **official starting URLs** and the **symptom → fix table** (section 4.2).
 3. The agent opens those official pages with its own web tools, reads the current instructions, and walks the person
-   through them **one action at a time**, asking what the person sees before the next action.
+   through them **one action at a time**, asking what the person sees before the next action. The order is part of the
+   guide: the app is switched out of Testing **before** the first sign-in, because a sign-in made in Testing keeps its
+   7-day limit (the person would have to sign in again).
 4. If the agent has no web access, it gives the person the starting URLs and asks them to read each step aloud or
    describe their screen. If the documentation and the person's screen disagree, the agent says so and does not guess.
 5. The person enters the client ID and secret on the local page (`installer secret google`), as today.
@@ -62,7 +64,7 @@ A new optional `setup` object in the connector package. The package is already p
     "An OAuth client of type Desktop app (never Web application), with no redirect URI added",
     "The scope https://www.googleapis.com/auth/spreadsheets is requested",
     "The person's own Google address is allowed to sign in (a test user, or Workspace 'Internal')",
-    "The app is not left in 'Testing' status, or the person knows the sign-in lasts only 7 days",
+    "The app's publishing status is 'In production' (or the person uses Workspace 'Internal'), set BEFORE the person signs in. Never leave it in 'Testing': a Testing app's sign-in expires after 7 days, which would stop an unattended assistant every week",
     "The console's 'AI-powered agent' option is left unchecked"
   ],
   "sources": [
@@ -74,7 +76,7 @@ A new optional `setup` object in the connector package. The package is already p
     { "match": "redirect_uri_mismatch", "means": "The OAuth client is the wrong type", "fix": "Create a new client of type Desktop app; a Web application client cannot be used." },
     { "match": "access_denied", "means": "This Google address may not sign in to the app yet", "fix": "Add the address as a test user on the consent screen, or use Workspace 'Internal'." },
     { "match": "invalid_client", "means": "The client ID or secret is wrong", "fix": "Copy both again from the client's page; enter them on the sign-in page." },
-    { "match": "invalid_grant", "means": "The stored sign-in was revoked or expired", "fix": "Run 'installer secret google' again. If the app is in Testing status this happens every 7 days." },
+    { "match": "invalid_grant", "means": "The stored sign-in was revoked or expired", "fix": "Run 'installer secret google' again. If it keeps happening about every 7 days, the app is still in Testing status: switch it to In production in the consent screen settings first, then sign in again." },
     { "match": "SERVICE_DISABLED", "means": "The Google Sheets API is not enabled in the project", "fix": "Enable the Google Sheets API in the same Google Cloud project, then verify again." }
   ]
 }
@@ -113,8 +115,17 @@ follows `data.google` in the starter:
   3. a failure returns `{ ok: false, hint }` where `hint` is the matching `symptoms[].fix` (falling back to Google's code).
 - It calls only `oauth2.googleapis.com/token` and `sheets.googleapis.com`, the two hosts the project allows.
 
-The consent screen's publishing status is not readable through any API, so it stays a **checklist item** the agent asks
-about, not something the installer verifies.
+The consent screen's publishing status is not readable through the Sheets or OAuth APIs the project may call, so the
+agent **asks the person to confirm it** at the right point in the walk-through (before the first sign-in). Two extra
+safeguards, both to be confirmed in the plan's first task before they are relied on:
+
+- If Google's token response for a Testing app carries a field that says the refresh token expires (some reports name
+  `refresh_token_expires_in`; not confirmed), `oauth_ready` reads it from the sign-in exchange and **fails with the
+  Testing fix**. If the field does not exist, this safeguard is dropped, not faked.
+- The `invalid_grant` symptom (section 4.2) tells the person about Testing status when a sign-in stops working.
+
+The owner's own app also goes through a week-long real test (section 7, item 6) to prove that a production-status app's
+sign-in survives past 7 days.
 
 ### 4.6 Better errors at the token endpoint
 
@@ -148,7 +159,9 @@ the error shows up on the sign-in page or in a later `verify`. Codes with no mat
 4. `tests/unit/oauth-ready.test.ts` against the existing fake Google server: token refused → hint from the symptom;
    Sheets `404` → passed; Sheets `403 SERVICE_DISABLED` → the `SERVICE_DISABLED` fix.
 5. `tests/unit/google-auth.test.ts`: a refused code with a matching symptom appends its `fix`.
-6. Live (a person, your Mac): the same guide run with the real console, once with a deliberately wrong client type and
+6. Live, over a week (a person, your Mac): switch the owner's app to In production, sign in, and confirm the refresh token
+   still works after more than 7 days.
+7. Live (a person, your Mac): the same guide run with the real console, once with a deliberately wrong client type and
    once correct; confirm the `404` vs `403` assumption in 4.5 with the real Sheets API **before** relying on it.
 
 ## 8. Out of scope (possible follow-ups)
@@ -165,11 +178,18 @@ the error shows up on the sign-in page or in a later `verify`. Codes with no mat
 one small `src/core/guide-commands.ts` (`installer guide`) · `solutions/starter.json` · `INSTALL.md` · the tests in
 section 7 · `DECISIONS.md` (one new row) · `docs/human-tasks.md` (task 5).
 
-## 10. Questions for you
+## 10. Decisions taken (2026-10-12)
 
-1. Are the `outcome` items in 4.2 the right list? In particular: should "not left in Testing" be a hard requirement or a
-   warning the client may accept (the 7-day sign-in is a real cost for an unattended assistant)?
-2. Is one extra step (`data.google-ready`) in the starter acceptable, or should `secret_present` itself do the proof for
-   OAuth providers?
-3. Is the `404` probe with a made-up spreadsheet id acceptable to you as the readiness call, given it touches only the
-   Sheets API?
+1. **Not leaving the app in Testing is a hard requirement**, not a warning. The owner does not want clients signing in to
+   Google every week. The guide sets the status before the first sign-in; the installer enforces it where Google
+   exposes a signal (4.5) and otherwise explains it when `invalid_grant` appears.
+2. **One extra starter step (`data.google-ready`) is acceptable.**
+3. **The readiness probe (a Sheets call with a made-up spreadsheet id) is approved.** Its `404` assumption is still
+   confirmed against the real Sheets API in the plan's first task, before anything relies on it.
+
+## 11. Remaining unknowns, to settle in the plan's first task
+
+- Does an unverified app in production status keep a sign-in that lasts beyond 7 days for the Sheets scope? (Sources say
+  yes; the week-long test in section 7 proves it for the owner's app.)
+- Does Google's token response expose the Testing status? (4.5, first safeguard.)
+- Does a `404` from the Sheets API for an unknown spreadsheet id mean "API enabled and token good" in practice? (4.5.)
