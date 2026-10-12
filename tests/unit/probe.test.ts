@@ -1,11 +1,13 @@
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadProfile } from "../../src/core/profile.js";
+import { loadProfile, parseProfile } from "../../src/core/profile.js";
 import { runProbe } from "../../src/core/probe.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const FAKE = resolve("tests/fixtures/profiles/fake-agent.json");
 const MISSING = resolve("tests/fixtures/profiles/missing-agent.json");
+const CODEX = resolve("tests/fixtures/profiles/fake-codex.json");
 
 async function probe(drop?: string, timeoutMs?: number) {
   if (drop) vi.stubEnv("FAKE_AGENT_DROP", drop);
@@ -49,6 +51,26 @@ describe("runProbe", () => {
   it("returns an unknown runtime when no profile's agent is installed (Review Focus 2)", async () => {
     const map = await runProbe({ profiles: [await loadProfile(MISSING)], cwd: await makeTempHome() });
     expect(map).toMatchObject({ profile: null, tier: "unknown", support_level: 0, notes: ["No known agent was found; fallbacks will apply"] });
+  });
+
+  it("probes a Codex-shaped agent through JSON Lines, a schema file and its resume command (O1)", async () => {
+    const map = await runProbe({ profiles: [await loadProfile(CODEX)], cwd: await makeTempHome() });
+    expect(map).toEqual({
+      profile: "fake-codex", agent_version: "9.9.9", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true,
+      c6_mcp: "not_probed", support_level: 2, tier: "compatible", notes: [],
+    });
+  });
+
+  it("keeps the tier unknown while the profile's vendor terms are not reviewed (D32, O2)", async () => {
+    const raw = JSON.parse(await readFile(CODEX, "utf8")) as Record<string, unknown>;
+    const pending = parseProfile({ ...raw, tos_review: { status: "pending", note: "n" } }, dirname(CODEX));
+    const map = await runProbe({ profiles: [pending], cwd: await makeTempHome() });
+    expect(map).toMatchObject({ c4_headless: true, c5_resume: true, tier: "unknown", notes: ["Fake Codex's terms of service are not reviewed yet (tos_review: pending), so its tier stays unknown (D32)"] });
+  });
+
+  it("keeps an agent on Windows at tier unknown until Windows is certified (D115)", async () => {
+    const map = await runProbe({ profiles: [await loadProfile(FAKE)], cwd: await makeTempHome(), platform: "win32" });
+    expect(map).toMatchObject({ c4_headless: true, tier: "unknown", notes: ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs installer certify on Windows"] });
   });
 
   it("uses the first profile whose agent is installed", async () => {

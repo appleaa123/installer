@@ -4,13 +4,15 @@
  *   GOOGLE_TEST_SHEET_ID (a spreadsheet kept for testing)
  * in the environment; everything is skipped when any of them is empty. It calls only
  * https://oauth2.googleapis.com/token (the token refresh) and https://sheets.googleapis.com, and only touches the
- * test spreadsheet: it adds a dedicated tab, writes there, and deletes the tab afterwards. It never calls
- * spreadsheets.create (that would make a new file in the account); the offline tests cover it against the fake.
+ * test spreadsheet: it adds a dedicated tab, runs the Sheets adapter's contract there (the same checks the offline
+ * suite runs against the fake, D118), and deletes the tab afterwards. It never calls spreadsheets.create (that would
+ * make a new file in the account); the offline tests cover it against the fake.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConnector, type ConnectorDef } from "../../src/core/connectors.js";
 import { clientOwnedTokens, type AccessTokenSource } from "../../src/core/google-auth.js";
 import { sheetsClient, type SheetLocation } from "../../src/core/sheets.js";
+import { sheetsContract } from "../helpers/contracts.js";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
@@ -52,12 +54,5 @@ describe.skipIf(!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !SHEET_ID)("re
     await expect(tokens.accessToken()).resolves.toMatch(/^\S{20,}$/);
   });
 
-  it("writes a header, appends two rows, rewrites one and reads them back as text", async () => {
-    const sheets = sheetsClient(def, tokens, NO_OVERRIDE);
-    await sheets.writeRow(location, 1, ["name", "email", "notes"]);
-    await sheets.appendRow(location, ["Ada", "ada@example.com", "=1+1"]);
-    await sheets.appendRow(location, ["Grace", "grace@example.com", ""]);
-    await sheets.writeRow(location, 3, ["Grace H.", "grace@example.com", "met in May"]);
-    await expect(sheets.readRows(location)).resolves.toEqual([["name", "email", "notes"], ["Ada", "ada@example.com", "=1+1"], ["Grace H.", "grace@example.com", "met in May"]]);
-  });
+  sheetsContract(() => ({ client: sheetsClient(def, tokens, NO_OVERRIDE), location }));
 });

@@ -21,7 +21,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:live": "INSTALLER_LIVE=1 vitest run"
+    "test:live": "INSTALLER_LIVE=1 vitest run",
+    "certify": "npm run build && node dist/cli.js certify"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

@@ -26,13 +26,30 @@ describe("runtime profiles", () => {
   });
 
   it("lists the bundled profiles", async () => {
-    expect((await listBundledProfiles()).map((profile) => profile.id)).toEqual(["claude-code"]);
+    expect((await listBundledProfiles()).map((profile) => profile.id)).toEqual(["claude-code", "codex"]);
+  });
+
+  it("bundles Codex from its documented exec flags, terms reviewed (D32, D121), still not run (O1)", async () => {
+    const profile = await loadProfile("codex");
+    expect(profile).toMatchObject({ id: "codex", detect: { cmd: ["codex", "--version"], match: "codex-cli" }, tos_review: { status: "ok" } });
+    expect(profile.headless).toMatchObject({ cmd: ["codex", "exec", "--json", "--skip-git-repo-check", "{prompt}"], output: "jsonl", session_path: "thread_id", tools_off: ["--sandbox", "read-only"] });
+    expect(profile.schema).toEqual({ flag: ["--output-schema", "{schema_file}"], result_path: "item.text" });
+    expect(profile.resume).toEqual({ cmd: ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "{session_id}", "{prompt}"] });
+    expect(profile.mcp_register).toBeUndefined();
+    expect((await listBundledProfiles()).map((listed) => listed.id)).toContain("codex");
   });
 
   it("loads a profile by path and remembers its folder", async () => {
     const profile = await loadProfile(FAKE);
     expect(profile.id).toBe("fake-agent");
     expect(profile.dir).toBe(resolve("tests/fixtures/profiles"));
+  });
+
+  it("loads a Codex-shaped profile: JSON Lines output, a schema file and a resume command (O1)", async () => {
+    const profile = await loadProfile(resolve("tests/fixtures/profiles/fake-codex.json"));
+    expect(profile.headless).toMatchObject({ output: "jsonl", result_line: { path: "item.type", equals: "agent_message" } });
+    expect(profile.schema?.flag).toEqual(["--output-schema", "{schema_file}"]);
+    expect(profile.resume).toEqual({ cmd: expect.arrayContaining(["resume", "{session_id}", "{prompt}"]) });
   });
 
   it("names an unknown profile id", async () => {
@@ -51,6 +68,10 @@ describe("runtime profiles", () => {
     ["an mcp_register without {config_json}", { ...valid, mcp_register: { cmd: ["x", "mcp", "add", "{name}"] } }, /mcp_register.cmd must contain \{config_json\}/],
     ["an mcp_remove without {name}", { ...valid, mcp_remove: { cmd: ["x", "mcp", "remove"] } }, /mcp_remove.cmd must contain \{name\}/],
     ["an mcp_remove that uses {prompt}", { ...valid, mcp_remove: { cmd: ["x", "{name}", "{prompt}"] } }, /mcp_remove.cmd uses \{prompt\}/],
+    ["an output other than json or jsonl", { ...valid, headless: { ...valid.headless, output: "xml" } }, /headless.output must be json or jsonl/],
+    ["a result_line without equals", { ...valid, headless: { ...valid.headless, result_line: { path: "type" } } }, /headless.result_line.equals must be a non-empty string/],
+    ["a resume with both a flag and a command", { ...valid, resume: { flag: ["-r", "{session_id}"], cmd: ["x", "{session_id}", "{prompt}"] } }, /resume has either a flag or a cmd/],
+    ["a resume command without {prompt}", { ...valid, resume: { cmd: ["x", "resume", "{session_id}"] } }, /resume.cmd must contain \{prompt\}/],
   ])("refuses %s", (_name, raw, message) => {
     expect(() => parseProfile(raw, "/p")).toThrow(ProfileError);
     expect(() => parseProfile(raw, "/p")).toThrow(message);

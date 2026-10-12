@@ -8,6 +8,8 @@ import { alertsCommand } from "./core/alerts.js";
 import { approvalsCommand } from "./core/approval-commands.js";
 import { autonomyCommand } from "./core/autonomy.js";
 import { channelCommand } from "./core/channel-commands.js";
+import { certify } from "./core/certify.js";
+import { checkoutState, probeAgent, requireCheckout, vitestSuites } from "./core/certify-runs.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
 import { oauthConnectorFor } from "./core/connectors.js";
@@ -34,6 +36,7 @@ import { retentionCommand } from "./core/retention.js";
 import { packsCommand } from "./core/shadow.js";
 import { supportBundle } from "./core/support-bundle.js";
 import { uninstall } from "./core/uninstall.js";
+import { installerVersion } from "./core/version.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -51,7 +54,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -212,6 +215,16 @@ async function probeCommand(flags: Flags): Promise<CapabilityMap> {
   }
 }
 
+/** `installer certify --profile <id>` (D116): from a source checkout; the suites and the probe run for real, the record goes under the home. */
+async function certifyCommand(home: string, flags: Flags): Promise<unknown> {
+  const root = await requireCheckout();
+  const deps = {
+    runSuite: vitestSuites(root, process.env), probe: probeAgent, checkout: () => checkoutState(root), version: await installerVersion(),
+    env: process.env, platform: `${process.platform} ${process.arch}`, now: () => new Date().toISOString(),
+  };
+  return certify(home, flags.profile, deps);
+}
+
 /** `installer secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
 async function secretCommand(id: string): Promise<unknown> {
   const { url, pid } = await launchSecretPage(requireSecretId(id));
@@ -280,6 +293,9 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
   disconnect: (home, _flags, arg) => disconnect(home, requireArg(arg, "disconnect"), () => new Date().toISOString()),
   /** D103: reads the state itself, so a damaged state is a finding, not an exit 3. */
   doctor: (home) => doctorCommand(home, () => new Date().toISOString()),
+  certify: (home, flags) => certifyCommand(home, flags),
+  /** D119: which build this is, for a support request or a certification record. */
+  version: async () => ({ installer: await installerVersion(), node: process.version }),
 };
 
 /** Commands that run on the install in the home. */

@@ -61,6 +61,12 @@ async function personalHome(): Promise<string> {
 }
 
 describe("installer support bundle (§16.5, D110)", () => {
+  it("names the installer's version next to Node's, so a person can say which build they run (D119)", async () => {
+    const result = await supportBundle(await personalHome(), () => AT);
+    const bundle = JSON.parse(await readFile(result.file as string, "utf8"));
+    const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
+    expect(bundle.versions).toEqual({ installer: version, node: process.version, platform: `${process.platform} ${process.arch}` });
+  });
   it("holds the install's shape: versions, state without answers, report, runs, settings, counts, the audit check and the logs", async () => {
     const home = await personalHome();
     const result = await supportBundle(home, () => AT);

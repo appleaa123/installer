@@ -29,6 +29,7 @@ import { TICK_LOG } from "./scheduler.js";
 import { loadState } from "./state.js";
 import type { InstallState } from "./types.js";
 import { ENGINE_SECRETS, EXPORTS_DIR } from "./uninstall.js";
+import { installerVersion } from "./version.js";
 
 /**
  * `installer support bundle` (spec §16.5, D34, D110): one JSON file under `exports/` that the person reads and sends
@@ -168,7 +169,7 @@ async function bundleOf(home: string, state: InstallState, now: string): Promise
   const { solution } = await loadPinnedSolution(home);
   const secrets = Object.fromEntries(await Promise.all(ENGINE_SECRETS.map(async (id) => [id, (await getSecret(id)) !== null])));
   return {
-    format: 1, created_at: now, versions: { node: process.version, platform: `${process.platform} ${process.arch}` },
+    format: 1, created_at: now, versions: { installer: await installerVersion(), node: process.version, platform: `${process.platform} ${process.arch}` },
     state: stateView(state), report: buildReport(solution, state), doctor: await doctorView(home), readiness: await readConfig(home, READINESS_FILE),
     runs: await runsView(home), settings: await settings(home), counts: await counts(home, now), audit: await auditView(home, state),
     secrets_present: secrets, logs: { gateway: (await tail(home, LOG_FILE)).map(logLine), tick: (await tail(home, TICK_LOG)).map(logLine) },
