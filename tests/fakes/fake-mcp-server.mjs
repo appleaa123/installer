@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Test double for the hosted Skills Wiki MCP server (Streamable HTTP), shaped like the live answers
-// observed on 2026-10-08: 401 without the key, SSE answers with an mcp-session-id, 202 for the
+// observed on 2026-10-08: 401 without the key (403 since 2026-10-12, set FAKE_MCP_REJECT_STATUS=403), SSE answers with an mcp-session-id, 202 for the
 // initialized notification, get_active_combo and get_skill_resource results.
 // FAKE_MCP_KEY: the accepted Bearer key (default test-key). FAKE_MCP_COMBO: the active combo slug
 // (default demo-combo; empty = no combo activated). FAKE_MCP_DIR: folder served as <pack>/<skill>/<path>.
