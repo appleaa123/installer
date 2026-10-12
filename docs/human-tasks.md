@@ -46,15 +46,6 @@ Each task says why it is needed and what to do, step by step.
 6. Run `installer doctor` as `installer-engine`: the `host` check should say `readiness 5/5` (4/4 on Linux) and the `gateway` and `runner` checks `ok` after a minute. Decide approvals from Telegram; the terminal-only commands remain for a person at that account.
 7. Tell Claude the readiness score you saw and any check that stayed `unknown`.
 
-### 14. Certify Claude Code on your Mac (the Plan 10 live test)
-
-**Why:** there is no CI (O7, D48), so a runtime is Certified only after a person runs `installer certify` on a real machine and every check passes (D116). This runs the offline suite, every live check with your own keys and the probe on your Claude Code, and writes a dated record. It sends one Telegram message to your test chat and one email to your test mailbox, writes a test tab in your test spreadsheet (deleted afterwards), makes read-only Skills Wiki calls, registers a temporary Skills Wiki server in Claude Code (removed afterwards) and makes about six short `claude -p` calls on your subscription. About 15 minutes.
-
-1. Merge or check out `feat/certification`, with nothing uncommitted (`git status --short` prints nothing).
-2. Activate a combo in the Skills Wiki dashboard (the C6 rehearsal needs one).
-3. Open `docs/testing/2026-10-09-plan-10-live-test.md` and follow it in one terminal, in order, from the repository folder (Claude Code must trust it).
-4. Paste the record of Test 2 to Claude (`tier`, `reasons`, `offline`, `live`, `probe`). When the tier is `certified`, Claude puts its date, commit and Claude Code version in the README's "What is certified" table. Otherwise the `reasons` say what to fix.
-
 ### 15. Install Codex and certify it (O1)
 
 **Why:** the Codex profile (D113) was written from Codex's documentation; nobody has run it, because Codex is not installed on the development machine. Its terms are reviewed (task 17, D121); its tier stays Unknown until a certification passes. It uses your ChatGPT plan's Codex allowance (a few short calls).
@@ -107,3 +98,4 @@ Each task says why it is needed and what to do, step by step.
 - 2026-10-12: Setup tasks 5 (Google OAuth client, as a Desktop app; its shared-app decision stays open), 7 (Telegram bot) and 8 (mailbox) done; the dev keys file was checked (the Telegram chat ID had held a URL and was corrected).
 - 2026-10-12: Task 17, Codex terms read by you: `tos_review: ok` (D121). Antigravity stays out of automated use (D114).
 - 2026-10-12: Live guides for Plans 2 to 9 (tasks 2, 3, 4, 6, 9, 10, 11, 12) all passed and are recorded in each guide on its own branch. Findings fixed: the hosted Skills Wiki answers a wrong key with 403 (treated as a rejected key), a stale invite date in a gateway unit test. Open for review: undeliverable approval announcements are retried every minute (audit noise), and the host readiness score ignores checks it cannot read.
+- 2026-10-12: Task 14, Claude Code certified on macOS (Intel) at commit `437692c`, Claude Code 2.1.296: 1,360 offline and 18 live tests passed (README table updated). First run was Compatible only because the Google refresh token had been revoked when the app's access was removed after the Plan 5 guide; keep the app's access until certification is done, and reload the dev keys file in the terminal after changing it.
