@@ -23,15 +23,15 @@ would run. Test 3 creates one spreadsheet named `contact` in your Google Drive; 
 
 | Test | What it checks | Pass / Fail | Notes |
 |---|---|---|---|
-| 0 | Setup | | |
-| 1 | The automated live test against the real Sheets API | | |
-| 2 | Signing in through the installer's page | | |
-| 3 | A new spreadsheet for the contacts | | |
-| 4 | Mapping the columns | | |
-| 5 | A new record waits for your approval | | |
-| 6 | A change made in the sheet meanwhile is refused | | |
-| 7 | An import that overwrites needs the decision maker | | |
-| 8 | Disconnect and clean up | | |
+| 0 | Setup | Pass | Commit b5dd237, Node v22.14.0 |
+| 1 | The automated live test against the real Sheets API | Pass | 2 of 2; rerun with the Desktop client values also 2 of 2 |
+| 2 | Signing in through the installer's page | Pass | First attempt: `redirect_uri_mismatch` with a Web application client; a Desktop app client worked |
+| 3 | A new spreadsheet for the contacts | Pass | `connect --sheet new` and `verify data.connect` as expected |
+| 4 | Mapping the columns | Pass | Header read back as name, email, notes; mismatch error exit 2 |
+| 5 | A new record waits for your approval | Pass | Create refused at L2, approved, created; `find` read Ada back from the sheet |
+| 6 | A change made in the sheet meanwhile is refused | Pass | Update refused after the hand edit of C2 |
+| 7 | An import that overwrites needs the decision maker | Pass | L3 floor; `--as Owner` needed; created 1, changed 1 |
+| 8 | Disconnect and clean up | Pass | Disconnect deleted the sign-in; access revoked; sheet and folder deleted |
 
 ---
 
@@ -56,8 +56,8 @@ cd $T
 **Expected:** `which installer` prints `<your home>/installer-plan5-test/npm/bin/installer`.
 
 **Record:**
-- Commit shown by `git log`:
-- Pass / Fail:
+- Commit shown by `git log`: b5dd237 (fix(core): disconnect even when a connector is broken)
+- Pass / Fail: Pass (2026-10-12)
 
 ---
 
@@ -78,8 +78,8 @@ cd $T
 `installer-live-…` tab.
 
 **Record:**
-- Last two lines:
-- Pass / Fail:
+- Last two lines: `Test Files  1 passed (1)`, `Tests  2 passed (2)`
+- Pass / Fail: Pass
 
 ---
 
@@ -128,13 +128,15 @@ page lists only "See, edit, create, and delete all your Google Sheets spreadshee
 close this tab."; `verify` prints `{"status":"passed","next":{"status":"step",…"data.connect"…}}`; the last line is
 `keychain item present`.
 
+The OAuth client **must be of type Desktop app**. A Web application client makes Google answer `Error 400: redirect_uri_mismatch` because the installer's page uses a random local port (`http://127.0.0.1:<port>/`) that cannot be registered. Leave the console's "Use this client for an AI-powered agent" box unchecked: the installer is a local program that calls the Sheets API itself.
+
 To fill `GOOGLE_REFRESH_TOKEN` for Test 1, run `security find-generic-password -s installer -a google -w` in your own
 terminal and copy the `refresh_token` value from the JSON it prints into your `.env` file. Never paste it into the chat.
 
 **Record:**
-- What Google's consent page said (and whether it showed `redirect_uri_mismatch`):
-- Output of `verify`:
-- Pass / Fail:
+- What Google's consent page said (and whether it showed `redirect_uri_mismatch`): with a Web application client: `Error 400: redirect_uri_mismatch`, "Access blocked: This app's request is invalid". With a Desktop app client: signed in, browser ended on "Done, you can close this tab."
+- Output of `verify`: `{"status":"passed","next":{"status":"step",…"data.connect"…}}`; the keychain item was present
+- Pass / Fail: Pass after switching to a Desktop app client
 
 ---
 
@@ -150,8 +152,8 @@ Open the `url`: a spreadsheet named `contact` with one tab `contact` whose row 1
 prints `{"status":"passed",…}`.
 
 **Record:**
-- Spreadsheet id:
-- Pass / Fail:
+- Spreadsheet id: (deleted at the end of the test)
+- Pass / Fail: Pass
 
 ---
 
@@ -170,8 +172,8 @@ exits 2 with `Cannot map contact: 'Name' (for name) is not a column in row 1; co
 prints `{"status":"mapped",…}`; `verify` prints `{"status":"passed","next":{"status":"complete"}}`.
 
 **Record:**
-- Exit code of the second command:
-- Pass / Fail:
+- Exit code of the second command: 2
+- Pass / Fail: Pass
 
 ---
 
@@ -192,7 +194,7 @@ it first…`; the request prints item `1` with `"level":"L2"` and `"expected_val
 `find` lists Ada. Row 2 of the spreadsheet in the browser now holds `Ada | ada@example.com`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (the first attempt failed only because of a line break pasted into the JSON; the installer refused broken JSON cleanly)
 
 ---
 
@@ -216,7 +218,7 @@ from approval 2 (the tool, its arguments or the current values changed); request
 `edited by hand`.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass
 
 ---
 
@@ -238,7 +240,7 @@ run it again with --as <decision maker's name>`); the second approves; the impor
 `{"entity":"contact","created":1,"changed":1,"unchanged":0}`; the sheet shows Ada's new note and a row for Grace.
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (create 1, changed 1, unchanged 0)
 
 ---
 
@@ -260,4 +262,4 @@ rm -rf $T
 ```
 
 **Record:**
-- Pass / Fail:
+- Pass / Fail: Pass (access removed at myaccount.google.com, the `contact` spreadsheet and the test folder deleted; the `google` keychain item is gone)
