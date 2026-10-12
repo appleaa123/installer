@@ -6,6 +6,7 @@ import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { deriveModeAction } from "./mode.js";
+import { oauthReady } from "./oauth-ready.js";
 import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { probeMcp, runProbe, withMcpProbe } from "./probe.js";
 import { setSandboxMode } from "./sandbox.js";
@@ -161,6 +162,8 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     if ((await getSecret(id)) !== null) return { ok: true };
     return { ok: false, hint: typeof args.hint === "string" ? args.hint : `No '${id}' key is stored yet: run 'installer secret ${id}', enter it on the page that opens, then run the verify again` };
   },
+  /** Live setup guides 4.5: the connector's sign-in works and its API answers (the person's own Google app is set up right). */
+  oauth_ready: async (_home, args) => oauthReady(stringArg(args, "id")),
   /** D37: the person activates the combo in the Skills Wiki dashboard; the engine asks get_active_combo itself. */
   combo_active: async (_home, args, state) => {
     if (await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url))) return { ok: true };
