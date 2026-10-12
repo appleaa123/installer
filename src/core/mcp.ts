@@ -74,7 +74,7 @@ async function post(target: McpTarget, body: unknown, sessionId?: string | null)
   } catch (error) {
     throw new ActionFailure(`Cannot reach Skills Wiki at '${target.url}' (${describe(error)})`);
   }
-  if (response.status === 401) throw new ActionFailure(KEY_REJECTED_HINT);
+  if (response.status === 401 || response.status === 403) throw new ActionFailure(KEY_REJECTED_HINT);
   if (!response.ok) throw new ActionFailure(`Skills Wiki answered HTTP ${response.status}`);
   const text = await readCapped(response);
   return { text, contentType: response.headers.get("content-type") ?? "", sessionId: response.headers.get("mcp-session-id") };
