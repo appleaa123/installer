@@ -75,11 +75,11 @@ Each task says why it is needed and what to do, step by step.
 
 ### 20. Prove that a production-status Google sign-in no longer expires after 7 days
 
-**Why:** the guide tells clients to leave Testing status so the sign-in does not expire weekly. Google marks a sign-in that expires by adding `refresh_token_expires_in` to the token response (seen on your app on 2026-10-12, while it was in Testing). About ten minutes now; a week later one repeat check.
+**Why:** the guide tells clients to leave Testing status so the sign-in does not expire weekly. The token response carried `refresh_token_expires_in` on your app on 2026-10-12, while it was in Testing; it is believed to mark a refresh token that expires, and this task confirms that. About ten minutes now; a week later one repeat check.
 
 1. In the Google Cloud console, set your test app's publishing status to **In production** (consent screen / Audience page).
-2. Run `installer secret google` and sign in again, then copy the new `refresh_token` from `security find-generic-password -s installer -a google -w` into `GOOGLE_REFRESH_TOKEN` in `~/.config/installer-dev/.env` (do not paste it in the chat). Delete the temporary keychain item afterwards: `security delete-generic-password -s installer -a google`.
-3. In a terminal: `set -a; . ~/.config/installer-dev/.env; set +a; node docs/testing/google-token-probe.mjs`. Tell Claude whether the first line still lists `refresh_token_expires_in`. If it no longer does, the sign-in is not marked to expire; if it still does, the guide's wording must change.
+2. Run `installer secret google` and sign in again. Then copy only the new `refresh_token` to your clipboard, without printing it: `security find-generic-password -s installer -a google -w | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).refresh_token))' | pbcopy`, and paste it as the value of `GOOGLE_REFRESH_TOKEN` in `~/.config/installer-dev/.env` (never in the chat). Delete the temporary keychain item afterwards: `security delete-generic-password -s installer -a google`.
+3. In a terminal, from the repository folder, in a subshell so the keys do not stay in your terminal: `( set -a; . ~/.config/installer-dev/.env; node docs/testing/google-token-probe.mjs )`. Tell Claude whether the first line still lists `refresh_token_expires_in`. If it no longer does, the sign-in is not marked to expire; if it still does, the guide's wording must change.
 4. After 8 days or more, run the same command again (token endpoint 200 means the sign-in survived). Tell Claude, and Claude records the date in D123.
 
 ## Optional

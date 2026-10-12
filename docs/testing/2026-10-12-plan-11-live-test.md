@@ -56,10 +56,10 @@ installer guide nope; echo "exit $?"
 
 ## Test 2: The readiness check against real Google
 
-Claude writes `$T/solution-ready.json` for you (a small solution with the two Google steps). Your Google app must already be set to **In production** (task 20, step 1). Then:
+The small solution with the two Google steps is `docs/testing/plan-11-solution-ready.json` in the repository. Your Google app must already be set to **In production** (task 20, step 1). Then:
 
 ```bash
-installer start --solution file:$T/solution-ready.json
+installer start --solution file:$REPO/docs/testing/plan-11-solution-ready.json
 installer secret google
 ```
 
@@ -96,7 +96,7 @@ On the page, type the right client ID but a **wrong** client secret (for example
 
 ## Test 4: Clean up
 
-If you are doing task 20, skip `disconnect` and keep `$T`, and run this test after task 20 ends: both delete the stored sign-in that task 20 needs.
+`disconnect` only deletes the stored sign-in from your keychain; it does not revoke anything at Google. Task 20 creates its own sign-in, so this test can run before or after it.
 
 ```bash
 installer disconnect google-sheets
