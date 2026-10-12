@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConnector, type ConnectorDef } from "../../src/core/connectors.js";
 import { ActionFailure } from "../../src/core/failure.js";
-import { authorizeUrl, connectorTokens, exchangeCode, parseSignIn, pkcePair } from "../../src/core/google-auth.js";
+import { authorizeUrl, connectorTokens, exchangeCode, parseSignIn, pkcePair, symptomHelp } from "../../src/core/google-auth.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -90,5 +90,40 @@ describe("the loopback sign-in pieces (D66)", () => {
     const tokens = await connectorTokens(def, await env(SIGNED_IN));
     await fake.debug("/debug/revoke", {});
     await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_grant): run 'installer secret google' to sign in again");
+  });
+});
+
+describe("Google's refusals carry the setup guide's help (live setup guides, 4.6)", () => {
+  const WRONG_SECRET = JSON.stringify({ client_id: "client-1", client_secret: "wrong", refresh_token: "refresh-1" });
+
+  it("adds what it means, the fix, where to look and what to search to a refused stored sign-in", async () => {
+    const tokens = await connectorTokens(def, await env(WRONG_SECRET));
+    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'installer secret google' to sign in again");
+    await expect(tokens.accessToken()).rejects.toThrow("The client ID or secret is wrong. Copy both again from the client's page and enter them on the sign-in page. Look at: Open the client's page under Credentials and compare the client ID with what was typed. Search for: \"Google OAuth invalid_client client ID secret\"");
+  });
+
+  it("adds the same help to a refused sign-in on the sign-in page's code exchange", async () => {
+    const grant = { code: "code-1", redirectUri: "http://127.0.0.1:1234/", verifier: "v".repeat(43) };
+    await expect(exchangeCode(def.auth, { client_id: "client-1", client_secret: "wrong" }, grant, await env(), def.setup?.symptoms)).rejects.toThrow("Search for:");
+  });
+
+  it("leaves a refusal that matches no symptom exactly as it was, and matches the whole code only", () => {
+    expect(symptomHelp("temporarily_unavailable", def.setup?.symptoms)).toBe("");
+    expect(symptomHelp("invalid_client")).toBe("");
+    expect(symptomHelp("not_invalid_client_at_all", def.setup?.symptoms)).toBe("");
+  });
+
+  it("tells a revoked sign-in about the Testing status", async () => {
+    const second = await startFakeGoogle();
+    try {
+      await second.debug("/debug/revoke", {});
+      const value = { ...second.env, INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+      await setSecret("google", SIGNED_IN, value);
+      const tokens = await connectorTokens(def, value);
+      await expect(tokens.accessToken()).rejects.toThrow("the app is still in Testing status: switch it to In production first");
+      await expect(tokens.accessToken()).rejects.toThrow("The stored sign-in was revoked or expired.");
+    } finally {
+      second.stop();
+    }
   });
 });

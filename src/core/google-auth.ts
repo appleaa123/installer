@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { connectorUrl, type ConnectorAuth, type ConnectorDef } from "./connectors.js";
+import { connectorUrl, type ConnectorAuth, type ConnectorDef, type ConnectorSymptom } from "./connectors.js";
 import { ActionFailure } from "./failure.js";
 import { getSecret } from "./keychain.js";
 
@@ -28,6 +28,12 @@ type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
 const again = (secretId: string): string => `run 'installer secret ${secretId}' to sign in again`;
+
+/** The setup guide's help for Google's error code: what it means, the fix, where to look and what to search; empty when no symptom matches the whole code (live setup guides, 4.6). */
+export function symptomHelp(code: string, symptoms: readonly ConnectorSymptom[] = []): string {
+  const found = symptoms.find((symptom) => symptom.match === code);
+  return found ? `. ${found.means}. ${found.fix} Look at: ${found.look} Search for: "${found.search}"` : "";
+}
 
 export function parseSignIn(text: string, secretId = "google"): SignIn {
   let raw: unknown;
@@ -60,13 +66,13 @@ async function postToken(auth: ConnectorAuth, form: Readonly<Record<string, stri
 }
 
 /** Refreshes on first use and again shortly before expiry; one keychain read per source. */
-export function clientOwnedTokens(auth: ConnectorAuth, signIn: SignIn, env: Env = process.env): AccessTokenSource {
+export function clientOwnedTokens(auth: ConnectorAuth, signIn: SignIn, env: Env = process.env, symptoms: readonly ConnectorSymptom[] = []): AccessTokenSource {
   let cached: { readonly token: string; readonly until: number } | null = null;
   return {
     accessToken: async () => {
       if (cached && Date.now() < cached.until) return cached.token;
       const form = { grant_type: "refresh_token", refresh_token: signIn.refresh_token, client_id: signIn.client_id, client_secret: signIn.client_secret };
-      const body = await postToken(auth, form, (code) => `Google refused the stored sign-in (${code}): ${again(auth.secret_id)}`, env);
+      const body = await postToken(auth, form, (code) => `Google refused the stored sign-in (${code}): ${again(auth.secret_id)}${symptomHelp(code, symptoms)}`, env);
       if (typeof body.access_token !== "string") throw new ActionFailure("Google's sign-in service returned no access token");
       const lifetime = typeof body.expires_in === "number" ? body.expires_in * 1000 : 0;
       cached = { token: body.access_token, until: Date.now() + lifetime - EXPIRY_MARGIN_MS };
@@ -79,7 +85,7 @@ export function clientOwnedTokens(auth: ConnectorAuth, signIn: SignIn, env: Env 
 export async function connectorTokens(def: ConnectorDef, env: Env = process.env): Promise<AccessTokenSource> {
   const stored = await getSecret(def.auth.secret_id, env);
   if (stored === null) throw new ActionFailure(`No Google sign-in is stored yet: run 'installer secret ${def.auth.secret_id}' and sign in on the page it opens`);
-  return clientOwnedTokens(def.auth, parseSignIn(stored, def.auth.secret_id), env);
+  return clientOwnedTokens(def.auth, parseSignIn(stored, def.auth.secret_id), env, def.setup?.symptoms);
 }
 
 /** PKCE (RFC 7636, S256): the verifier stays on this machine, Google sees only the challenge. */
@@ -104,9 +110,9 @@ export interface CodeGrant {
 }
 
 /** Exchanges the code from the consent page for the refresh token kept in the keychain. */
-export async function exchangeCode(auth: ConnectorAuth, client: OAuthClient, grant: CodeGrant, env: Env = process.env): Promise<string> {
+export async function exchangeCode(auth: ConnectorAuth, client: OAuthClient, grant: CodeGrant, env: Env = process.env, symptoms: readonly ConnectorSymptom[] = []): Promise<string> {
   const form = { grant_type: "authorization_code", code: grant.code, redirect_uri: grant.redirectUri, code_verifier: grant.verifier, ...client };
-  const body = await postToken(auth, form, (code) => `Google refused the sign-in (${code})`, env);
+  const body = await postToken(auth, form, (code) => `Google refused the sign-in (${code})${symptomHelp(code, symptoms)}`, env);
   if (typeof body.refresh_token !== "string") {
     throw new ActionFailure("Google returned no refresh token: remove the installer's access in your Google account's third-party access page, then sign in again");
   }
