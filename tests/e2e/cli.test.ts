@@ -106,7 +106,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url, --as, --reason`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url, --as, --reason, --sheet`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
@@ -326,10 +326,19 @@ describe("installer CLI", () => {
       await expect(getSecret("skillswiki", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
     });
 
-    it("only knows skillswiki in this version, exit 2", async () => {
+    it("knows skillswiki and the pinned connectors, exit 2 for anything else", async () => {
       const result = runCli(["disconnect", "gmail"], { home: await makeTempHome() });
       expect(result.code).toBe(2);
-      expect(result.json).toMatchObject({ error: "Only 'skillswiki' can be disconnected in this version" });
+      expect(result.json).toMatchObject({ error: "'gmail' cannot be disconnected; this version can disconnect: skillswiki, google-sheets" });
+    });
+
+    it("disconnects a connector: deletes its sign-in and says where to remove the grant (§14.2)", async () => {
+      const env = await keychainEnv();
+      await setSecret("google", '{"client_id":"a","client_secret":"b","refresh_token":"c"}', { INSTALLER_KEYCHAIN: "file", ...env });
+      const result = runCli(["disconnect", "google-sheets"], { home: await makeTempHome(), env });
+      expect(result.json).toEqual({ status: "disconnected", connector: "google-sheets", secret_deleted: true, note: expect.stringContaining("open https://myaccount.google.com/connections") });
+      await expect(getSecret("google", { INSTALLER_KEYCHAIN: "file", ...env })).resolves.toBeNull();
+      expect(runCli(["disconnect", "google-sheets"], { home: await makeTempHome(), env }).json).toMatchObject({ secret_deleted: false });
     });
   });
   it("report prints text by default and JSON with --json", async () => {

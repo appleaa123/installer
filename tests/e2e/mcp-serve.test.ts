@@ -25,7 +25,10 @@ describe("installer mcp-serve (D56)", () => {
     runCli(["start", "--solution", FIXTURE_REF], { home });
     const server = await connect(home);
     const listed = (await server.request("tools/list")) as { result: { tools: { name: string }[] } };
-    expect(listed.result.tools.map((tool) => tool.name)).toEqual(["approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete"]);
+    expect(listed.result.tools.map((tool) => tool.name)).toEqual([
+      "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
+      "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
+    ]);
     expect(await server.close()).toBe(0);
     expect(server.lines).toHaveLength(3);
     expect(server.lines.every((line) => (JSON.parse(line) as { jsonrpc: string }).jsonrpc === "2.0")).toBe(true);

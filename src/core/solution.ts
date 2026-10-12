@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
+import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
 
@@ -145,17 +146,40 @@ function checkBrainOrder(steps: readonly StepDef[]): void {
 }
 const SECRET_ID = /^[a-z0-9-]+$/;
 
-/** A secret step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
+/** A secret or oauth step names its id in input.provider and is confirmed by secret_present for that id, so `installer secret <provider>` always fits (§8.3). */
 function checkSecretSteps(steps: readonly StepDef[]): void {
   for (const step of steps) {
-    if (step.type !== "human_action" || step.input?.kind !== "secret") continue;
-    const provider = step.input.provider;
-    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a secret step needs input.provider, the secret id entered with 'installer secret <provider>'`);
+    const kind = step.input?.kind;
+    if (step.type !== "human_action" || (kind !== "secret" && kind !== "oauth")) continue;
+    const provider = step.input?.provider;
+    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a ${kind} step needs input.provider, the secret id entered with 'installer secret <provider>'`);
     if (step.verify?.check !== "secret_present" || step.verify.args?.id !== provider) {
-      throw new SolutionError(`Step '${step.step_id}': a secret step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
+      throw new SolutionError(`Step '${step.step_id}': a ${kind} step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
     }
   }
 }
+/** source_present and mapping_present name an entity of the solution's own data contract (§9.4). */
+function checkDataSteps(steps: readonly StepDef[], contract: DataContract | undefined): void {
+  for (const step of steps) {
+    const check = step.verify?.check;
+    if (check !== "source_present" && check !== "mapping_present") continue;
+    const entity = step.verify?.args?.entity;
+    if (typeof entity !== "string" || !contract || !Object.hasOwn(contract.entities, entity)) {
+      throw new SolutionError(`Step '${step.step_id}': ${check} needs args.entity, an entity of the solution's data_contract`);
+    }
+  }
+}
+
+function parseDataContract(value: unknown): DataContract | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return parseContract(value);
+  } catch (error) {
+    if (error instanceof ContractError) throw new SolutionError(error.message);
+    throw error;
+  }
+}
+
 export function parseSolution(raw: unknown): Solution {
   if (!isRecord(raw)) throw new SolutionError("Solution must be a JSON object");
   const id = text(raw.id, "id");
@@ -175,7 +199,9 @@ export function parseSolution(raw: unknown): Solution {
   checkProbeArgs(steps);
   checkSecretSteps(steps);
   checkBrainOrder(steps);
-  return { id, version, steps };
+  const contract = parseDataContract(raw.data_contract);
+  checkDataSteps(steps, contract);
+  return { id, version, steps, ...(contract ? { data_contract: contract } : {}) };
 }
 
 export function parseSolutionText(text: string, where: string): Solution {

@@ -11,10 +11,10 @@ export type Level = (typeof LEVELS)[number];
 export const FLOOR_CATEGORIES = ["legal_notice", "money", "contract", "irreversible", "personal_data_export", "policy_change", "protected_ground"] as const;
 export type FloorCategory = (typeof FLOOR_CATEGORIES)[number];
 
-/** Field tags (spec §9.3); the data contract that assigns them arrives in Plan 5. */
+/** Field tags (spec §9.3), assigned by the data contract (src/core/contract.ts). */
 export const FIELD_TAGS = ["financial", "protected_ground", "personal"] as const;
 export type FieldTag = (typeof FIELD_TAGS)[number];
-const FLOOR_TAGS: readonly FieldTag[] = ["financial", "protected_ground"];
+export const FLOOR_TAGS: readonly FieldTag[] = ["financial", "protected_ground"];
 
 /** A tool that declares no level is an ordinary write (§11.4). */
 export const DEFAULT_LEVEL: Level = "L2";
@@ -27,7 +27,7 @@ export interface FieldRef {
   readonly field: string;
 }
 
-/** Where field tags come from: the data contract (Plan 5). Until then nothing is tagged. */
+/** Where field tags come from: the pinned data contract (`contractTags`); NO_TAGS when the install has none. */
 export type TagSource = (field: FieldRef) => readonly FieldTag[];
 export const NO_TAGS: TagSource = () => [];
 

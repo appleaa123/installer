@@ -1,6 +1,8 @@
 import { appendAudit } from "./audit.js";
+import { contractTags } from "./contract.js";
 import { ToolRefusal, actionHash, redeemToken, type PreparedAction } from "./approvals.js";
 import { InputError } from "./inputs.js";
+import { loadPinnedContract } from "./pin.js";
 import { NO_TAGS, deriveLevel, loadClientRules, needsApproval, type ClientRules, type FieldRef, type FloorCategory, type Level, type TagSource } from "./levels.js";
 
 export type ToolArgs = Readonly<Record<string, unknown>>;
@@ -26,6 +28,8 @@ export interface ToolDef {
   /** Declared level (connector `risk.actions[tool].level` later); none means L2 (§11.4). */
   readonly level?: Level;
   readonly categories?: readonly FloorCategory[];
+  /** Floor categories that depend on the call: its arguments and the live expected values (D71: an import that overwrites). */
+  readonly floor?: (args: ToolArgs, expected: ToolArgs) => readonly FloorCategory[];
   /** Approval bookkeeping (approvals.*): fixed L0, never raised, never gated. */
   readonly meta?: boolean;
   /** Checks and normalises the arguments; unknown keys are refused, so the model can never pass a level. */
@@ -85,7 +89,8 @@ export function idArg(args: ToolArgs, key: string, tool: string): number {
 export async function prepareAction(ctx: ToolContext, tool: ToolDef, args: ToolArgs): Promise<PreparedAction> {
   const parsed = tool.parse(args);
   const expected = tool.expected ? await tool.expected(ctx, parsed) : {};
-  const facts = { tool: tool.name, categories: tool.categories ?? [], writes: tool.writes?.(parsed) ?? [], ...(tool.level ? { level: tool.level } : {}) };
+  const categories = [...(tool.categories ?? []), ...(tool.floor?.(parsed, expected) ?? [])];
+  const facts = { tool: tool.name, categories, writes: tool.writes?.(parsed) ?? [], ...(tool.level ? { level: tool.level } : {}) };
   const { level, reasons } = tool.meta ? { level: "L0" as const, reasons: ["approval bookkeeping (fixed L0)"] } : deriveLevel(facts, ctx.tags, ctx.rules);
   return { tool: tool.name, args: parsed, expected_values: expected, level, reasons, action_hash: actionHash(tool.name, parsed, expected) };
 }
@@ -151,6 +156,8 @@ export function describeTools(registry: ToolRegistry): readonly { name: string; 
   }));
 }
 
+/** Field tags come from the data contract the install pinned (§9.3); a home without one has no tagged fields. */
 export async function toolContext(home: string, via: "mcp" | "cli", registry: ToolRegistry, now: () => string = () => new Date().toISOString()): Promise<ToolContext> {
-  return { home, now, via, registry, tags: NO_TAGS, rules: await loadClientRules(home) };
+  const contract = await loadPinnedContract(home);
+  return { home, now, via, registry, tags: contract ? contractTags(contract) : NO_TAGS, rules: await loadClientRules(home) };
 }

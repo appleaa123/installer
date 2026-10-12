@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { appendAudit } from "./audit.js";
+import { CONNECTOR_SECRETS, type ConnectorDef, loadConnector, newestVersion } from "./connectors.js";
 import { InputError } from "./inputs.js";
 import { deleteSecret } from "./keychain.js";
 import { PROFILE_DIR_ENV, listBundledProfiles, loadProfile, loadProfileById, type RuntimeProfile } from "./profile.js";
@@ -14,6 +15,16 @@ export interface Disconnected {
   readonly secret_deleted: boolean;
   readonly note?: string;
 }
+
+export interface ConnectorDisconnected {
+  readonly status: "disconnected";
+  readonly connector: string;
+  readonly secret_deleted: boolean;
+  readonly note: string;
+}
+
+/** Where a person removes an app's access to their Google account; the installer calls no Google endpoint for it (D67). */
+export const GOOGLE_ACCESS_PAGE = "https://myaccount.google.com/connections";
 
 /**
  * The agent this home recorded; without one, every profile that can remove a server: the operator's
@@ -40,9 +51,30 @@ async function unregisterEverywhere(home: string, profileId: string | null | und
   }
 }
 
+/** The connector's display name; a definition that fails to load must never stop the sign-in from being deleted. */
+async function connectorName(id: string): Promise<{ readonly name: string; readonly problem?: string }> {
+  const version = newestVersion(id);
+  try {
+    return { name: version === undefined ? id : (await loadConnector(id, version)).name };
+  } catch (error) {
+    return { name: id, problem: (error as Error).message };
+  }
+}
+
+/** `installer disconnect <connector>` (§14.2): delete its sign-in from the keychain first, then audit; the person removes the grant at the provider. */
+async function disconnectConnector(home: string, id: string, now: () => string): Promise<ConnectorDisconnected> {
+  if (!Object.hasOwn(CONNECTOR_SECRETS, id)) throw new InputError(`'${id}' cannot be disconnected; this version can disconnect: ${[SKILLSWIKI_SECRET_ID, ...Object.keys(CONNECTOR_SECRETS)].join(", ")}`);
+  const deleted = await deleteSecret(CONNECTOR_SECRETS[id] ?? id);
+  const { name, problem } = await connectorName(id);
+  if (await loadState(home)) await appendAudit(home, { ts: now(), actor: "human", event: "connector.disconnected", ref: id, payload: { secret_deleted: deleted } });
+  const unreadable = problem ? ` Its definition could not be read (${problem}); reinstall the installer package.` : "";
+  const note = `The installer deleted its ${name} sign-in from this computer. To remove its access from your Google account as well, open ${GOOGLE_ACCESS_PAGE} and remove your OAuth app there.${unreadable}`;
+  return { status: "disconnected", connector: id, secret_deleted: deleted, note };
+}
+
 /** Revoke and delete (D34, §14.2): remove the server from the probed agent, delete the keychain item, record it in the audit. */
-export async function disconnect(home: string, id: string, now: () => string): Promise<Disconnected> {
-  if (id !== SKILLSWIKI_SECRET_ID) throw new InputError(`Only '${SKILLSWIKI_SECRET_ID}' can be disconnected in this version`);
+export async function disconnect(home: string, id: string, now: () => string): Promise<Disconnected | ConnectorDisconnected> {
+  if (id !== SKILLSWIKI_SECRET_ID) return disconnectConnector(home, id, now);
   const state = await loadState(home);
   const { unregistered, note } = await unregisterEverywhere(home, state?.runtime?.profile);
   const deleted = await deleteSecret(id);

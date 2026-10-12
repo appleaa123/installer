@@ -24,7 +24,7 @@ export interface SecretPage {
   readonly close: () => void;
 }
 
-const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
 function formPage(id: string, action: string, error?: string): string {
   const notice = error ? `<p class="error">${escapeHtml(error)}</p>` : "";
@@ -36,14 +36,14 @@ function formPage(id: string, action: string, error?: string): string {
 </body></html>`;
 }
 
-const DONE_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>installer: done</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto"><h1>Done, you can close this tab.</h1></body></html>`;
+export const DONE_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>installer: done</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto"><h1>Done, you can close this tab.</h1></body></html>`;
 
 function send(res: ServerResponse, status: number, body: string): void {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'" });
   res.end(body);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((done, fail) => {
     let body = "";
     req.setEncoding("utf8");
@@ -85,7 +85,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, page: PageState
   finish();
 }
 
-function listen(server: Server): Promise<number> {
+export function listen(server: Server): Promise<number> {
   return new Promise((done, fail) => {
     server.once("error", fail);
     server.listen(0, HOST, () => done((server.address() as AddressInfo).port));

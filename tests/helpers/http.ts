@@ -3,6 +3,8 @@ import { request as httpRequest } from "node:http";
 export interface HttpReply {
   readonly status: number;
   readonly text: string;
+  /** Where a redirect points (the OAuth page sends the browser on to Google). */
+  readonly location?: string;
 }
 
 /** A raw request on a fresh connection whose Host and Origin headers are exactly what the test says (fetch would rewrite Host). */
@@ -10,14 +12,14 @@ export function request(url: string, options: { method?: string; headers?: Recor
   const target = new URL(url);
   return new Promise((done, fail) => {
     const req = httpRequest(
-      { host: target.hostname, port: target.port, path: target.pathname, method: options.method ?? "GET", headers: options.headers ?? {}, setHost: options.headers?.Host === undefined, agent: false },
+      { host: target.hostname, port: target.port, path: `${target.pathname}${target.search}`, method: options.method ?? "GET", headers: options.headers ?? {}, setHost: options.headers?.Host === undefined, agent: false },
       (res) => {
         let text = "";
         res.setEncoding("utf8");
         res.on("data", (chunk: string) => {
           text += chunk;
         });
-        res.on("end", () => done({ status: res.statusCode ?? 0, text }));
+        res.on("end", () => done({ status: res.statusCode ?? 0, text, ...(res.headers.location ? { location: res.headers.location } : {}) }));
       },
     );
     req.on("error", fail);

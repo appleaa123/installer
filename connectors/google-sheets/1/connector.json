@@ -1,0 +1,17 @@
+{
+  "id": "google-sheets",
+  "version": "1",
+  "name": "Google Sheets",
+  "interface": ["records_source"],
+  "adapter": "google_sheets",
+  "api": { "base_url": "https://sheets.googleapis.com/v4" },
+  "auth": {
+    "kind": "oauth2",
+    "provider": "google",
+    "secret_id": "google",
+    "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+    "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+    "token_url": "https://oauth2.googleapis.com/token"
+  },
+  "risk": { "reads_personal_data": true, "outbound_external": false, "official_api": true }
+}

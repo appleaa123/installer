@@ -7,6 +7,8 @@ import { parseArgs } from "node:util";
 import { approvalsCommand } from "./core/approval-commands.js";
 import { ToolRefusal } from "./core/approvals.js";
 import { AuditCorruptError, appendAudit } from "./core/audit.js";
+import { oauthConnectorFor } from "./core/connectors.js";
+import { connectEntity, mapEntity } from "./core/data-commands.js";
 import { disconnect } from "./core/disconnect.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
@@ -14,6 +16,7 @@ import { InputError } from "./core/inputs.js";
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
+import { startOAuthPage } from "./core/oauth-page.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
@@ -28,7 +31,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals";
+const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, disconnect, tool, approvals, connect, map";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -47,6 +50,7 @@ interface Flags {
   readonly url?: string;
   readonly as?: string;
   readonly reason?: string;
+  readonly sheet?: string;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
@@ -55,7 +59,7 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
 
 const OPTIONS = {
   home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
-  profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" },
+  profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" }, sheet: { type: "string" },
 } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
@@ -115,6 +119,11 @@ function submitPayload(flags: Flags): SubmitPayload {
 
 function requireArg(arg: string | undefined, command: string): string {
   if (!arg) throw new InputError(`${command} needs a step id`);
+  return arg;
+}
+
+function requireEntityArg(arg: string | undefined, command: string): string {
+  if (!arg) throw new InputError(`${command} needs the name of an entity of the data contract, for example: installer ${command} contact`);
   return arg;
 }
 
@@ -189,9 +198,11 @@ async function secretCommand(id: string): Promise<unknown> {
   return { status: "waiting", url, pid, ...(hint ? { hint } : {}) };
 }
 
-/** The detached page process: serves the form, writes the keychain once, then exits. Never touches the engine home. */
+/** The detached page process: serves the form (an OAuth sign-in for a connector's secret, D66), writes the keychain once, then exits. Never touches the engine home. */
 async function secretServeCommand(id: string): Promise<number> {
-  const page = await startSecretPage({ id: requireSecretId(id), store: (value) => setSecret(id, value) });
+  const store = (value: string): Promise<void> => setSecret(id, value);
+  const def = await oauthConnectorFor(requireSecretId(id));
+  const page = def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
   if (process.send) {
     process.send({ url: page.url });
     process.disconnect();
@@ -261,6 +272,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   tool: async ({ deps }, _flags, arg, extra) => toolCommand(deps.home, arg, extra),
   approvals: async ({ state, deps }, flags, arg, extra) =>
     approvalsCommand(deps.home, state.roles, { sub: arg, id: extra, as: flags.as, reason: flags.reason, value: flags.value, interactive: process.stdin.isTTY === true }, deps.now),
+  connect: async ({ deps }, flags, arg) => connectEntity(deps.home, requireEntityArg(arg, "connect"), flags.sheet, deps.now),
+  map: async ({ deps }, flags, arg) => mapEntity(deps.home, requireEntityArg(arg, "map"), flags.value, deps.now, process.env, process.stdin.isTTY === true),
 };
 
 async function run(argv: readonly string[]): Promise<number> {

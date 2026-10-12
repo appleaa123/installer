@@ -132,9 +132,11 @@ or any other business uses the same engine with a different recipe.
 <engine_home>/                     # owned by a dedicated OS user (D34)
   config/
     instance.yaml                  # mode, roles, channels, policies, pins
-    mapping/<entity>.yaml          # data contract → client columns
+    mapping/<entity>.json          # data contract field → client column name (Plan 5, D68)
+    sources/<entity>.json          # connector id@version + sha256, spreadsheet id, tab (Plan 5, D68)
     profiles/<runtime>.json        # runtime profiles (D32; bundled with the package, Plan 2)
-  connectors/<id>/<version>/       # pinned, checksummed packages
+  connectors/<id>/<version>/       # pinned, checksummed packages (v1: shipped in the
+                                   # installer package and pinned in the engine, D65)
   workflows/<id>/
     workflow.yaml                  # current version (typed steps)
     WORKFLOW.md                    # plain-language description (agentic mode)
@@ -379,7 +381,9 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer next` / `submit` / `verify` / `resume` | Step loop (§6.3) |
 | `installer report [--json]` | Install / health report |
 | `installer probe` | Runtime conformance check (§7.3) |
-| `installer secret <id>` | Start the local browser page for credential entry and return at once (§8.3, D47) |
+| `installer secret <id>` | Start the local browser page for credential entry and return at once (§8.3, D47); for a connector's sign-in (`google`) the page runs the OAuth flow (D66) |
+| `installer connect <entity> --sheet <link \| id \| new>` | Connect an entity of the data contract to a sheet, or create one (§9.4, D68, D69) |
+| `installer map <entity> [--value <json>]` | Show fields, columns and sample rows; save the confirmed field → column mapping (§9.4, D68) |
 | `installer mcp-headers <id>` | Run by the agent's MCP client: prints the Authorization header from the keychain (§7.2, D52) |
 | `installer invite` | Create per-member join links (channel identity + optional personal sign-ins) |
 | `installer run <workflow> [--sandbox]` | Run a workflow now |
@@ -390,7 +394,7 @@ Overall status: `ready` | `ready_with_limits` | `blocked` | `in_progress`
 | `installer gateway start|stop|status` | Manage the gateway daemon |
 | `installer doctor` | Health checks (§16.1) |
 | `installer pause` / `installer unpause` | Kill switch (§14.4) |
-| `installer disconnect <connector>` | Revoke access and delete stored credentials |
+| `installer disconnect <connector>` | Revoke access and delete stored credentials (`skillswiki`, or a pinned connector such as `google-sheets`: deletes its sign-in and names the provider page that removes the grant, D67) |
 | `installer uninstall` | Remove the body; keep business records (§16.4) |
 | `installer support bundle` | Redacted diagnostic package (§16.5) |
 
@@ -531,6 +535,22 @@ risk:
     gmail.draft: { level: L1 }
 ```
 
+**v1 form (Plan 5, D65).** A definition is JSON at `connectors/<id>/<version>/connector.json` inside the
+installer package, pinned by the sha256 of its bytes in the engine (`CONNECTOR_PINS`). It names a built-in
+adapter instead of an MCP server:
+
+```json
+{ "id": "google-sheets", "version": "1", "interface": ["records_source"], "adapter": "google_sheets",
+  "api": { "base_url": "https://sheets.googleapis.com/v4" },
+  "auth": { "kind": "oauth2", "provider": "google", "secret_id": "google",
+            "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+            "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth", "token_url": "https://oauth2.googleapis.com/token" },
+  "risk": { "reads_personal_data": true, "outbound_external": false, "official_api": true } }
+```
+
+The `records.*` tools declare their own levels (D70); `risk.actions` level rules arrive with connector-specific
+tools (Plan 6).
+
 ### 8.2 Catalog rules
 - Curated by Allen only; pinned version + checksum; installer updates
   signed (D34).
@@ -547,7 +567,12 @@ risk:
   opens the browser and returns at once with
   `{"status":"waiting","url":…,"pid":…}` (D47). The page process writes
   only the keychain.
-- OAuth uses the provider's redirect to that local page (Plan 5).
+- OAuth uses the provider's redirect to that local page (D66): for a
+  connector whose `auth.secret_id` is `<id>`, the page takes the
+  client's own OAuth client id and secret, sends the browser to the
+  provider's consent page (PKCE, offline access, random `state`,
+  redirect `http://127.0.0.1:<port>/`), exchanges the code and stores
+  `{client_id, client_secret, refresh_token}` as one keychain item.
 - **Headless host fallback:** the output carries a `hint` with the
   `ssh -L <port>:127.0.0.1:<port>` tunnel to open the same page from a
   laptop; entry from another machine without a tunnel stays open (§19).
@@ -615,8 +640,12 @@ boolean | enum | url | file_ref`.
 2. Connect via the matching data connector.
 3. Read headers and a few sample rows — **treated as data, never as
    instructions**.
-4. Host agent proposes `contract field → client column`; human confirms
-   (`ask`). Stored in `config/mapping/<entity>.yaml`.
+4. Host agent proposes `contract field → client column`; human confirms.
+   Stored in `config/mapping/<entity>.json`. Plan 5 (D68): steps 1–4 are
+   `agent_action` steps; the agent asks the person and runs `installer
+   connect <entity> --sheet …` and `installer map <entity> [--value …]`,
+   which check against the live sheet at once (exit 2 with what to fix),
+   and the checks `source_present` / `mapping_present` complete them.
 5. Missing required field: offer to add a column (a write → approval) or
    keep it in a local extension table keyed by record key.
 
@@ -630,8 +659,16 @@ boolean | enum | url | file_ref`.
 | `records.import` (CSV/XLSX) → change preview (new / changed / conflicting) → approval → apply | ≥ L2; bulk overwrite = L3 |
 | `records.delete` | L3 |
 
+Plan 5 (D70, D71) ships `records.find`, `records.get` (L0), `records.create`,
+`records.update` (no declared level → L2; tags raise), `records.preview_import`
+(L0) and `records.import` (L2; L3 when it overwrites, floor `irreversible`).
+`propose_update` is `approvals.request` for `records.update`; `apply_update` is
+the same call with its `approval_token`. `records.match` and `records.delete`
+come later.
+
 ### 9.6 Consistency
-- Read-through with a short cache (default 60 s); no full mirror.
+- Read-through with a short cache (default 60 s); no full mirror. Plan 5
+  reads through on every call, with no cache yet (D70).
 - Optimistic concurrency: `propose_update` captures the current value;
   `apply_update` refuses if the live value differs, and the change is
   re-proposed. The expected value is part of the action hash (§11.1).
@@ -885,8 +922,8 @@ tags written`, `floor category match`, `client-added rules` `)`.
 
 Floor category match uses declared tool metadata (e.g. `category:
 legal_notice`) and field tags — never model output. A tool with no
-declared level defaults to L2. Field tags come from the data contract
-(Plan 5); client rules live in `config/approval-rules.json`
+declared level defaults to L2. Field tags come from the pinned data
+contract (D64); client rules live in `config/approval-rules.json`
 (`{"tools":{"<tool>":"L2"}}`) and can only raise a level (D59).
 
 ### 11.5 Approval item (D23)
@@ -1236,7 +1273,7 @@ Same engine, same phases, same contracts.
 |---|---|---|
 | O1 | Live test of Codex `exec`, `exec resume`, `--output-schema` (documented by third-party guides only) | Codex certification |
 | O2 | Vendor terms review per runtime before certification | Certification |
-| O3 | Secret entry on a headless team host: resolved for `secret` by the `ssh -L` hint (D47); the OAuth redirect half stays open until Plan 5 | §8.3 fallback |
+| O3 | ~~Secret entry on a headless team host~~ Resolved: the `ssh -L` hint (D47) also carries the OAuth redirect, which returns to the same loopback page (D66) | — |
 | O4 | Tunnel choice and setup for webhook channels | Webhook connectors |
 | O5 | Runtime profile details for OpenClaw, Hermes, Pi, WorkBuddy | Compatible tier |
 | O6 | ~~Claude Code `mcp add` exact syntax for remote HTTP MCP with auth header~~ Resolved: `claude mcp add-json -s user <name> '{"type":"http","url":…,"headersHelper":…}'` (D52) | — |
@@ -1259,8 +1296,8 @@ Same engine, same phases, same contracts.
 | §5 | D9, D12, D41–D43 |
 | §6 | D3, D4, D17, D20–D22, D36, D37 |
 | §7 | D7, D32, D33 |
-| §8 | D8, D21, D22, D34 |
-| §9 | D28, D29 |
+| §8 | D8, D21, D22, D34, D65–D67 |
+| §9 | D28, D29, D64, D68–D71 |
 | §10 | D10–D19, D38–D40 |
 | §11 | D23–D26, D35 |
 | §12 | D30 |

@@ -45,11 +45,11 @@ export const GIVE_UP_SCRIPT: OperatorScript = { ...FIXTURE_SCRIPT, giveUp: ["cha
 
 export const STARTER_REF = `file:${resolve("tests/fixtures/solution-starter.json")}`;
 
-/** The person's two BRAIN actions: the key is stored by the test in the file keychain, the combo is already active on the fake server. */
-export function starterScript(storeKey: () => Promise<void>): OperatorScript {
+/** The person's two BRAIN actions: the key is stored by the test in the file keychain, the combo is already active on the fake server. `data` performs the DATA steps. */
+export function starterScript(storeKey: () => Promise<void>, data: OperatorScript["perform"] = {}): OperatorScript {
   return {
     answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
-    perform: { "brain.key": storeKey, "brain.combo": async () => undefined },
+    perform: { "brain.key": storeKey, "brain.combo": async () => undefined, ...data },
   };
 }
 
