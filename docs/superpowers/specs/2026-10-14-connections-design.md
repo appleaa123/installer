@@ -17,6 +17,9 @@ Decided by the owner:
 | Skills Wiki | Optional (D126). |
 | Supabase keys | **Anon key only**, with row-level security. The `service_role` key is refused (decided 2026-10-14). |
 | WhatsApp | Build the **minimum**: connect, send and receive (decided 2026-10-14). Design in 5.5. |
+| Email as the only chat app | **Not allowed in the first version.** Telegram is always set up and email is an extra, because email cannot prove who sent a message, so approvals and `/pause` could not come by email and would need a terminal every time (decided 2026-10-14). |
+| `taskfollow add` | **The helper may run it itself** when the person asks (for example "I now have a new email service to add"); secrets are still entered on the page (decided 2026-10-14). |
+| Just you, or a team? | **Ask first.** A single person skips the shared-work and decision-maker questions and the invite-others steps; they are the decision maker by default and only link their own chat once. A team gets the current flow (decided 2026-10-14). |
 | Choosing services during install | Ask which service the person uses in each area, and show only the steps for those (requested 2026-10-14). Design in 5.6. |
 
 ## 2. What exists today
@@ -189,13 +192,10 @@ Decided: a spare always-on machine, using the existing team-host mode (Mac or Li
 
 ## 10. Questions for the owner (recommended answer in brackets)
 
-Already decided: webhook channels go through a relay (WhatsApp minimum, 5.5); Supabase uses the anon key only.
+Already decided: webhook channels go through a relay (WhatsApp minimum, 5.5); Supabase uses the anon key only; no email-only installs in the first version; the helper may run `taskfollow add`; the install asks "just you, or a team?" first. The five questions below remain open but do not block the picker or the email slices.
 
 1. **Outlook / Microsoft 365 mail:** build Microsoft sign-in (slice 9) even though the client probably needs to register their own Microsoft app? [Not now: offer Telegram or another mailbox, and decide after the first real users ask.]
 2. **The WhatsApp relay** lives in the client's own free Cloudflare account and holds message text for at most 72 hours. Acceptable? [Yes. No owner-hosted option.]
 3. **WhatsApp templates** (writing to someone first, or after the 24 hours): leave out of the minimum? [Yes: block with a plain sentence; add a utility template later.]
 4. **Custom services with unlisted endpoints at L2:** allow, off by default, enabled per connection from the person's terminal? [Yes.]
 5. **Who signs catalog definitions?** [The owner only, with an offline key.]
-6. **Picker: email-only installs** (no Telegram, approvals typed in the terminal)? [No for the first version: Telegram is always set up and email is an extra.]
-7. **Picker: may the agent run `taskfollow add`** itself, or only the person? [The agent may; secrets are still entered on the page.]
-8. **Just you, or a team?** Should the picker hide the decision-maker, invite and team-channel steps for a single person? [Yes. It is a usability win, but it changes who the original design was for, so this is your call.]
