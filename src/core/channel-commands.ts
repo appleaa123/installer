@@ -1,10 +1,12 @@
 import { appendAudit } from "./audit.js";
+import { ActionFailure } from "./failure.js";
 import { CHANNEL_FACTS, channelSecret, listChannels, loadChannel, requireChannelId, saveChannel, saveCursor, type ChannelConfig, type ChannelId, type EmailConfig } from "./channels.js";
 import { MAILBOX, startCursor } from "./email-channel.js";
 import { withImap } from "./imap.js";
 import { InputError } from "./inputs.js";
 import { deleteSecret, getSecret } from "./keychain.js";
 import { smtpVerify, type MailAccount } from "./smtp.js";
+import { parseSlackSecret, slackApi, type SlackIdentity } from "./slack.js";
 import { telegramApi } from "./telegram.js";
 import { MAIL_SECURITY, type MailSecurity } from "./wire.js";
 
@@ -76,20 +78,77 @@ async function verifyEmail(home: string, value: string | undefined, now: string,
   return { ...setup, verified_at: now };
 }
 
+/** The item the Slack setup page leaves for this command: the workspace and app the tokens belong to (D135). */
+export const SLACK_HANDOFF = "slack-settings";
+type SlackSettings = SlackIdentity & { readonly app_id: string };
+
+function parseSlackSettings(text: string): SlackSettings | null {
+  try {
+    const raw: unknown = JSON.parse(text);
+    const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    return [r.team_id, r.team, r.bot_user_id, r.app_id].every((field) => typeof field === "string" && field !== "")
+      ? { team_id: r.team_id as string, team: r.team as string, bot_user_id: r.bot_user_id as string, app_id: r.app_id as string }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function slackHandoff(home: string, env: Env): Promise<{ readonly settings: SlackSettings; readonly fromPage: boolean }> {
+  const stored = await getSecret(SLACK_HANDOFF, env);
+  const fromPage = stored === null ? null : parseSlackSettings(stored);
+  if (fromPage) return { settings: fromPage, fromPage: true };
+  const saved = await loadChannel(home, "slack");
+  if (saved?.channel === "slack") return { settings: { team_id: saved.team_id, team: saved.team, bot_user_id: saved.bot_user_id, app_id: saved.app_id }, fromPage: false };
+  throw new InputError("Slack is not set up yet: run 'taskfollow secret slack', let the person finish the page that opens, then run 'taskfollow channel slack' again");
+}
+
+/** The tokens belong to the workspace and app that were set up, the bot token works, and Socket Mode is on for the app token. */
+async function verifySlack(settings: SlackSettings, now: string, env: Env): Promise<ChannelConfig> {
+  const api = slackApi(parseSlackSecret(await channelSecret("slack", env)), env);
+  const who = await api.authTest();
+  if (who.team_id !== settings.team_id || who.bot_user_id !== settings.bot_user_id) {
+    throw new ActionFailure("The Slack tokens belong to a different workspace or app than the one that was set up: run 'taskfollow secret slack' again");
+  }
+  await api.connectionsOpen();
+  return { channel: "slack", ...settings, team: who.team, verified_at: now };
+}
+
 /** `doctor` (§16.1, D103): the channel still answers with its stored secret; nothing is sent and nothing is saved. */
 export async function checkChannel(config: ChannelConfig, env: Env = process.env): Promise<string> {
   const secret = await channelSecret(config.channel, env);
-  if (config.channel === "telegram") return `@${(await telegramApi(secret, env).getMe()).username} answers`;
-  await withImap(config.imap, secret, (session) => session.examine(MAILBOX), env);
-  await smtpVerify(config.smtp, secret, env);
-  return "IMAP and SMTP sign-in work";
+  switch (config.channel) {
+    case "telegram":
+      return `@${(await telegramApi(secret, env).getMe()).username} answers`;
+    case "email":
+      await withImap(config.imap, secret, (session) => session.examine(MAILBOX), env);
+      await smtpVerify(config.smtp, secret, env);
+      return "IMAP and SMTP sign-in work";
+    case "slack": {
+      const api = slackApi(parseSlackSecret(secret), env);
+      await api.authTest();
+      await api.connectionsOpen();
+      return `the Slack app in ${config.team} answers`;
+    }
+    default:
+      return config satisfies never;
+  }
 }
 
 /** A channel as the person and the agent see it: never its secret. */
-export const describeChannel = (config: ChannelConfig) => ({
-  channel: config.channel, verified_at: config.verified_at, ...CHANNEL_FACTS[config.channel],
-  ...(config.channel === "telegram" ? { bot: `@${config.bot.username}` } : { address: config.address }),
-});
+export function describeChannel(config: ChannelConfig) {
+  const base = { channel: config.channel, verified_at: config.verified_at, ...CHANNEL_FACTS[config.channel] };
+  switch (config.channel) {
+    case "telegram":
+      return { ...base, bot: `@${config.bot.username}` };
+    case "email":
+      return { ...base, address: config.address };
+    case "slack":
+      return { ...base, workspace: config.team };
+    default:
+      return config satisfies never;
+  }
+}
 
 /** The mailbox's servers decide where the app password goes, so like `invite` (D77) only a person at a terminal sets them. */
 async function requireTerminal(home: string, interactive: boolean, now: string): Promise<void> {
@@ -102,11 +161,31 @@ export async function channelCommand(home: string, id: string | undefined, value
   if (id === undefined) return { channels: (await listChannels(home)).map(describeChannel) };
   const channel: ChannelId = requireChannelId(id);
   if (channel === "telegram" && value !== undefined) throw new InputError("channel telegram takes no --value: it reads the bot token stored with 'taskfollow secret telegram'");
+  if (channel === "slack" && value !== undefined) throw new InputError("channel slack takes no --value: it reads the tokens stored with 'taskfollow secret slack'");
   if (channel === "email" && value !== undefined) await requireTerminal(home, interactive, now());
-  const handoff = channel === "email" && value === undefined ? await emailHandoff(home, env) : undefined;
-  const config = channel === "telegram" ? await verifyTelegram(now(), env) : await verifyEmail(home, value ?? handoff?.value, now(), env);
+  let config: ChannelConfig;
+  let consumed: string | undefined;
+  switch (channel) {
+    case "telegram":
+      config = await verifyTelegram(now(), env);
+      break;
+    case "email": {
+      const handoff = value === undefined ? await emailHandoff(home, env) : undefined;
+      config = await verifyEmail(home, value ?? handoff?.value, now(), env);
+      if (handoff?.fromPage) consumed = EMAIL_HANDOFF;
+      break;
+    }
+    case "slack": {
+      const handoff = await slackHandoff(home, env);
+      config = await verifySlack(handoff.settings, now(), env);
+      if (handoff.fromPage) consumed = SLACK_HANDOFF;
+      break;
+    }
+    default:
+      return channel satisfies never;
+  }
   await saveChannel(home, config);
-  if (handoff?.fromPage) await deleteSecret(EMAIL_HANDOFF, env);
+  if (consumed) await deleteSecret(consumed, env);
   await appendAudit(home, { ts: now(), actor: "agent", event: "channel.verified", ref: channel, payload: describeChannel(config) });
   return { status: "verified", ...describeChannel(config), next: "Run 'taskfollow invite <name>' in a terminal for each person who will approve from this channel" };
 }

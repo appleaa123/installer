@@ -76,12 +76,14 @@ async function disconnectConnector(home: string, id: string, now: () => string):
 const CHANNEL_NOTES: Readonly<Record<ChannelId, string>> = {
   telegram: "The installer deleted the bot token and the channel's settings from this computer. If the token may have leaked, send /revoke to @BotFather so it stops working.",
   email: "The installer deleted the app password and the channel's settings from this computer. Delete the app password at your mail provider too, so it can no longer sign in.",
+  slack: "The installer deleted the Slack tokens and the channel's settings from this computer. Remove the TaskFollow app from your Slack workspace too (Slack: Apps, then Manage), so it can no longer sign in.",
 };
 
 /** `taskfollow disconnect telegram | email` (§14.2): delete the secret and the channel's settings, and audit it. */
 async function disconnectChannel(home: string, id: ChannelId, now: () => string): Promise<ConnectorDisconnected> {
   const deleted = await deleteSecret(id);
   if (id === "email") await deleteSecret("email-settings");
+  if (id === "slack") await deleteSecret("slack-settings");
   const removed = await removeChannel(home, id);
   if (await loadState(home)) await appendAudit(home, { ts: now(), actor: "human", event: "channel.disconnected", ref: id, payload: { secret_deleted: deleted, settings_removed: removed } });
   return { status: "disconnected", connector: id, secret_deleted: deleted, note: CHANNEL_NOTES[id] };

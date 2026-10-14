@@ -133,7 +133,7 @@ describe("taskfollow channel (D73)", () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     await channelCommand(home, "telegram", undefined, now, env);
     expect(await channelCommand(home, undefined, undefined, now, env)).toEqual({ channels: [expect.objectContaining({ channel: "telegram", risk: { official_api: true, outbound_external: true, sender_verified: true } })] });
-    await expect(channelCommand(home, "sms", undefined, now, env)).rejects.toThrow(new InputError("Channels: telegram, email; for example: taskfollow channel telegram"));
+    await expect(channelCommand(home, "sms", undefined, now, env)).rejects.toThrow(new InputError("Channels: telegram, email, slack; for example: taskfollow channel telegram"));
     await expect(channelCommand(home, "telegram", "{}", now, env)).rejects.toThrow("channel telegram takes no --value");
   });
 

@@ -6,7 +6,7 @@ import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
 import { ToolRefusal } from "./approvals.js";
 import { DEFAULT_POLICY, recordOptOut } from "./channel-policy.js";
-import { CHANNEL_FACTS, requireChannelId } from "./channels.js";
+import { CHANNEL_FACTS, bareCommands, requireChannelId } from "./channels.js";
 import { isOptOut, joinCodeIn, killSwitchIn, normalizeInbound, replyCodeIn, type InboundEnvelope, type RawInbound, type ReplyCode } from "./envelope.js";
 import { ActionFailure } from "./failure.js";
 import { storeInbound, type Route } from "./inbox.js";
@@ -129,7 +129,7 @@ async function routeInbound(ctx: ToolContext, envelope: InboundEnvelope): Promis
   const code = joinCodeIn(envelope.text);
   if (code) return joinByCode(ctx, envelope, identity, code);
   const member = await memberFor(ctx.home, identity, ctx.now());
-  const command = member ? killSwitchIn(envelope.text) : null;
+  const command = member ? killSwitchIn(envelope.text, bareCommands(envelope.channel)) : null;
   if (member && command) return killSwitch(ctx, envelope, member, command);
   const reply = member ? replyCodeIn(envelope.text) : null;
   if (member && reply) {

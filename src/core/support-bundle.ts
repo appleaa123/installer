@@ -73,7 +73,7 @@ async function knownValues(home: string, state: InstallState, now: string): Prom
   const report = await loadReportConfig(home);
   const values = [
     ...(state.roles ? [state.roles.decision_maker] : []), ...members.flatMap((member) => [member.name, ...(member.identity ? [member.identity.address] : [])]),
-    ...channels.flatMap((config) => (config.channel === "email" ? [config.address, config.imap.user, config.smtp.user] : [config.bot.username])),
+    ...channels.flatMap((config) => (config.channel === "email" ? [config.address, config.imap.user, config.smtp.user] : config.channel === "slack" ? [config.team, config.team_id, config.bot_user_id] : [config.bot.username])),
     ...(report?.recipients.map((recipient) => recipient.member) ?? []), ...(await sheetIds(home)),
   ];
   return [...new Set(values.map((value) => value.trim()).filter((value) => value !== ""))].sort((a, b) => b.length - a.length);
