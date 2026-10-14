@@ -21,6 +21,7 @@ const issued = new Set();
 const sheets = new Map();
 let tokenRequests = 0;
 let revoked = false;
+let testingMode = false;
 let sheetsDisabled = false;
 let failing = { status: 0, times: 0 };
 let created = 0;
@@ -58,7 +59,7 @@ function token(res, form) {
     return send(res, 200, { access_token: newAccessToken(), expires_in: 3599, refresh_token: REFRESH, scope: SCOPE, token_type: "Bearer" });
   }
   if (grant === "refresh_token" && form.get("refresh_token") === REFRESH && !revoked) {
-    return send(res, 200, { access_token: newAccessToken(), expires_in: 3599, scope: SCOPE, token_type: "Bearer" });
+    return send(res, 200, { access_token: newAccessToken(), expires_in: 3599, scope: SCOPE, token_type: "Bearer", ...(testingMode ? { refresh_token_expires_in: 604799 } : {}) });
   }
   return send(res, 400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
 }
@@ -148,6 +149,10 @@ function debug(req, res, url, body) {
   if (url.pathname === "/debug/token-requests") return send(res, 200, { count: tokenRequests });
   if (url.pathname === "/debug/revoke") {
     revoked = true;
+    return send(res, 200, {});
+  }
+  if (url.pathname === "/debug/testing-mode") {
+    testingMode = true;
     return send(res, 200, {});
   }
   if (url.pathname === "/debug/fail") {

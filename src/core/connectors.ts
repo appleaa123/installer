@@ -15,7 +15,7 @@ export const CONNECTORS_DIR = fileURLToPath(new URL("../../connectors/", import.
 /** The curated catalog (§8.2): id → version → sha256 of the definition file. */
 export type ConnectorPins = Readonly<Record<string, Readonly<Record<string, string>>>>;
 export const CONNECTOR_PINS: ConnectorPins = {
-  "google-sheets": { "1": "cee6297fc829692f839143f4cf017c694646b4db352a06799f2f55066fa81943" },
+  "google-sheets": { "1": "1a9dbbc86c199a08d5906f040b1d9908868daff0d4b94df1a0a677f4c90dbf89" },
 };
 
 /** Built-in adapters a definition may name; a connector is data, the code that speaks its API is the engine's. */
@@ -47,6 +47,8 @@ export interface ConnectorSetup {
   readonly outcome: readonly string[];
   readonly sources: readonly string[];
   readonly symptoms: readonly ConnectorSymptom[];
+  /** Optional numbered fallback for an agent that cannot read the provider's pages; menu names may be out of date. */
+  readonly steps?: readonly string[];
 }
 
 export interface ConnectorDef {
@@ -127,6 +129,7 @@ function parseSetup(value: unknown, fail: (message: string) => never): Connector
     outcome: setupList(value.outcome, "setup.outcome", fail).map((item, index) => setupText(item, `setup.outcome[${index}]`, fail)),
     sources: setupList(value.sources, "setup.sources", fail).map((item, index) => googleUrl(item, `setup.sources[${index}]`, fail)),
     symptoms: setupList(value.symptoms, "setup.symptoms", fail).map((item, index) => parseSymptom(item, index, fail)),
+    ...(value.steps === undefined ? {} : { steps: setupList(value.steps, "setup.steps", fail).map((item, index) => setupText(item, `setup.steps[${index}]`, fail)) }),
   };
 }
 

@@ -10,6 +10,8 @@ import { getSecret } from "./keychain.js";
  */
 export interface AccessTokenSource {
   readonly accessToken: () => Promise<string>;
+  /** Seconds Google gave the refresh token to live, as of the last refresh; null when it did not mark one to expire. */
+  readonly refreshExpiresInSeconds?: () => number | null;
 }
 
 export interface OAuthClient {
@@ -68,13 +70,16 @@ async function postToken(auth: ConnectorAuth, form: Readonly<Record<string, stri
 /** Refreshes on first use and again shortly before expiry; one keychain read per source. */
 export function clientOwnedTokens(auth: ConnectorAuth, signIn: SignIn, env: Env = process.env, symptoms: readonly ConnectorSymptom[] = []): AccessTokenSource {
   let cached: { readonly token: string; readonly until: number } | null = null;
+  let refreshExpiresIn: number | null = null;
   return {
+    refreshExpiresInSeconds: () => refreshExpiresIn,
     accessToken: async () => {
       if (cached && Date.now() < cached.until) return cached.token;
       const form = { grant_type: "refresh_token", refresh_token: signIn.refresh_token, client_id: signIn.client_id, client_secret: signIn.client_secret };
       const body = await postToken(auth, form, (code) => `Google refused the stored sign-in (${code}): ${again(auth.secret_id)}${symptomHelp(code, symptoms)}`, env);
       if (typeof body.access_token !== "string") throw new ActionFailure("Google's sign-in service returned no access token");
       const lifetime = typeof body.expires_in === "number" ? body.expires_in * 1000 : 0;
+      refreshExpiresIn = typeof body.refresh_token_expires_in === "number" ? body.refresh_token_expires_in : null;
       cached = { token: body.access_token, until: Date.now() + lifetime - EXPIRY_MARGIN_MS };
       return cached.token;
     },

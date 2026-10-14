@@ -26,6 +26,17 @@
       "The console's 'AI-powered agent' option is left unchecked",
       "The person is told in advance what an own app that is In production but not verified shows: the console says 'Your app requires verification' and the person does not need to submit the app for review; the sign-in page says 'Google hasn't verified this app', where the person chooses 'Advanced' and then 'Go to <app name> (unsafe)'. That is expected for their own app, not an error"
     ],
+    "steps": [
+      "Open https://console.cloud.google.com/ and sign in with the person's own Google account. Accept Google's terms if asked. Nothing here needs a card or any payment: if Google asks for one, stop and ask the person to check with you before entering anything.",
+      "Create a project: open the project picker at the top, choose New project, give it a name such as Taskpilot Sheets, press Create, then make sure that project is the selected one.",
+      "Turn on the Google Sheets API: open APIs & Services, then Library, search for Google Sheets API, open it and press Enable. Enable nothing else.",
+      "Set up the consent screen (newer consoles call it Google Auth Platform): choose the user type External (a Google Workspace organisation may choose Internal), enter an app name such as Taskpilot, the person's email as support email and again as developer contact, and save.",
+      "Optional: on Data access (or Scopes), add the scope https://www.googleapis.com/auth/spreadsheets. Taskpilot asks for this scope only.",
+      "Set the app to In production before the person signs in: open Audience (or the consent screen's publishing status) and press Publish app or Make external, and confirm. Google then says 'Your app requires verification'; the person does not need to submit it. Never leave it in Testing, because a Testing sign-in stops working after 7 days.",
+      "Create the sign-in client: open Credentials (or Google Auth Platform, then Clients), choose Create credentials, then OAuth client ID, and choose the application type Desktop app (never Web application). Give it a name and press Create. Add no redirect address. If the console offers to use the client for an AI-powered agent, leave that unchecked.",
+      "Copy the Client ID and the Client secret from the window that appears (each has a copy icon beside it). The person keeps them for the next step and never types them into the chat.",
+      "Run the sign-in command the install names (taskpilot secret google). On the page that opens, the person pastes the Client ID and the Client secret, then allows access on Google's page. Google shows 'Google hasn't verified this app': they choose Advanced, then Go to the app (unsafe). The page says Done when it worked."
+    ],
     "sources": [
       "https://console.cloud.google.com/",
       "https://developers.google.com/sheets/api/guides/concepts",
