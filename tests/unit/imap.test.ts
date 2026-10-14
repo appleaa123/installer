@@ -66,7 +66,7 @@ describe("IMAP, read-only (D75)", () => {
 describe("reading a message (MIME)", () => {
   it("reads the sender's address, the subject, the ids and the text", () => {
     const raw = Buffer.from("From: \"Ada L.\" <Ada@Example.com>\r\nSubject: Hello\r\nMessage-ID: <a1@example.com>\r\nIn-Reply-To: <m1@example.com>\r\n\r\nHi there\r\n");
-    expect(parseMail(raw)).toEqual({ from: "ada@example.com", subject: "Hello", message_id: "<a1@example.com>", in_reply_to: "<m1@example.com>", text: "Hi there" });
+    expect(parseMail(raw)).toEqual({ from: "ada@example.com", subject: "Hello", message_id: "<a1@example.com>", in_reply_to: "<m1@example.com>", thread_root: "<m1@example.com>", text: "Hi there", attachments: [], skipped: [] });
   });
 
   it("decodes encoded words, base64 and quoted-printable parts in other charsets", () => {
