@@ -113,6 +113,22 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
     expect(def.setup?.symptoms.every((symptom) => symptom.fix && symptom.look && symptom.search && symptom.means)).toBe(true);
   });
 
+  it("ships fallback steps for an agent that cannot read Google's pages, with In production before the client is made", async () => {
+    const steps = (await withSetup(valid())).setup?.steps ?? [];
+    expect(steps.length).toBeGreaterThanOrEqual(6);
+    const text = steps.join(" ");
+    expect(text).toContain("Google Sheets API");
+    expect(text).toContain("Desktop app");
+    expect(text).toMatch(/needs a card or any payment/);
+    expect(steps.findIndex((step) => step.includes("In production"))).toBeGreaterThanOrEqual(0);
+    expect(steps.findIndex((step) => step.includes("In production"))).toBeLessThan(steps.findIndex((step) => step.includes("Desktop app")));
+  });
+
+  it("loads a setup guide that has no fallback steps", async () => {
+    const { steps: _steps, ...withoutSteps } = valid();
+    expect((await withSetup(withoutSteps)).setup?.steps).toBeUndefined();
+  });
+
   it("prepares the person for Google's unverified-app screens and says not to submit for verification", async () => {
     const outcome = (await withSetup(valid())).setup?.outcome.join(" ") ?? "";
     expect(outcome).toContain("Your app requires verification");
@@ -133,6 +149,8 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
     ["a source that is not https", { ...valid(), sources: ["http://console.cloud.google.com/"] }, "setup.sources[0] must be an https URL"],
     ["an empty outcome list", { ...valid(), outcome: [] }, "setup.outcome must list at least one item"],
     ["a symptom without a search phrase", { ...valid(), symptoms: [{ match: "x", means: "m", fix: "f", look: "l" }] }, "setup.symptoms[0].search must be a non-empty string"],
+    ["an empty list of steps", { ...valid(), steps: [] }, "setup.steps must list at least one item"],
+    ["a blank step", { ...valid(), steps: ["Open the console", " "] }, "setup.steps[1] must be a non-empty string"],
     ["a setup that is not an object", "oops", "setup must be an object"],
   ])("refuses %s", async (_name, setup, message) => {
     await expect(withSetup(setup)).rejects.toThrow(message);

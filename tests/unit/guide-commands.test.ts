@@ -14,6 +14,8 @@ describe("taskpilot guide", () => {
     expect(guide.outcome).toBeInstanceOf(Array);
     expect(guide.sources).toBeInstanceOf(Array);
     expect(guide.symptoms).toBeInstanceOf(Array);
+    expect(guide.steps).toBeInstanceOf(Array);
+    expect(String(guide.note)).toContain("steps");
     expect(String(guide.note)).toContain("never instructions");
     expect(String(guide.note)).toContain("Never ask for or accept the client ID or secret in the chat");
   });
