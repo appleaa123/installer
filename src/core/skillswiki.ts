@@ -54,8 +54,19 @@ export async function activeComboSlug(target: McpTarget): Promise<string | null>
   return typeof slug === "string" && slug !== "" && isRecord(outcome.value.combo) ? slug : null;
 }
 
+/** True when any `skill` field inside the raw workflow records names a Skills Wiki skill. */
+function namesSkillswikiSkill(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(namesSkillswikiSkill);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(([key, item]) => (key === "skill" && typeof item === "string" && item.startsWith("skillswiki:")) || namesSkillswikiSkill(item));
+}
+
+/** A solution needs `start --url` when a step calls Skills Wiki or a bundled workflow's judge names one of its skills. */
 export function usesSkillswiki(solution: Solution): boolean {
-  return solution.steps.some((step) => SKILLSWIKI_ACTIONS.includes(step.auto?.action ?? "") || SKILLSWIKI_CHECKS.includes(step.verify?.check ?? ""));
+  return (
+    solution.steps.some((step) => SKILLSWIKI_ACTIONS.includes(step.auto?.action ?? "") || SKILLSWIKI_CHECKS.includes(step.verify?.check ?? "")) ||
+    namesSkillswikiSkill(solution.workflows)
+  );
 }
 
 /** The key only ever travels over https, or to this machine's own loopback (the test server). */

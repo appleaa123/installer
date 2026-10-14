@@ -15,7 +15,9 @@ import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
-import { writeWorkflow } from "../helpers/workflow-home.js";
+import { MEMO_DIGEST, writeWorkflow } from "../helpers/workflow-home.js";
+import { loadState, saveState } from "../../src/core/state.js";
+import { workflowIds } from "../../src/core/workflow.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
 const NOTE = { workflow: "note", description: "Adds a memo each weekday morning", trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, steps: [{ id: "add", tool: "memo.add", args: { text: "Good morning" } }] };
@@ -141,5 +143,28 @@ describe("ACTIVATE (§6.2, D98)", () => {
     expect(await check(at, "runner_ticking")).toMatchObject({ ok: false, hint: expect.stringContaining("taskfollow schedule install") });
     await writeConfig(at, HEARTBEAT_FILE, { last: new Date().toISOString(), pid: 1 });
     expect(await check(at, "runner_ticking")).toEqual({ ok: true });
+  });
+});
+
+describe("a suggested workflow whose judge names a Skills Wiki skill (D126)", () => {
+  const SKILLED = { ...MEMO_DIGEST, workflow: "skilled", steps: MEMO_DIGEST.steps.map((step) => ("judge" in step ? { ...step, judge: { ...step.judge, skill: "skillswiki:p/s/SKILL.md" } } : step)) };
+
+  async function skilledHome(skillswikiUrl?: string): Promise<string> {
+    const created = await runnerHome();
+    await writePinnedSolution(created, JSON.stringify({ ...SOLUTION, workflows: [SKILLED] }));
+    const state = await loadState(created);
+    if (skillswikiUrl && state) await saveState(created, { ...state, skillswiki: { url: skillswikiUrl } });
+    return created;
+  }
+
+  it("is refused at add time, in plain words, when the install has no Skills Wiki", async () => {
+    const at = await skilledHome();
+    await expect(workflowCommand(at, "add", "skilled", undefined, () => AT)).rejects.toThrow(/uses a Skills Wiki skill.*Connect Skills Wiki/);
+    expect(await workflowIds(at)).toEqual([]);
+  });
+
+  it("is added when the install has Skills Wiki", async () => {
+    const at = await skilledHome("https://wiki.test/mcp");
+    expect(await workflowCommand(at, "add", "skilled", undefined, () => AT)).toMatchObject({ status: "added", workflow: "skilled" });
   });
 });

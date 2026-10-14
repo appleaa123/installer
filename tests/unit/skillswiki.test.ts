@@ -79,6 +79,14 @@ describe("start --url", () => {
     expect(usesSkillswiki(solution(step({ auto: { action: "noop" } })))).toBe(false);
   });
 
+  it("also counts a suggested workflow whose judge names a Skills Wiki skill, so start asks for the URL early", () => {
+    const plain = { ...solution(step({ auto: { action: "noop" } })) };
+    const withSkill: Solution = { ...plain, workflows: [{ workflow: "w", steps: [{ id: "j", judge: { instructions: "x", skill: "skillswiki:p/s/SKILL.md" } }] }] };
+    const withoutSkill: Solution = { ...plain, workflows: [{ workflow: "w", steps: [{ id: "j", judge: { instructions: "x" } }] }] };
+    expect(usesSkillswiki(withSkill)).toBe(true);
+    expect(usesSkillswiki(withoutSkill)).toBe(false);
+  });
+
   it.each(["https://wiki.test/mcp", "http://127.0.0.1:4321/mcp"])("accepts %s", (url) => {
     expect(requireSkillswikiUrl(url)).toBe(url);
   });

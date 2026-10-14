@@ -8,18 +8,17 @@ The person may never have used a terminal. Check the points below yourself, and 
 
 1. **A Mac.** Run `uname`. It prints `Darwin` on a Mac. This installer is certified on macOS only: it keeps secrets in the macOS password safe and starts its scheduler with launchd. On Windows, stop and tell the person plainly that this version cannot run there (do not start an install that fails halfway). On Linux, say that it is untested and go on only if the person accepts that.
 2. **Node 22 or newer.** Run `node --version`. If it says `command not found`, or prints a number below `v22`, tell the person to download the **LTS** version from https://nodejs.org, open the downloaded file and click through the installer, then tell you when it is done. Run `node --version` again before you go on. A terminal that was already open may need to be closed and opened again.
-3. **Their Skills Wiki account.** Ask whether the person has signed in to their Skills Wiki dashboard and can see an API key and an MCP URL there. If not, stop: they must get both first. They will need them in steps 2 and 3. Never ask them to read the key to you.
-4. **Their own Google account**, if the solution keeps records in Google Sheets (section 6).
+3. **Their own Google account**, if the solution keeps records in Google Sheets (section 6).
 
 How to talk to the person:
 
 - Use plain words. Give a one-sentence meaning the first time you must use a technical word, for example: keychain = "your computer's password safe"; terminal = "the window where you type commands".
 - **Opening a terminal on a Mac:** press Command and Space, type `Terminal`, press Return. When you ask them to run a command, give the complete line, tell them to paste it with Command and V and press Return, and ask what it printed. Say beforehand what a good result looks like.
 - Before a command that is printed for the person to run (anything with `sudo` or `launchctl`), say in one sentence what it does. `sudo` asks for the computer's password; nothing shows while they type it, and that is normal.
-- **If the person pastes a key, token, client secret or password into the chat**, tell them at once not to do that, that it must now be treated as exposed, and that they should create a new one where they got it (a new Skills Wiki key, a new Google client secret, a new Telegram bot token) and enter that on the installer's page. Never repeat the value.
+- **If the person pastes a key, token, client secret or password into the chat**, tell them at once not to do that, that it must now be treated as exposed, and that they should create a new one where they got it (a new Google client secret, a new Telegram bot token, a new email app password) and enter that on the installer's page. Never repeat the value.
 - **If a page does not open**, copy the web address that starts with `http://127.0.0.1` and ask the person to paste it into their browser's address bar. If they closed the page before it said Done, run the same `taskfollow secret ...` command again.
 - **If you or they get stuck**, run `taskfollow resume`. `taskfollow support bundle` writes a file without secrets that the person may send for help.
-- The base install is sections 1 to 5. Sections 6 to 10 apply only when a step of the install names them.
+- The base install is sections 1 to 5. Sections 6 to 10 apply only when a step of the install names them. Section 11 is optional and applies only if the person asks for it.
 
 ## 1. Install the installer
 
@@ -27,21 +26,17 @@ How to talk to the person:
 {{INSTALL_COMMAND}}
 ```
 
-## 2. Let the person store their Skills Wiki key
+## 2. Work from the right folder
 
-```bash
-taskfollow secret skillswiki
-```
-
-This prints `{"status":"waiting","url":"http://127.0.0.1:…"}` and opens that page in the person's browser. Tell the person to paste the API key from their Skills Wiki dashboard into the page and press Save; the key goes into their keychain and never passes through you. If the output has a `hint`, relay it (it says how to reach the page from another computer); do not read command text aloud to the person, say in plain words what it means, and if it mentions `ssh`, say that this computer has no browser and ask whoever set it up for help. Wait until the person says the page shows Done, then go on to step 3: `taskfollow start` refuses to run while the key is missing and says so; if that happens, ask the person to finish the page, then run the start command again.
+Do the rest of the install from the folder where the person started this chat with you: the install connects its tools to you in that folder. Do not change folder while the install runs.
 
 ## 3. Start the install
 
 ```bash
-taskfollow start --solution {{SOLUTION_REF}} --url {{SKILLSWIKI_URL}}
+taskfollow start --solution {{SOLUTION_REF}}
 ```
 
-`--url` is the MCP URL from the person's Skills Wiki dashboard; it is not a secret. Run this from the folder where the person started this chat with you: the install connects Skills Wiki to you in that folder.
+Nothing else is needed to start: no account and no key. If the output has a `hint` about a browser page, relay it in plain words (it says how to reach the page from another computer); do not read command text aloud, and if it mentions `ssh`, say that this computer has no browser and ask whoever set it up for help.
 
 ## 4. Repeat until the install is finished or blocked
 
@@ -105,18 +100,34 @@ A scheduled run that could not start on time (the computer was asleep or off) is
 1. **Choose.** `taskfollow workflow suggestions` lists the workflows the recipe suggests. Tell the person what each one does and add the ones they choose with `taskfollow workflow add <id>`. For anything else, ask the person to describe the task in their own words and run `taskfollow workflow add <id> --value '{"description":"<their words>","tools":["memo.list","memo.add"]}'`: the model then chooses each call among those tools, and every call still goes through the same approvals.
 2. **Dry run.** A new workflow runs in sandbox: nothing it does is real. Run `taskfollow dryrun <id>` and show the person what it would have done (`would_have`). Only the person confirms it, in their own terminal: `taskfollow dryrun confirm <id>`. Never run that yourself.
 3. **Sandbox.** `taskfollow sandbox status` shows whether the engine is in sandbox; `taskfollow sandbox on` puts it back in. Only the person turns it off, in their own terminal.
-4. **Later.** `taskfollow harden <id>` shows when the runner can turn calls the model repeats into fixed steps, and whether they pass the replay check; the person applies it in their own terminal. `taskfollow autonomy` shows how many approvals in a row a step has; only the decision maker grants earned autonomy. `taskfollow alerts` lists urgent alerts (the decision maker answers K<id> in Telegram to acknowledge one), and `taskfollow learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
+4. **Later.** `taskfollow harden <id>` shows when the runner can turn calls the model repeats into fixed steps, and whether they pass the replay check; the person applies it in their own terminal. `taskfollow autonomy` shows how many approvals in a row a step has; only the decision maker grants earned autonomy. `taskfollow alerts` lists urgent alerts (the decision maker answers K<id> in Telegram to acknowledge one).
 
 ## 10. Health, the kill switch and support
 
-1. **Health.** `taskfollow doctor` checks the audit chain, the install state and its backup, the keychain items, Skills Wiki and each channel, the runner's last tick, the gateway, disk space and the host; it clears run claims a crash left behind and deletes run logs, messages and recordings older than the retention period (`taskfollow retention`, 90 days unless the person sets another; the audit is never deleted). The runner also runs it once a day and tells the decision maker when something failed. Show the person each finding and its fix.
+1. **Health.** `taskfollow doctor` checks the audit chain, the install state and its backup, the keychain items and each channel, the runner's last tick, the gateway, disk space and the host; it clears run claims a crash left behind and deletes run logs, messages and recordings older than the retention period (`taskfollow retention`, 90 days unless the person sets another; the audit is never deleted). The runner also runs it once a day and tells the decision maker when something failed. Show the person each finding and its fix.
 2. **The host.** On a team host, `taskfollow host` reads the settings that keep the assistant running and prints the fix for each one that is not right, and the steps for a dedicated OS user; `taskfollow host service install` writes the boot services and prints their `sudo` commands. Never run those commands yourself: the person runs them in their own terminal.
 3. **Kill switch.** When the person wants everything to stop, run `taskfollow pause`: nothing is sent and no workflow runs, while incoming messages are still kept. Only the person starts it again, with `taskfollow unpause` in their own terminal, or the decision maker with /unpause in Telegram.
-4. **Skills Wiki versions.** Judges use the text of each skill file as it was when first used. `taskfollow packs` lists these pins; when Skills Wiki has a new version, the doctor tries it in sandbox and only the decision maker switches to it, in their own terminal (`taskfollow packs switch <pack> --as <their name>`).
-5. **Support and removal.** `taskfollow support bundle` writes a file without secrets or personal data that the person may send for help. `taskfollow uninstall`, in the person's own terminal only, removes the engine's registrations, keys and schedules, exports the audit and keeps the records.
+4. **Support and removal.** `taskfollow support bundle` writes a file without secrets or personal data that the person may send for help. `taskfollow uninstall`, in the person's own terminal only, removes the engine's registrations, keys and schedules, exports the audit and keeps the records.
+## 11. Optional: Skills Wiki
+
+Skills Wiki is a separate service that supplies curated skills to workflows and to the person's agent. The default install does not need it. Skip this section unless the person already has a Skills Wiki account and asks for it, and only on a fresh install: an install that was started with the default solution cannot be switched.
+
+1. Ask whether the person has signed in to their Skills Wiki dashboard and can see an API key and an MCP URL there. If not, stop; nothing else depends on it. Never ask them to read the key to you.
+2. Store the key on the installer's page, then start with the Skills Wiki solution:
+
+```bash
+taskfollow secret skillswiki
+taskfollow start --solution <the reference of the starter-skillswiki solution> --url {{SKILLSWIKI_URL}}
+```
+
+`taskfollow secret skillswiki` opens a page in the person's browser; they paste the API key from their dashboard and press Save, and it goes into the keychain without passing through you. Wait until the person says the page shows Done. `--url` is the MCP URL from their dashboard; it is not a secret. `taskfollow start` refuses to run while the key is missing and says so.
+
+3. Then repeat section 4 as usual. The extra steps connect your agent to Skills Wiki and ask the person to activate their combo in the dashboard.
+4. Judges use the text of each skill file as it was when first used. `taskfollow packs` lists these pins; when Skills Wiki has a new version, the doctor tries it in sandbox and only the decision maker switches to it, in their own terminal (`taskfollow packs switch <pack> --as <their name>`). `taskfollow learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
+
 ## Removing the connection
 
-`taskfollow disconnect skillswiki` removes the Skills Wiki server from your configuration and deletes the key from the keychain. `taskfollow disconnect google-sheets` deletes the Google sign-in from the keychain; the person removes the app's access from their Google account at https://myaccount.google.com/connections. `taskfollow disconnect telegram` and `taskfollow disconnect email` delete the bot token or the app password and the channel's settings; stop the gateway first with `taskfollow gateway stop`.
+`taskfollow disconnect skillswiki` (only if section 11 was used) removes the Skills Wiki server from your configuration and deletes the key from the keychain. `taskfollow disconnect google-sheets` deletes the Google sign-in from the keychain; the person removes the app's access from their Google account at https://myaccount.google.com/connections. `taskfollow disconnect telegram` and `taskfollow disconnect email` delete the bot token or the app password and the channel's settings; stop the gateway first with `taskfollow gateway stop`.
 
 ## Operator rules
 

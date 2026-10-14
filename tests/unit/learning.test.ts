@@ -100,6 +100,14 @@ describe("sending learnings to Skills Wiki (fake server only)", () => {
     expect(await submitLearnings(at, (await loadState(at))?.skillswiki?.url, AT)).toEqual([]);
   });
 
+  it("leaves a learning pending, without throwing, on an install that has no Skills Wiki URL (D126)", async () => {
+    const { at, item } = await home();
+    await rejectItem(at, item, ADA, "wrong tone", AT);
+    await collectLearnings(at, AT);
+    expect(await submitLearnings(at, undefined, AT)).toEqual([]);
+    expect(await listLearnings(at)).toEqual([expect.objectContaining({ status: "pending", error: expect.stringContaining("no Skills Wiki URL") })]);
+  });
+
   it("leaves a learning pending when Skills Wiki cannot be reached, and sends it later", async () => {
     const { at, item } = await home();
     await rejectItem(at, item, ADA, "wrong tone", AT);

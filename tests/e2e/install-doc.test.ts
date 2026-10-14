@@ -1,6 +1,6 @@
 import { guideCommand } from "../../src/core/guide-commands.js";
 import { readFileSync } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
@@ -29,10 +29,20 @@ describe("INSTALL.md", () => {
     }
   });
 
-  it("has the three placeholders the solution server fills in, with the key stored before start (D46)", () => {
+  it("has the placeholders the solution server fills in; the base start needs no Skills Wiki URL (D126)", () => {
     expect(DOC).toContain("{{INSTALL_COMMAND}}");
-    expect(DOC).toContain("taskfollow start --solution {{SOLUTION_REF}} --url {{SKILLSWIKI_URL}}");
-    expect(DOC.indexOf("taskfollow secret skillswiki")).toBeLessThan(DOC.indexOf("taskfollow start --solution"));
+    expect(DOC).toContain("taskfollow start --solution {{SOLUTION_REF}}\n");
+    expect(DOC).toContain("--url {{SKILLSWIKI_URL}}");
+    const optional = DOC.indexOf("## 11.");
+    expect(optional).toBeGreaterThan(0);
+    expect(DOC.indexOf("taskfollow secret skillswiki")).toBeGreaterThan(optional);
+    expect(DOC.indexOf("taskfollow secret skillswiki")).toBeLessThan(DOC.indexOf("--url {{SKILLSWIKI_URL}}"));
+  });
+
+  it("never asks for Skills Wiki before the optional section", () => {
+    const base = DOC.slice(0, DOC.indexOf("## 11."));
+    expect(base).not.toMatch(/skills ?wiki/i);
+    expect(base).not.toContain("--url");
   });
 
   it("only names commands the CLI has", () => {
@@ -40,13 +50,21 @@ describe("INSTALL.md", () => {
     expect(named.filter((name) => !COMMANDS.includes(name))).toEqual([]);
   });
 
-  it("the shipped starter solution loads, probes with the bundled profiles and connects Skills Wiki", () => {
+  it("the shipped starter loads, probes with the bundled profiles and needs no Skills Wiki (D126)", () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
     expect(starter.steps[0]?.auto).toEqual({ action: "probe_runtime", args: {} });
-    expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "brain.key", "brain.register", "brain.combo", "brain.probe-mcp", "data.google", "data.connect", "data.map"]));
+    expect(starter.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
+    expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "data.google", "data.connect", "channels.telegram", "activate.schedule"]));
     expect(starter.steps.map((step) => step.phase)).toEqual(expect.arrayContaining(["CHANNELS", "WORKFLOWS", "DRY_RUN", "ACTIVATE"]));
     expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
+    expect(usesSkillswiki(starter)).toBe(false);
+  });
+
+  it("the Skills Wiki starter keeps the BRAIN steps for people who have an account", () => {
+    const starter = parseSolution(JSON.parse(readFileSync("solutions/starter-skillswiki.json", "utf8")));
+    expect(starter.id).toBe("starter-skillswiki");
+    expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["brain.key", "brain.register", "brain.combo", "brain.probe-mcp"]));
     expect(usesSkillswiki(starter)).toBe(true);
   });
 
@@ -129,6 +147,32 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const script = starterScript(() => setSecret("skillswiki", fake.key, keychain), { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) });
     return { fake, env, keychain, script, registration: join(agentHome, "mcp", "skillswiki.json") };
   }
+
+  it("the shipped starter completes with no Skills Wiki: no key, no --url, nothing registered (D126)", async () => {
+    const google = await startFakeGoogle();
+    servers.push(google);
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
+    const script = {
+      answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
+      perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
+    };
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    // The shipped starter, with only the test agent pinned: the shipped file lets the probe find a real agent on the machine.
+    const shipped = JSON.parse(readFileSync("solutions/starter.json", "utf8")) as { steps: { auto?: { args?: Record<string, unknown> } }[] };
+    const probe = shipped.steps[0]?.auto;
+    if (probe) probe.args = { profile: "fake-agent" };
+    const pinned = join(await makeTempHome(), "starter.json");
+    await writeFile(pinned, JSON.stringify(shipped), "utf8");
+    const run = await operate({ home, solutionRef: `file:${pinned}`, script, startArgs: [], env });
+    expect(run.final.status).toBe("complete");
+    expect((await loadState(home))?.skillswiki).toBeUndefined();
+    expect(await getSecret("skillswiki", keychain)).toBeNull();
+    expect(JSON.stringify(run.calls.map((call) => call.stdout))).not.toMatch(/skills ?wiki/i);
+    expect(runCli(["doctor"], { home, env }).stdout).not.toMatch(/skills ?wiki/i);
+    expect(runCli(["report"], { home, env }).stdout).not.toMatch(/skills ?wiki|MCP not checked/i);
+  });
 
   it("ends READY at level 3 with Skills Wiki registered in the agent; disconnect then removes it all", async () => {
     const { fake, env, keychain, script, registration } = await setup();
