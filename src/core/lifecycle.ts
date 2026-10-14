@@ -8,6 +8,8 @@ import { startRun } from "./runner.js";
 import { listInbox } from "./inbox.js";
 import { loadStep, type RunTrigger } from "./runs.js";
 import { loadState } from "./state.js";
+import type { StepWhen } from "./types.js";
+import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -27,8 +29,11 @@ const PLAIN_WORDS = '--value \'{"description":"<what to do, in the person\'s wor
 type Raw = Record<string, unknown>;
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** The recipe's suggestions that fit what the person chose: one with a `when` shows only once that choice was made (D131). */
 async function suggestions(home: string): Promise<readonly Raw[]> {
-  return (await loadPinnedSolution(home)).solution.workflows ?? [];
+  const offered = (await loadPinnedSolution(home)).solution.workflows ?? [];
+  const state = await loadState(home);
+  return offered.filter((entry) => entry.when === undefined || (state !== null && whenHolds(entry.when as StepWhen, state)));
 }
 
 /** A suggestion may say `"tz": "local"`: it runs in this computer's own time zone, which only the computer knows (D130). */
@@ -43,7 +48,8 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
   if (value === undefined) {
     const found = suggested.find((entry) => entry.workflow === id);
     if (!found) throw new InputError(`No suggested workflow '${id}' (${suggested.map((entry) => String(entry.workflow)).join(", ") || "the recipe suggests none"}); describe a new one with ${PLAIN_WORDS}`);
-    return { ...withLocalZone(found), version: 1 };
+    const { when: _when, ...suggestion } = found;
+    return { ...withLocalZone(suggestion), version: 1 };
   }
   let words: unknown;
   try {

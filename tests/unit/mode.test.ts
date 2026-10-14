@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runAction } from "../../src/core/actions.js";
 import { start, submit } from "../../src/core/engine.js";
 import { InputError } from "../../src/core/inputs.js";
-import { deriveMode } from "../../src/core/mode.js";
+import { deriveMode, deriveModeAction } from "../../src/core/mode.js";
 import { SolutionError, parseSolution } from "../../src/core/solution.js";
 import { memoryDeps } from "../helpers/memory-deps.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -67,5 +67,24 @@ describe("derive_mode in an install", () => {
   ])("refuses a solution whose derive_mode names %s (Review Focus 4)", (_name, _args, steps) => {
     expect(() => parseSolution({ id: "m", version: "1", steps })).toThrow(SolutionError);
     expect(() => parseSolution({ id: "m", version: "1", steps })).toThrow(/derive_mode args\.\w+ must name an earlier ask step/);
+  });
+});
+
+describe("derive_mode with fixed answers, for a person on their own (D131)", () => {
+  it("takes a fixed answer where no question is asked", () => {
+    const state = { schema: 1, solution: { ref: "x", id: "s", version: "1" }, started_at: "t", steps: { q3: { status: "done", at: "t", by: "human", value: "Sam" } } } as unknown as Parameters<typeof deriveModeAction>[1];
+    expect(deriveModeAction({ shared_work: { value: "no" }, always_on: { value: "no" }, decision_maker: "q3" }, state)).toEqual({ mode: "personal", roles: { decision_maker: "Sam" } });
+  });
+
+  it("parses a solution whose derive step uses fixed answers", () => {
+    const solution = parseSolution({ id: "s", version: "1", steps: [ask("q3", { kind: "text" }), derive({ shared_work: { value: "no" }, always_on: { value: "no" }, decision_maker: "q3" })] });
+    expect(solution.steps).toHaveLength(2);
+  });
+
+  it.each([
+    ["a fixed answer outside the allowed ones", { shared_work: { value: "maybe" }, always_on: { value: "no" }, decision_maker: "q3" }],
+    ["a fixed name for the decision maker, which must be asked", { shared_work: { value: "no" }, always_on: { value: "no" }, decision_maker: { value: "Sam" } }],
+  ])("refuses %s", (_what, args) => {
+    expect(() => parseSolution({ id: "s", version: "1", steps: [ask("q3", { kind: "text" }), derive(args)] })).toThrow(SolutionError);
   });
 });

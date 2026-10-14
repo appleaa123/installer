@@ -47,6 +47,15 @@ export interface Check {
   readonly args?: Readonly<Record<string, unknown>>;
 }
 
+/** A step that shows only when an earlier question was answered a certain way (D131). */
+export interface StepWhen {
+  readonly step: string;
+  /** For a single choice: the option that must have been chosen. */
+  readonly equals?: string;
+  /** For a multiple choice: the option that must be among those chosen. */
+  readonly includes?: string;
+}
+
 export interface StepDef {
   readonly step_id: string;
   readonly phase: Phase;
@@ -63,6 +72,10 @@ export interface StepDef {
   readonly hints?: Readonly<Record<string, readonly string[]>>;
   /** The id of a pinned connector whose `taskfollow guide` the agent follows for this step (live setup guides). */
   readonly guide?: string;
+  /** Shown only when an earlier question was answered this way; otherwise the step is out of sight (D131). */
+  readonly when?: StepWhen;
+  /** For an ask step: the answer the helper submits when the person is not sure. */
+  readonly default?: unknown;
 }
 
 export interface Solution {

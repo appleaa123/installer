@@ -2,6 +2,7 @@ import { runAction, runCheck, type CheckResult } from "./actions.js";
 import { crashPoint } from "./crash.js";
 import { ActionFailure } from "./failure.js";
 import { AGENT_FORBIDDEN_KINDS, validateInput } from "./inputs.js";
+import { stepVisible, visibleSteps } from "./visibility.js";
 import type { Action, AuditHead, InstallState, Solution, StatePatch, StepDef, StepRecord, StepStatus, StepType } from "./types.js";
 
 export const MAX_VERIFY_ATTEMPTS = 3;
@@ -73,7 +74,7 @@ export function initialState(ref: string, solution: Solution, now: string, recip
 
 /** First step that is not settled; non-blocking blocked steps are passed over. */
 export function currentStep(solution: Solution, state: InstallState): StepDef | null {
-  for (const step of solution.steps) {
+  for (const step of visibleSteps(solution, state)) {
     const record = recordOf(state, step.step_id);
     if (record && SETTLED.includes(record.status)) continue;
     if (record?.status === "blocked" && !step.blocking) continue;
@@ -196,6 +197,7 @@ function requireKnown(deps: EngineDeps, stepId: string): StepDef {
 
 function requireCurrent(deps: EngineDeps, state: InstallState, stepId: string): StepDef {
   const step = requireKnown(deps, stepId);
+  if (!stepVisible(step, state)) throw new EngineError(`Step '${stepId}' is not part of your setup: it depends on a choice you made earlier`);
   const current = currentStep(deps.solution, state);
   if (!current || current.step_id !== stepId) {
     const where = current ? `; current step is '${current.step_id}'` : "; the install has no pending step";
@@ -244,7 +246,7 @@ export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: 
 /** Reopens blocked steps with fresh attempts and failed steps with their attempts kept, then continues. */
 export async function resume(deps: EngineDeps, state: InstallState): Promise<Advanced> {
   let current = state;
-  for (const step of deps.solution.steps) {
+  for (const step of visibleSteps(deps.solution, state)) {
     const record = recordOf(current, step.step_id);
     if (record?.status === "blocked") {
       current = await transition(deps, current, step, { status: "pending", at: deps.now(), attempts: 0 }, "human");
