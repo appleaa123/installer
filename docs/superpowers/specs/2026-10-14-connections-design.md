@@ -44,6 +44,8 @@ Read-only audit of `skills_wiki`:
 
 ## 4. Architecture: a connection is a data file
 
+> **Superseded in part by D136–D139 (2026-10-14).** Services are now reached through the agent's own MCP servers, CLIs and skills, recorded and gated by a hook (D137), instead of connector files TaskFollow ships for each service. The email, chat-app and WhatsApp parts below still apply.
+
 A service is described in a JSON file, pinned by sha256 like connectors today. The engine turns **each declared operation into its own typed tool** named `<id>.<operation>`. The model never supplies a host.
 
 ```json
