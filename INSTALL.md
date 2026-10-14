@@ -121,6 +121,31 @@ When a workflow needs a service the person already uses with you (their store's 
 
 Task steps work with Claude Code. Other agents are not supported for task steps yet: the workflow then fails in plain words.
 
+## 9b. Finding the work to automate, and an online-store example
+
+1. **The interview.** Before choosing workflows, ask the person to walk you through a normal week: what they do again and again, which services each task touches (their store, email, payments, shipping, accounting), what takes the most time, and what must never happen without them. Then propose two to five workflows in plain words, each with what starts it, what it reads, what it may change, and what waits for their approval. Add only the ones they choose.
+2. **Reach their services through your own tools.** For each service, check what you can already use (an official MCP server, or the vendor's command-line tool). If nothing is there, research the vendor's official way, walk the person through it step by step, and check that one read works before you rely on it. Never install an unofficial server on your own; if the person installs one themselves, that is their choice.
+3. **Example: an online store on Shopify.** The person signs the Shopify CLI in once, in their own terminal: `shopify store auth -s <store>.myshopify.com --scopes read_orders,read_products,read_inventory`. Check it with one read, then adapt these two workflows (replace `<store>`):
+
+   - **Order questions** (a customer asks about an order by email):
+     ```json
+     {"description":"Answers customers who ask about an order","trigger":{"event":"message.received","from":"external","channel":"email"},
+      "steps":[
+       {"id":"lookup","task":{"prompt":"A customer wrote the email below. If it is about an order, find that order in the store <store>.myshopify.com with 'shopify store execute -s <store>.myshopify.com -q <GraphQL query> --no-input' and say what you found. If you cannot tell which order, say so.","input":{"from":"${event.from}","message":"${event.text}"},"may_use":["Bash(shopify store execute:*)"],"output":{"type":"object","properties":{"order_found":{"type":"boolean"},"order":{"type":"string"},"status":{"type":"string"},"tracking":{"type":"string"}},"required":["order_found"]}}},
+       {"id":"draft","judge":{"instructions":"Write a short, friendly reply to the customer using only the order facts. If no order was found, ask for the order number.","input":{"message":"${event.text}","order":"${lookup}"},"schema":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":false}}},
+       {"id":"send","approve":{"tool":"channel.send","args":{"channel":"email","to":"${event.from}","text":"${draft.reply}","reply_to":"${event.message_id}"},"why":"Answer the customer's question about their order"}}]}
+     ```
+   - **Weekly sales** (every Monday, the numbers compared with last week):
+     ```json
+     {"description":"Every Monday, last week's sales by product, compared with the week before","trigger":{"cron":"0 8 * * 1","tz":"local"},
+      "steps":[
+       {"id":"orders","task":{"prompt":"List every order of the last 7 days in the store <store>.myshopify.com, one row per line item, with its product name and its total, using 'shopify store execute ... --no-input'.","may_use":["Bash(shopify store execute:*)"],"output":{"type":"object","properties":{"rows":{"type":"array","items":{"type":"object","properties":{"product":{"type":"string"},"quantity":{"type":"number"},"total":{"type":"string"}}}}},"required":["rows"]}}},
+       {"id":"totals","calc":{"from":"${orders.rows}","group_by":"product","sum":["quantity","total"],"compare":"${previous.totals}"}},
+       {"id":"summary","judge":{"instructions":"Write a short weekly sales note for the owner from these figures. Use only the numbers given; do not calculate anything.","input":"${totals}","schema":{"type":"object","properties":{"note":{"type":"string"}},"required":["note"],"additionalProperties":false}}},
+       {"id":"tell","tool":"channel.notify","args":{"member":"<decision maker's name>","text":"${summary.note}"}}]}
+     ```
+   The same shape works for other services: a read-only `task` with the tools you found, a `calc` step for any number, a `judge` for the words, and an `approve` step before anything goes to a customer.
+
 ## 10. Health, the kill switch and support
 
 1. **Health.** `taskfollow doctor` checks the audit chain, the install state and its backup, the keychain items and each channel, the runner's last tick, the gateway, disk space and the host; it clears run claims a crash left behind and deletes run logs, messages and recordings older than the retention period (`taskfollow retention`, 90 days unless the person sets another; the audit is never deleted). The runner also runs it once a day and tells the decision maker when something failed. Show the person each finding and its fix.
