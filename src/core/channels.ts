@@ -90,6 +90,8 @@ export interface OutboundMessage {
   readonly subject?: string;
   /** Email only (D133): saved files from received messages; each was approved by its content hash. */
   readonly attachments?: readonly OutboundFile[];
+  /** Email only (D143): the Message-ID this message answers, so it stays in the same conversation. */
+  readonly in_reply_to?: string;
 }
 
 export interface ChannelConnector {

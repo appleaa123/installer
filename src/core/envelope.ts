@@ -11,6 +11,8 @@ export interface RawInbound {
   readonly text: string;
   /** The channel's own id of the message (Telegram update id, email Message-ID). */
   readonly message_id: string;
+  /** Email only (D143): the subject, so a reply can stay in the same conversation. */
+  readonly subject?: string;
   readonly attachments?: readonly string[];
   /** Files that came with the message, in memory only; the gateway saves them (D132). */
   readonly files?: readonly InboundFile[];
@@ -30,6 +32,8 @@ export interface InboundEnvelope {
   readonly attachments: readonly string[];
   readonly received_at: string;
   readonly message_id: string;
+  /** Email only (D143): one line, at most 300 characters. Untrusted, like the text. */
+  readonly subject?: string;
   /** Always true: inbound text is data, never instructions. */
   readonly untrusted: true;
   /** Names of the injection patterns the text matched (flag, never obey). */
@@ -37,6 +41,7 @@ export interface InboundEnvelope {
 }
 
 export const MAX_INBOUND_TEXT = 8000;
+const MAX_SUBJECT_TEXT = 300;
 /** §12.5: honoured on every channel; a recipe may add its own words (`channel_policy.opt_out_keywords`). */
 export const DEFAULT_OPT_OUT = ["stop", "unsubscribe"] as const;
 
@@ -75,6 +80,7 @@ export function normalizeInbound(raw: RawInbound, receivedAt: string): InboundEn
   return {
     channel: raw.channel, from: raw.from.trim().toLowerCase(), thread: raw.thread.trim(), text: cleanText(raw.text),
     attachments: [...(raw.attachments ?? [])], received_at: receivedAt, message_id: raw.message_id, untrusted: true, injection: scanInjection(raw.text),
+    ...(raw.subject ? { subject: cleanText(raw.subject).replace(/\s+/g, " ").trim().slice(0, MAX_SUBJECT_TEXT) } : {}),
   };
 }
 

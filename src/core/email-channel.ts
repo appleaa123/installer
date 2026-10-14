@@ -31,7 +31,7 @@ async function readOne(session: ImapSession, config: EmailConfig, uid: number): 
   const body = tooLarge ? `(Not read: this email is ${size} bytes, over the limit of ${MAX_MESSAGE_BYTES} bytes; open it in the mailbox)` : mail.text || mail.subject;
   const text = mail.skipped.length > 0 ? `${body}\n(Not kept: ${mail.skipped.join("; ")})` : body;
   const files = mail.attachments.map((attachment) => ({ name: attachment.filename, type: attachment.type, bytes: attachment.bytes }));
-  return { channel: "email", from: mail.from, thread: mail.thread_root || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}`, files };
+  return { channel: "email", from: mail.from, thread: mail.thread_root || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}`, files, ...(mail.subject ? { subject: mail.subject } : {}) };
 }
 
 async function newMessages(session: ImapSession, config: EmailConfig, last: number): Promise<{ messages: RawInbound[]; last: number }> {
@@ -56,7 +56,7 @@ export function emailChannel(config: EmailConfig, password: string, env: Env = p
     send: async (message) => {
       const domain = config.address.split("@")[1] ?? "localhost";
       const subject = message.subject ?? `Message from ${config.address}`;
-      await smtpSend(config.smtp, password, { from: config.address, to: message.to, subject, text: message.text, message_id: `<${randomUUID()}@${domain}>`, date: new Date().toISOString(), ...(message.attachments?.length ? { attachments: message.attachments } : {}) }, env);
+      await smtpSend(config.smtp, password, { from: config.address, to: message.to, subject, text: message.text, message_id: `<${randomUUID()}@${domain}>`, date: new Date().toISOString(), ...(message.attachments?.length ? { attachments: message.attachments } : {}), ...(message.in_reply_to ? { in_reply_to: message.in_reply_to } : {}) }, env);
     },
   };
 }
