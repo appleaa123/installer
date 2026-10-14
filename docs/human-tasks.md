@@ -113,6 +113,10 @@ Each task says why it is needed and what to do, step by step.
 10. `taskfollow uninstall` in Command Prompt: the stored keys are gone and the printed `schtasks /Delete ...` line removes the task.
 11. Run task 16's certification and paste the results. When items 1 to 10 pass, Claude removes the word Preview.
 
+### 23. Run the real-life install test with a non-technical person (Mac, then Windows)
+
+**Why:** this is the only thing that can show whether the install works unaided. Two reviewers found real problems that no automated test had; fixing them is not the same as proving it. About half a day per person, plus a short check the next day. Follow `docs/testing/2026-10-14-real-life-install-test.md`: publish the package to npm first, use someone who has never used a terminal, do not help them, log every stall, and send Claude the sheet. Claude turns every intervention into a fix, and you repeat the test with a new person until one finishes with none.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
