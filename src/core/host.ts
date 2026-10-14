@@ -77,7 +77,7 @@ async function bootCheck(probe: HostProbe, home: string): Promise<ReadinessCheck
   for (const target of serviceTargets(home, probe.platform)) if (!(await probe.exists(target))) missing.push(target);
   const title = "Starts at boot and restarts after a crash";
   if (missing.length === 0) return check("boot_service", title, "ok", "the boot service is installed");
-  return check("boot_service", title, "fix", `not installed: ${missing.join(", ")}`, ["taskpilot host service install", "then run the sudo commands it prints, in your own terminal"]);
+  return check("boot_service", title, "fix", `not installed: ${missing.join(", ")}`, ["taskfollow host service install", "then run the sudo commands it prints, in your own terminal"]);
 }
 
 async function macChecks(probe: HostProbe, home: string): Promise<ReadinessCheck[]> {
@@ -143,7 +143,7 @@ export async function hostReadiness(home: string, state: InstallState | null, pr
 
 export const saveReadiness = (home: string, readiness: Readiness): Promise<void> => writeConfig(home, READINESS_FILE, readiness);
 
-/** `taskpilot host [service install | remove]`: the readiness checks with their printed fixes, or the boot service files. */
+/** `taskfollow host [service install | remove]`: the readiness checks with their printed fixes, or the boot service files. */
 export async function hostCommand(home: string, sub: string | undefined, extra: string | undefined, now: () => string, options: ServiceOptions & { probe?: HostProbe | null } = {}): Promise<Record<string, unknown>> {
   if (sub === "service") return serviceCommand(home, extra, options, now);
   if (sub !== undefined) throw new InputError("host takes nothing (the readiness checks) or: service install, service remove");

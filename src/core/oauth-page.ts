@@ -7,7 +7,7 @@ import { requireSecretValue } from "./keychain.js";
 import { DONE_PAGE, SECRET_PAGE_TTL_MS, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
 
 /**
- * `taskpilot secret <id>` for an OAuth connector (D66): the same detached loopback page as D47, in two halves.
+ * `taskfollow secret <id>` for an OAuth connector (D66): the same detached loopback page as D47, in two halves.
  * 1. The form on the one-time path takes the person's own OAuth client id and secret, then sends the browser
  *    to Google's consent page (PKCE, offline access, a random `state`).
  * 2. Google sends the browser back to this page's root with `?code=…&state=…`; the page exchanges the code

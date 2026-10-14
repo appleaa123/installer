@@ -17,7 +17,7 @@ describe("the Telegram Bot API (D74)", () => {
   it("refuses a wrong token with what to do, and never prints the token", async () => {
     const refused = telegramApi("456:wrong-token", fake.env).getMe();
     await expect(refused).rejects.toThrow(ActionFailure);
-    await expect(refused).rejects.toThrow("run 'taskpilot secret telegram'");
+    await expect(refused).rejects.toThrow("run 'taskfollow secret telegram'");
     await expect(refused).rejects.not.toThrow("wrong-token");
   });
 

@@ -14,7 +14,7 @@ import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, workflowIds } from "./workflow.js";
 
 /**
- * The OS scheduler entry (D12, D82): one per engine home, running `taskpilot --home <home> tick` every minute.
+ * The OS scheduler entry (D12, D82): one per engine home, running `taskfollow --home <home> tick` every minute.
  * Two backends behind one interface: macOS launchd (a LaunchAgent plist with StartInterval 60) and a crontab line
  * (Linux and other Unix). The installer only writes the file, under `runtime/schedule/` in the home, and prints
  * the exact commands; the person runs them in their own terminal (or Plan 9's service setup does). It never runs
@@ -123,7 +123,7 @@ async function scheduleList(home: string, now: string): Promise<Record<string, u
     }
   }
   const heartbeat = ((await readConfig(home, HEARTBEAT_FILE)) as { last?: string } | null)?.last ?? null;
-  return { workflows, last_tick: heartbeat, ...(heartbeat === null ? { note: "The runner has never ticked: install the schedule with 'taskpilot schedule install'" } : {}) };
+  return { workflows, last_tick: heartbeat, ...(heartbeat === null ? { note: "The runner has never ticked: install the schedule with 'taskfollow schedule install'" } : {}) };
 }
 
 export interface ScheduleOptions {
@@ -132,7 +132,7 @@ export interface ScheduleOptions {
   readonly cli?: string;
 }
 
-/** `taskpilot schedule list | install | remove | report [--value <json>]` (D82, D89). */
+/** `taskfollow schedule list | install | remove | report [--value <json>]` (D82, D89). */
 export async function scheduleCommand(home: string, sub: string | undefined, value: string | undefined, now: () => string, options: ScheduleOptions = {}): Promise<Record<string, unknown>> {
   if (sub === "list" || sub === undefined) return scheduleList(home, now());
   if (sub === "report") return saveReportConfig(home, value, now());
@@ -144,6 +144,6 @@ export async function scheduleCommand(home: string, sub: string | undefined, val
   const commands = sub === "install" ? backend.install(path, entry) : backend.remove(path, entry);
   return {
     backend: backend.id, label: entry.label, ...(sub === "install" ? { file: path } : {}), commands,
-    note: `Ask the person to run these commands in their own terminal; the installer does not change the OS scheduler itself (D82).${sub === "install" ? " Then 'taskpilot schedule list' shows the runner's last tick within a minute." : ""}`,
+    note: `Ask the person to run these commands in their own terminal; the installer does not change the OS scheduler itself (D82).${sub === "install" ? " Then 'taskfollow schedule list' shows the runner's last tick within a minute." : ""}`,
   };
 }

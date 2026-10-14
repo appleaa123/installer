@@ -61,7 +61,7 @@ async function signIn(wire: Wire, account: MailAccount, password: string): Promi
   await wire.write(`AUTH PLAIN ${plain}\r\n`);
   const reply = await readReply(wire);
   if (reply.code === 235) return;
-  throw new ActionFailure(`The mail server ${account.host} refused the sign-in for ${account.user} (${reply.code}): check the user and the app password, then run 'taskpilot secret email' again`);
+  throw new ActionFailure(`The mail server ${account.host} refused the sign-in for ${account.user} (${reply.code}): check the user and the app password, then run 'taskfollow secret email' again`);
 }
 
 /** Opens, greets, signs in, runs `task`, then says QUIT; the connection is always closed. */
@@ -79,7 +79,7 @@ async function session<T>(account: MailAccount, password: string, env: Env, task
   }
 }
 
-/** Signs in and out without sending anything (`taskpilot channel email`). */
+/** Signs in and out without sending anything (`taskfollow channel email`). */
 export function smtpVerify(account: MailAccount, password: string, env: Env = process.env): Promise<void> {
   return session(account, password, env, async () => undefined);
 }

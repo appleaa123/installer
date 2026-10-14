@@ -43,13 +43,13 @@ describe("hints", () => {
 });
 
 describe("a reopened agent_action", () => {
-  it("names taskpilot verify, not taskpilot resume", async () => {
+  it("names taskfollow verify, not taskfollow resume", async () => {
     const { deps } = memoryDeps(await makeTempHome(), basicSolution());
     let { state } = await start(deps, null, FIXTURE_REF);
     state = (await submit(deps, state, "mode.shared-work", { kind: "value", value: "yes" })).state;
     state = (await submit(deps, state, "mode.report-time", { kind: "value", value: "09:00" })).state;
     state = (await verifyStep(deps, state, "brain.register")).state;
     const reopened = await resume(deps, state);
-    expect(reopened.result).toMatchObject({ status: "step", view: { status: "pending", attempts: 1, resume: "taskpilot verify brain.register" } });
+    expect(reopened.result).toMatchObject({ status: "step", view: { status: "pending", attempts: 1, resume: "taskfollow verify brain.register" } });
   });
 });

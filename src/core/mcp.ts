@@ -4,7 +4,7 @@ import { ActionFailure } from "./failure.js";
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_TIMEOUT_MS = 30_000;
 export const MCP_MAX_BYTES = 1_000_000;
-export const KEY_REJECTED_HINT = "Skills Wiki key rejected: run `taskpilot secret skillswiki`";
+export const KEY_REJECTED_HINT = "Skills Wiki key rejected: run `taskfollow secret skillswiki`";
 const CLIENT_INFO = { name: "installer", version: "0.1.0" };
 
 export interface McpTarget {

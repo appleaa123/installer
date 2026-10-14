@@ -56,7 +56,7 @@ describe("the OS scheduler entry (D82)", () => {
   });
 });
 
-describe("taskpilot schedule (D82)", () => {
+describe("taskfollow schedule (D82)", () => {
   it("install writes the entry under the home only and returns the commands; remove deletes it", async () => {
     const home = await makeTempHome();
     const installed = await scheduleCommand(home, "install", undefined, NOW, { ...OPTIONS, platform: "linux" });
@@ -74,7 +74,7 @@ describe("taskpilot schedule (D82)", () => {
     const home = await runnerHome();
     await writeWorkflow(home, { workflow: "morning", version: 1, trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, steps: [{ id: "note", tool: "memo.add", args: { text: "hi" } }] });
     await writeWorkflow(home, { workflow: "broken", version: 1, steps: [] });
-    expect(await scheduleCommand(home, "list", undefined, NOW)).toMatchObject({ last_tick: null, note: expect.stringContaining("taskpilot schedule install") });
+    expect(await scheduleCommand(home, "list", undefined, NOW)).toMatchObject({ last_tick: null, note: expect.stringContaining("taskfollow schedule install") });
     await tick(home, () => "2026-10-08T12:00:30.000Z");
     expect(await scheduleCommand(home, undefined, undefined, NOW)).toEqual({
       workflows: [

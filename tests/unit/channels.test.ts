@@ -63,7 +63,7 @@ describe("the email setup (D75)", () => {
   });
 });
 
-describe("taskpilot channel (D73)", () => {
+describe("taskfollow channel (D73)", () => {
   it("verifies the Telegram bot with getMe and saves it without the token", async () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     expect(await channelCommand(home, "telegram", undefined, now, env)).toMatchObject({ status: "verified", channel: "telegram", bot: "@desk_test_bot", capabilities: { inbound: "long_poll", buttons: false } });
@@ -74,7 +74,7 @@ describe("taskpilot channel (D73)", () => {
 
   it("says to store the token first, and saves nothing", async () => {
     const { home, env, now } = await setup({});
-    await expect(channelCommand(home, "telegram", undefined, now, env)).rejects.toThrow(new ActionFailure("No telegram secret is stored: run 'taskpilot secret telegram' and enter it on the page that opens"));
+    await expect(channelCommand(home, "telegram", undefined, now, env)).rejects.toThrow(new ActionFailure("No telegram secret is stored: run 'taskfollow secret telegram' and enter it on the page that opens"));
     expect(await loadChannel(home, "telegram")).toBeNull();
   });
 
@@ -109,14 +109,14 @@ describe("taskpilot channel (D73)", () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     await channelCommand(home, "telegram", undefined, now, env);
     expect(await channelCommand(home, undefined, undefined, now, env)).toEqual({ channels: [expect.objectContaining({ channel: "telegram", risk: { official_api: true, outbound_external: true, sender_verified: true } })] });
-    await expect(channelCommand(home, "sms", undefined, now, env)).rejects.toThrow(new InputError("Channels: telegram, email; for example: taskpilot channel telegram"));
+    await expect(channelCommand(home, "sms", undefined, now, env)).rejects.toThrow(new InputError("Channels: telegram, email; for example: taskfollow channel telegram"));
     await expect(channelCommand(home, "telegram", "{}", now, env)).rejects.toThrow("channel telegram takes no --value");
   });
 
   it("completes a CHANNELS step through the check channel_verified", async () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     const before = await runCheck(home, { check: "channel_verified", args: { channel: "telegram" } });
-    expect(before).toEqual({ ok: false, hint: "The telegram channel is not set up yet: store its secret with 'taskpilot secret telegram', run 'taskpilot channel telegram', then run the verify again" });
+    expect(before).toEqual({ ok: false, hint: "The telegram channel is not set up yet: store its secret with 'taskfollow secret telegram', run 'taskfollow channel telegram', then run the verify again" });
     await channelCommand(home, "telegram", undefined, now, env);
     expect(await runCheck(home, { check: "channel_verified", args: { channel: "telegram" } })).toEqual({ ok: true });
   });
@@ -198,11 +198,11 @@ describe("the channel connectors (§12.2)", () => {
 
   it("refuses to open a channel that is not set up", async () => {
     const { home, env } = await setup({});
-    await expect(openChannel(home, "email", env)).rejects.toThrow("run 'taskpilot channel email' first");
+    await expect(openChannel(home, "email", env)).rejects.toThrow("run 'taskfollow channel email' first");
   });
 });
 
-describe("taskpilot disconnect <channel> (§14.2)", () => {
+describe("taskfollow disconnect <channel> (§14.2)", () => {
   it("deletes the secret and the channel's settings, and says what else to do", async () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     await channelCommand(home, "telegram", undefined, now, env);

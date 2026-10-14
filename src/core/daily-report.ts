@@ -48,7 +48,7 @@ function channelOf(value: unknown, where: string): ChannelId | undefined {
 
 function parseRecipient(value: unknown, index: number): Recipient {
   const where = `recipients[${index}]`;
-  if (!isRecord(value) || typeof value.member !== "string" || value.member.trim() === "") throw new InputError(`report: ${where} needs 'member', the name of a member who joined with taskpilot invite`);
+  if (!isRecord(value) || typeof value.member !== "string" || value.member.trim() === "") throw new InputError(`report: ${where} needs 'member', the name of a member who joined with taskfollow invite`);
   if (typeof value.tz !== "string" || !isTimeZone(value.tz)) throw new InputError(`report: ${where}.tz must be an IANA time zone, for example America/Toronto`);
   const [channel, fallback] = [channelOf(value.channel, `${where}.channel`), channelOf(value.fallback_channel, `${where}.fallback_channel`)];
   return { member: value.member.trim(), tz: value.tz, ...(channel ? { channel } : {}), ...(fallback ? { fallback_channel: fallback } : {}) };
@@ -66,7 +66,7 @@ export async function loadReportConfig(home: string): Promise<ReportConfig | nul
   return raw === null ? null : parseReportConfig(raw);
 }
 
-/** `taskpilot schedule report --value <json>`: who gets the report, in which zone, on which channel. */
+/** `taskfollow schedule report --value <json>`: who gets the report, in which zone, on which channel. */
 export async function saveReportConfig(home: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
   if (value === undefined) return { report: await loadReportConfig(home) };
   let parsed: unknown;
@@ -111,7 +111,7 @@ export async function composeReport(home: string, recipient: Recipient, previous
   });
   const header = `Report ${wallClock(previous, recipient.tz)} → ${wallClock(slot, recipient.tz)} (${recipient.tz}): ${inWindow.length} run${inWindow.length === 1 ? "" : "s"}.`;
   const text = [header, ...(inWindow.length === 0 ? ["No runs in this window."] : inWindow.map((record) => line(record, recipient.tz)))].join("\n");
-  return text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - 60)}\n… more runs: see taskpilot schedule list`;
+  return text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - 60)}\n… more runs: see taskfollow schedule list`;
 }
 
 const isDomainError = (error: unknown): error is Error => error instanceof InputError || error instanceof ToolRefusal || error instanceof ActionFailure;

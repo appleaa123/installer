@@ -34,7 +34,7 @@ async function installedHome(): Promise<{ home: string; env: Record<string, stri
 
 const registered = async (home: string, name: string): Promise<boolean> => access(join(home, ".fake-agent", "mcp", `${name}.json`)).then(() => true, () => false);
 
-describe("taskpilot uninstall (§16.4, D109)", () => {
+describe("taskfollow uninstall (§16.4, D109)", () => {
   it("needs a person's terminal: the agent's attempt is refused, audited, and removes nothing", async () => {
     const { home, env } = await installedHome();
     await expect(uninstall(home, { interactive: false }, () => AT, { ...OS, env })).rejects.toThrow("in their own terminal");

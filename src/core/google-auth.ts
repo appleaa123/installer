@@ -29,7 +29,7 @@ const EXPIRY_MARGIN_MS = 60_000;
 type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
-const again = (secretId: string): string => `run 'taskpilot secret ${secretId}' to sign in again`;
+const again = (secretId: string): string => `run 'taskfollow secret ${secretId}' to sign in again`;
 
 /** The setup guide's help for Google's error code: what it means, the fix, where to look and what to search; empty when no symptom matches the whole code (live setup guides, 4.6). */
 export function symptomHelp(code: string, symptoms: readonly ConnectorSymptom[] = []): string {
@@ -89,7 +89,7 @@ export function clientOwnedTokens(auth: ConnectorAuth, signIn: SignIn, env: Env 
 /** The token source for a connector, from its keychain item (`auth.secret_id`). */
 export async function connectorTokens(def: ConnectorDef, env: Env = process.env): Promise<AccessTokenSource> {
   const stored = await getSecret(def.auth.secret_id, env);
-  if (stored === null) throw new ActionFailure(`No Google sign-in is stored yet: run 'taskpilot secret ${def.auth.secret_id}' and sign in on the page it opens`);
+  if (stored === null) throw new ActionFailure(`No Google sign-in is stored yet: run 'taskfollow secret ${def.auth.secret_id}' and sign in on the page it opens`);
   return clientOwnedTokens(def.auth, parseSignIn(stored, def.auth.secret_id), env, def.setup?.symptoms);
 }
 

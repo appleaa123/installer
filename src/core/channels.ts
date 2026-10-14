@@ -13,7 +13,7 @@ import { telegramApi, telegramInbound, type TelegramBot } from "./telegram.js";
 
 /**
  * Channel connectors (spec §12.2, D73): one interface, receive + send + declared capabilities. v1 has two built-in
- * adapters, Telegram and email, configured by `taskpilot channel <id>` into `config/channels/<id>.json` (no secrets:
+ * adapters, Telegram and email, configured by `taskfollow channel <id>` into `config/channels/<id>.json` (no secrets:
  * the bot token and the app password stay in the keychain items `telegram` and `email`). The gateway keeps each
  * channel's read position in `state/gateway/<id>.cursor.json`.
  */
@@ -75,7 +75,7 @@ export interface ChannelConnector {
 type Env = Readonly<Record<string, string | undefined>>;
 
 export function requireChannelId(id: string | undefined): ChannelId {
-  if (!(CHANNEL_IDS as readonly unknown[]).includes(id)) throw new InputError(`Channels: ${CHANNEL_IDS.join(", ")}; for example: taskpilot channel telegram`);
+  if (!(CHANNEL_IDS as readonly unknown[]).includes(id)) throw new InputError(`Channels: ${CHANNEL_IDS.join(", ")}; for example: taskfollow channel telegram`);
   return id as ChannelId;
 }
 
@@ -86,18 +86,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 export async function loadChannel(home: string, id: ChannelId): Promise<ChannelConfig | null> {
   const raw = await readConfig(home, configFile(id));
   if (raw === null) return null;
-  if (!isRecord(raw) || raw.channel !== id || typeof raw.verified_at !== "string") throw new StateCorruptError(`${configFile(id)} has an unexpected shape; remove it and run 'taskpilot channel ${id}' again`);
+  if (!isRecord(raw) || raw.channel !== id || typeof raw.verified_at !== "string") throw new StateCorruptError(`${configFile(id)} has an unexpected shape; remove it and run 'taskfollow channel ${id}' again`);
   return raw as unknown as ChannelConfig;
 }
 
 export const saveChannel = (home: string, config: ChannelConfig): Promise<void> => writeConfig(home, configFile(config.channel), config);
 
-/** The check `channel_verified` (§6.2 CHANNELS): `taskpilot channel <id>` checked the channel live and saved it. */
+/** The check `channel_verified` (§6.2 CHANNELS): `taskfollow channel <id>` checked the channel live and saved it. */
 export async function channelCheck(home: string, id: string): Promise<{ ok: boolean; hint?: string }> {
   const channel = requireChannelId(id);
   if (await loadChannel(home, channel)) return { ok: true };
-  const command = channel === "email" ? "taskpilot channel email --value '<servers>'" : "taskpilot channel telegram";
-  return { ok: false, hint: `The ${channel} channel is not set up yet: store its secret with 'taskpilot secret ${channel}', run '${command}', then run the verify again` };
+  const command = channel === "email" ? "taskfollow channel email --value '<servers>'" : "taskfollow channel telegram";
+  return { ok: false, hint: `The ${channel} channel is not set up yet: store its secret with 'taskfollow secret ${channel}', run '${command}', then run the verify again` };
 }
 
 /** The configured channels, in CHANNEL_IDS order. */
@@ -113,7 +113,7 @@ export async function loadCursor(home: string, id: ChannelId): Promise<Cursor | 
 
 export const saveCursor = (home: string, id: ChannelId, cursor: Cursor): Promise<void> => writeConfig(home, cursorFile(id), cursor);
 
-/** Removes the channel's configuration and read position (`taskpilot disconnect <channel>`). */
+/** Removes the channel's configuration and read position (`taskfollow disconnect <channel>`). */
 export async function removeChannel(home: string, id: ChannelId): Promise<boolean> {
   const existed = (await loadChannel(home, id)) !== null;
   await rm(await confinedPath(home, configFile(id)), { force: true });
@@ -123,7 +123,7 @@ export async function removeChannel(home: string, id: ChannelId): Promise<boolea
 
 export async function channelSecret(id: ChannelId, env: Env = process.env): Promise<string> {
   const secret = await getSecret(id, env);
-  if (secret === null) throw new ActionFailure(`No ${id} secret is stored: run 'taskpilot secret ${id}' and enter it on the page that opens`);
+  if (secret === null) throw new ActionFailure(`No ${id} secret is stored: run 'taskfollow secret ${id}' and enter it on the page that opens`);
   return secret;
 }
 
@@ -149,6 +149,6 @@ export function channelConnector(config: ChannelConfig, secret: string, env: Env
 /** The connector of a configured channel, with its secret from the keychain. */
 export async function openChannel(home: string, id: ChannelId, env: Env = process.env): Promise<ChannelConnector> {
   const config = await loadChannel(home, id);
-  if (!config) throw new InputError(`The ${id} channel is not set up: run 'taskpilot channel ${id}' first`);
+  if (!config) throw new InputError(`The ${id} channel is not set up: run 'taskfollow channel ${id}' first`);
   return channelConnector(config, await channelSecret(id, env), env);
 }

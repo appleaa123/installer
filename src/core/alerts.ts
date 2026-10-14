@@ -16,7 +16,7 @@ import type { Roles } from "./types.js";
  * Urgent events and reminders (spec §11.7, D26, D95, D96). A judge whose schema declares a boolean `urgent` field
  * and answers `true` raises an urgent alert: an internal message (L1) to the decision maker on every channel they
  * joined, at once, repeated every ALERT_REPEAT_MS until they acknowledge it (`K<id>` from a verified channel, or
- * `taskpilot alerts ack <id>`), at most ALERT_MAX_SENDS times. The run becomes urgent: its approval items go first,
+ * `taskfollow alerts ack <id>`), at most ALERT_MAX_SENDS times. The run becomes urgent: its approval items go first,
  * are reminded every URGENT_REMINDER_MS, and earned autonomy never approves them; anything external still needs a
  * person. Other pending approvals get one reminder REMINDER_AFTER_MS after they were asked, before they expire.
  */
@@ -76,7 +76,7 @@ function modelSays(fields: readonly string[], answers: readonly unknown[]): stri
 
 async function sendAlert(ctx: ToolContext, roles: Roles | undefined, alert: Alert): Promise<Alert> {
   const counted = alert.count > 1 ? ` (${alert.count} urgent judgments so far)` : "";
-  const error = await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (alert ${alert.id}): ${where(alert)}${counted} Reply K${alert.id} to acknowledge, or run 'taskpilot alerts ack ${alert.id}'.${saying(alert.text)}`);
+  const error = await notifyDecisionMaker(ctx, roles, `${GATEWAY_MARK} URGENT (alert ${alert.id}): ${where(alert)}${counted} Reply K${alert.id} to acknowledge, or run 'taskfollow alerts ack ${alert.id}'.${saying(alert.text)}`);
   const sent: Alert = { ...alert, sends: alert.sends + 1, last_sent: ctx.now() };
   await replaceRecord(ctx.home, ALERTS_DIR, sent);
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "engine", event: "alert.sent", ref: `alert:${alert.id}`, payload: { run: `${alert.workflow}/${alert.run_id}`, sends: sent.sends, delivered: error === null, ...(error ? { error } : {}) } });
@@ -160,10 +160,10 @@ export async function remindApprovals(ctx: ToolContext): Promise<number[]> {
   return reminded;
 }
 
-/** `taskpilot alerts [list | ack <id>]`: acknowledging is a person's act, in their own terminal (an agent cannot silence an alert). */
+/** `taskfollow alerts [list | ack <id>]`: acknowledging is a person's act, in their own terminal (an agent cannot silence an alert). */
 export async function alertsCommand(home: string, sub: string | undefined, id: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   if (sub === undefined || sub === "list") return { alerts: await listRecords(home, ALERTS_DIR, isAlert) };
-  if (!person.interactive) throw new InputError("An urgent alert is acknowledged by a person: run 'taskpilot alerts ack <id>' in your own terminal, or reply K<id>");
+  if (!person.interactive) throw new InputError("An urgent alert is acknowledged by a person: run 'taskfollow alerts ack <id>' in your own terminal, or reply K<id>");
   if (sub === "ack" && id !== undefined && /^[1-9]\d*$/.test(id)) return { status: "acknowledged", alert: await acknowledgeAlert(home, Number(id), person.as?.trim() || "terminal", now()) };
   throw new InputError("alerts takes: list, ack <alert id>");
 }

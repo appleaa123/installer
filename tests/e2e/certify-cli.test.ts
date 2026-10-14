@@ -4,11 +4,11 @@ import { runCli } from "../helpers/cli.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 /** The test suite sets INSTALLER_CERTIFY_SUITES=none, so certify runs no suite here; the real run is a person's task. */
-describe("taskpilot certify (D116)", () => {
+describe("taskfollow certify (D116)", () => {
   it("needs a profile", async () => {
     const result = runCli(["certify"], { home: await makeTempHome() });
     expect(result.code).toBe(2);
-    expect(result.json).toMatchObject({ error: "certify needs --profile <id>, for example: taskpilot certify --profile claude-code" });
+    expect(result.json).toMatchObject({ error: "certify needs --profile <id>, for example: taskfollow certify --profile claude-code" });
   });
 
   it("names a profile that does not exist", async () => {

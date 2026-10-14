@@ -23,7 +23,7 @@ afterAll(() => {
   }
 });
 
-describe("taskpilot secret google (D66)", () => {
+describe("taskfollow secret google (D66)", () => {
   it("opens the sign-in page; the person's client and Google's refresh token end up in the keychain, never on stdout", async () => {
     const dir = await makeTempHome();
     const result = runCli(["secret", "google"], { env: { ...fake.env, INSTALLER_KEYCHAIN_DIR: dir } });

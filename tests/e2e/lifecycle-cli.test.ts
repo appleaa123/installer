@@ -17,7 +17,7 @@ async function home(): Promise<string> {
   return created;
 }
 
-describe("taskpilot workflow, dryrun, sandbox, harden, autonomy, alerts and learnings (§6.6, D98)", () => {
+describe("taskfollow workflow, dryrun, sandbox, harden, autonomy, alerts and learnings (§6.6, D98)", () => {
   it("adds a suggested workflow, dry-runs it, and leaves confirming to the person's terminal", async () => {
     const dir = await home();
     expect(runCli(["workflow", "suggestions"], { home: dir }).json).toEqual({ suggestions: [{ workflow: "note", description: "Adds a memo", mode: "typed", trigger: { manual: true } }] });
@@ -40,7 +40,7 @@ describe("taskpilot workflow, dryrun, sandbox, harden, autonomy, alerts and lear
   it("lets the agent turn sandbox on, never off", async () => {
     const dir = await home();
     expect(runCli(["sandbox", "on"], { home: dir }).json).toMatchObject({ status: "on", mode: { on: true, by: "agent" } });
-    expect(runCli(["sandbox", "off"], { home: dir })).toMatchObject({ code: 2, json: { error: expect.stringContaining("taskpilot sandbox off' in their own terminal") } });
+    expect(runCli(["sandbox", "off"], { home: dir })).toMatchObject({ code: 2, json: { error: expect.stringContaining("taskfollow sandbox off' in their own terminal") } });
     expect(runCli(["sandbox"], { home: dir }).json).toMatchObject({ mode: { on: true } });
   });
 

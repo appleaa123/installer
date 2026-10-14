@@ -53,15 +53,15 @@ describe("the data-flow summary (§14.6, D106)", () => {
 
   it("adds the pause, the last doctor run, the readiness score and the data flow to the report", async () => {
     const { home, state } = await flowHome();
-    expect(renderOperations(await operationsView(home, state))).toEqual(expect.arrayContaining(["🩺 Doctor     never run: run 'taskpilot doctor'", "🖥️ Host       not checked yet: run 'taskpilot host'", "🔀 Data flow"]));
+    expect(renderOperations(await operationsView(home, state))).toEqual(expect.arrayContaining(["🩺 Doctor     never run: run 'taskfollow doctor'", "🖥️ Host       not checked yet: run 'taskfollow host'", "🔀 Data flow"]));
     await setPaused(home, true, { name: "agent", actor: "agent", via: "cli" }, AT);
     const doctor = await runDoctor(home, { now: () => AT });
     await saveReadiness(home, { mode: "personal", applies: false, score: "3/5", checked_at: AT, checks: [] });
     const view = await operationsView(home, state);
     expect(view).toMatchObject({ paused: { paused: true }, doctor: { status: doctor.status, checked_at: AT }, readiness: { score: "3/5", applies: false } });
     const lines = renderOperations(view);
-    expect(lines[0]).toBe("⏸️ Paused     since 2026-10-08T12:00:00.000Z by agent: nothing is sent, no run starts ('taskpilot unpause' in a person's terminal)");
+    expect(lines[0]).toBe("⏸️ Paused     since 2026-10-08T12:00:00.000Z by agent: nothing is sent, no run starts ('taskfollow unpause' in a person's terminal)");
     expect(lines).toContain("🖥️ Host       readiness 3/5 (Personal mode: for information only)");
-    expect(lines.at(-1)).toContain("   Support (only when you send it) — 'taskpilot support bundle'");
+    expect(lines.at(-1)).toContain("   Support (only when you send it) — 'taskfollow support bundle'");
   });
 });

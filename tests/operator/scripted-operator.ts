@@ -84,7 +84,7 @@ export async function operate(options: OperatorOptions): Promise<OperatorRun> {
       crashed += 1;
       result = recover();
     }
-    if (result.code !== 0) throw new Error(`taskpilot ${args.join(" ")} failed: ${result.stderr}`);
+    if (result.code !== 0) throw new Error(`taskfollow ${args.join(" ")} failed: ${result.stderr}`);
     const json = result.json as StepJson;
     return json.next ?? json;
   };

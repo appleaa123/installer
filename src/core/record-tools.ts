@@ -41,7 +41,7 @@ function matches(table: Table, where: Readonly<Record<string, unknown>>): Record
 export function checkedWrite(table: Table, values: unknown, mode: "create" | "update"): RecordValues {
   const checked = checkValues(table.entityName, table.entity, values, mode);
   const unmapped = Object.keys(checked).find((field) => !Object.hasOwn(table.columns, field));
-  if (unmapped !== undefined) throw new InputError(`${table.entityName}.${unmapped} has no column in the sheet: map it with 'taskpilot map ${table.entityName}' first`);
+  if (unmapped !== undefined) throw new InputError(`${table.entityName}.${unmapped} has no column in the sheet: map it with 'taskfollow map ${table.entityName}' first`);
   return checked;
 }
 

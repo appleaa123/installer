@@ -39,7 +39,7 @@ export const APPROVAL_TOOLS: readonly ToolDef[] = [
       const prepared = await prepareAction(ctx, target, args.args as ToolArgs);
       const preview = args.preview as string | undefined;
       const item = await requestApproval(ctx.home, { prepared, why: args.why as string, evidence: args.evidence as string[], urgent: args.urgent as boolean, via: ctx.via, ...(preview ? { preview } : {}) }, ctx.now());
-      return { ...withoutToken(item), next: `Ask ${who(item)} to run 'taskpilot approvals approve ${item.id}' in their own terminal (or edit or reject it), then call approvals.get with {"id":${item.id}}` };
+      return { ...withoutToken(item), next: `Ask ${who(item)} to run 'taskfollow approvals approve ${item.id}' in their own terminal (or edit or reject it), then call approvals.get with {"id":${item.id}}` };
     },
   },
   {

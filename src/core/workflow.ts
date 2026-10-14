@@ -258,7 +258,7 @@ export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry
 }
 
 export function requireWorkflowId(id: string | undefined): string {
-  if (!id || !ID.test(id)) throw new InputError("Name a workflow: lowercase letters, digits and dashes, for example: taskpilot run daily-digest");
+  if (!id || !ID.test(id)) throw new InputError("Name a workflow: lowercase letters, digits and dashes, for example: taskfollow run daily-digest");
   return id;
 }
 

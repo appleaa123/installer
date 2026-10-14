@@ -8,7 +8,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 /** Google marks a sign-in to expire (about 7 days) only while the person's app is in Testing status. */
 const EXPIRING_HINT = (secretId: string): string =>
-  `Google says this sign-in will expire in about a week, because your Google app is still in Testing status. Open the consent screen in the Google Cloud console (called Audience in newer consoles), change the publishing status to In production, then run 'taskpilot secret ${secretId}' to sign in again`;
+  `Google says this sign-in will expire in about a week, because your Google app is still in Testing status. Open the consent screen in the Google Cloud console (called Audience in newer consoles), change the publishing status to In production, then run 'taskfollow secret ${secretId}' to sign in again`;
 
 /**
  * The `oauth_ready` check (live setup guides, 4.5): the stored sign-in refreshes and the connector's API answers, so a
@@ -26,7 +26,7 @@ export async function oauthReady(secretId: string, env: Env = process.env): Prom
     case "disabled":
       return { ok: false, hint: `Google says the ${def.name} API is not enabled in your project${symptomHelp("SERVICE_DISABLED", def.setup?.symptoms)}` };
     case "refused":
-      return { ok: false, hint: `${def.name} refused the sign-in: run 'taskpilot secret ${def.auth.secret_id}' to sign in again` };
+      return { ok: false, hint: `${def.name} refused the sign-in: run 'taskfollow secret ${def.auth.secret_id}' to sign in again` };
     case "other":
       return { ok: false, hint: `${def.name} answered HTTP ${probe.status}${probe.reason ? ` (${probe.reason})` : ""} to the readiness check${probe.status === 429 || probe.status >= 500 ? "; try again in a minute" : ""}${symptomHelp(probe.reason, def.setup?.symptoms)}` };
   }

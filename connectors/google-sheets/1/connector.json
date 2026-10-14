@@ -35,7 +35,7 @@
       "Set the app to In production before the person signs in: open Audience (or the consent screen's publishing status) and press Publish app or Make external, and confirm. Google then says 'Your app requires verification'; the person does not need to submit it. Never leave it in Testing, because a Testing sign-in stops working after 7 days.",
       "Create the sign-in client: open Credentials (or Google Auth Platform, then Clients), choose Create credentials, then OAuth client ID, and choose the application type Desktop app (never Web application). Give it a name and press Create. Add no redirect address. If the console offers to use the client for an AI-powered agent, leave that unchecked.",
       "Copy the Client ID and the Client secret from the window that appears (each has a copy icon beside it). The person keeps them for the next step and never types them into the chat.",
-      "Run the sign-in command the install names (taskpilot secret google). On the page that opens, the person pastes the Client ID and the Client secret, then allows access on Google's page. Google shows 'Google hasn't verified this app': they choose Advanced, then Go to the app (unsafe). The page says Done when it worked."
+      "Run the sign-in command the install names (taskfollow secret google). On the page that opens, the person pastes the Client ID and the Client secret, then allows access on Google's page. Google shows 'Google hasn't verified this app': they choose Advanced, then Go to the app (unsafe). The page says Done when it worked."
     ],
     "sources": [
       "https://console.cloud.google.com/",
@@ -64,7 +64,7 @@
         "look": "In the Google Cloud console open 'APIs & Services' and check that the Google Sheets API shows as enabled for this project.",
         "search": "enable Google Sheets API Google Cloud project" },
       { "match": "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "means": "Access to Google Sheets was not allowed when signing in",
-        "fix": "Sign in again with 'taskpilot secret google' and leave the Google Sheets box ticked on Google's page.",
+        "fix": "Sign in again with 'taskfollow secret google' and leave the Google Sheets box ticked on Google's page.",
         "look": "On Google's sign-in page, check that the permission about Google Sheets spreadsheets is ticked before pressing Continue.",
         "search": "Google OAuth ACCESS_TOKEN_SCOPE_INSUFFICIENT sheets scope" }
     ]

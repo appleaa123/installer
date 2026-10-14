@@ -43,7 +43,7 @@ describe("https: solution refs", () => {
   });
 
   it("explains what a skillswiki: ref needs when no key-bearing fetcher is given", async () => {
-    await expect(loadSolutionSource("skillswiki:pack/skill/recipe.json")).rejects.toThrow(/run 'taskpilot secret skillswiki', then start with --url/);
+    await expect(loadSolutionSource("skillswiki:pack/skill/recipe.json")).rejects.toThrow(/run 'taskfollow secret skillswiki', then start with --url/);
   });
 
   it("loads a skillswiki: ref through the given fetcher and keeps its exact text", async () => {

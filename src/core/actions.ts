@@ -55,9 +55,9 @@ function stringArg(args: Args, key: string): string {
 
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
-const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'taskpilot resume'";
-const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'taskpilot resume', or use 'taskpilot tool' instead";
-const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'taskpilot resume'";
+const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'taskfollow resume'";
+const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'taskfollow resume', or use 'taskfollow tool' instead";
+const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'taskfollow resume'";
 const now = (): string => new Date().toISOString();
 /** Loaded when used: the lifecycle reaches the runner and the gateway, which import this module (confinedPath). */
 const lifecycle = () => import("./lifecycle.js");
@@ -65,7 +65,7 @@ const lifecycle = () => import("./lifecycle.js");
 /** ACTIVATE (D98): the engine leaves sandbox only when the person confirmed a dry run of every workflow's current version. */
 async function leaveSandbox(home: string): Promise<StatePatch> {
   const open = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.confirmed).map((row) => row.id);
-  if (open.length > 0) throw new ActionFailure(`Not confirmed yet: ${open.join(", ")}. The person reads 'taskpilot dryrun' and runs 'taskpilot dryrun confirm <workflow>' in their own terminal; then run 'taskpilot resume'`);
+  if (open.length > 0) throw new ActionFailure(`Not confirmed yet: ${open.join(", ")}. The person reads 'taskfollow dryrun' and runs 'taskfollow dryrun confirm <workflow>' in their own terminal; then run 'taskfollow resume'`);
   await setSandboxMode(home, false, "engine", now());
   return {};
 }
@@ -75,7 +75,7 @@ async function startGatewayAction(home: string): Promise<StatePatch> {
   try {
     await (await import("./gateway-process.js")).startGateway(home, now);
   } catch (error) {
-    if (error instanceof InputError) throw new ActionFailure(`${error.message}; then run 'taskpilot resume'`);
+    if (error instanceof InputError) throw new ActionFailure(`${error.message}; then run 'taskfollow resume'`);
     throw error;
   }
   return {};
@@ -121,7 +121,7 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     await registerMcp(profile, SKILLSWIKI_MCP_NAME, url, helper, await probeDir(home));
     return {};
   },
-  /** D56: the agent reaches the installer's own tools over MCP, as `taskpilot --home <home> mcp-serve`. */
+  /** D56: the agent reaches the installer's own tools over MCP, as `taskfollow --home <home> mcp-serve`. */
   register_tools_mcp: async (home, _args, state) => {
     const { profile } = await probedRuntime(state, NO_AGENT_TOOLS_HINT);
     await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
@@ -160,7 +160,7 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
   secret_present: async (_home, args) => {
     const id = stringArg(args, "id");
     if ((await getSecret(id)) !== null) return { ok: true };
-    return { ok: false, hint: typeof args.hint === "string" ? args.hint : `No '${id}' key is stored yet: run 'taskpilot secret ${id}', enter it on the page that opens, then run the verify again` };
+    return { ok: false, hint: typeof args.hint === "string" ? args.hint : `No '${id}' key is stored yet: run 'taskfollow secret ${id}', enter it on the page that opens, then run the verify again` };
   },
   /** Live setup guides 4.5: the connector's sign-in works and its API answers (the person's own Google app is set up right). */
   oauth_ready: async (_home, args) => oauthReady(stringArg(args, "id")),
@@ -169,35 +169,35 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     if (await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url))) return { ok: true };
     return { ok: false, hint: typeof args.hint === "string" ? args.hint : "No combo is active yet: activate one in your Skills Wiki dashboard, then run the verify again" };
   },
-  /** §9.4: the agent connected the entity with `taskpilot connect` (D68). */
+  /** §9.4: the agent connected the entity with `taskfollow connect` (D68). */
   source_present: async (home, args) => sourceCheck(home, stringArg(args, "entity")),
-  /** §9.4: the person confirmed a mapping that `taskpilot map` checked against the sheet (D68). */
+  /** §9.4: the person confirmed a mapping that `taskfollow map` checked against the sheet (D68). */
   mapping_present: async (home, args) => mappingCheck(home, stringArg(args, "entity")),
-  /** §6.2 CHANNELS: the agent set the channel up with `taskpilot channel <id>`, which checked it live (D73). */
+  /** §6.2 CHANNELS: the agent set the channel up with `taskfollow channel <id>`, which checked it live (D73). */
   channel_verified: async (home, args) => channelCheck(home, stringArg(args, "channel")),
   /** §6.2 CHANNELS: the decision maker joined from a channel (D77), so approvals and urgent alerts reach them. */
   decision_maker_joined: async (home, _args, state) => {
     const name = state?.roles?.decision_maker.trim().toLowerCase();
     const members = await (await import("./members.js")).listMembers(home, now());
     if (name && members.some((member) => member.status === "joined" && member.name.toLowerCase() === name)) return { ok: true };
-    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskpilot invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
+    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskfollow invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
   },
   /** §6.2 ACTIVATE: the gateway runs, so messages arrive and approvals are announced (D72). */
-  gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'taskpilot gateway start', then 'taskpilot resume'" }),
+  gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'taskfollow gateway start', then 'taskfollow resume'" }),
   /** §6.2 WORKFLOWS: at least one workflow was added (D98). */
-  workflows_present: async (home) => ((await (await lifecycle()).lifecycleStatus(home)).length > 0 ? { ok: true } : { ok: false, hint: "No workflow yet: run 'taskpilot workflow suggestions', then 'taskpilot workflow add <id>' for the ones the person chooses" }),
+  workflows_present: async (home) => ((await (await lifecycle()).lifecycleStatus(home)).length > 0 ? { ok: true } : { ok: false, hint: "No workflow yet: run 'taskfollow workflow suggestions', then 'taskfollow workflow add <id>' for the ones the person chooses" }),
   /** §6.2 DRY RUN: every workflow's current version had a dry run that did not fail. */
   dry_runs_done: async (home) => {
     const missing = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.ran).map((row) => row.id);
-    return missing.length === 0 ? { ok: true } : { ok: false, hint: `No dry run yet (or it failed) for: ${missing.join(", ")}: run 'taskpilot dryrun' and show the person the output` };
+    return missing.length === 0 ? { ok: true } : { ok: false, hint: `No dry run yet (or it failed) for: ${missing.join(", ")}: run 'taskfollow dryrun' and show the person the output` };
   },
   /** §6.2 DRY RUN: the person confirmed each dry run in their own terminal. */
   dry_runs_confirmed: async (home) => {
     const open = (await (await lifecycle()).lifecycleStatus(home)).filter((row) => !row.confirmed).map((row) => row.id);
-    return open.length === 0 ? { ok: true } : { ok: false, hint: `Waiting for the person to run 'taskpilot dryrun confirm <workflow>' in their own terminal for: ${open.join(", ")}` };
+    return open.length === 0 ? { ok: true } : { ok: false, hint: `Waiting for the person to run 'taskfollow dryrun confirm <workflow>' in their own terminal for: ${open.join(", ")}` };
   },
-  /** §6.2 ACTIVATE: the OS scheduler runs the tick (the person loaded the entry 'taskpilot schedule install' printed). */
-  runner_ticking: async (home) => ((await (await lifecycle()).runnerTicking(home, now())) ? { ok: true } : { ok: false, hint: "The runner has not ticked in the last five minutes: run 'taskpilot schedule install' and ask the person to run the commands it prints, then verify again" }),
+  /** §6.2 ACTIVATE: the OS scheduler runs the tick (the person loaded the entry 'taskfollow schedule install' printed). */
+  runner_ticking: async (home) => ((await (await lifecycle()).runnerTicking(home, now())) ? { ok: true } : { ok: false, hint: "The runner has not ticked in the last five minutes: run 'taskfollow schedule install' and ask the person to run the commands it prints, then verify again" }),
 };
 
 export const KNOWN_ACTIONS: readonly string[] = Object.keys(ACTIONS);

@@ -12,7 +12,7 @@ import type { Roles } from "./types.js";
  * Earned autonomy (spec §11.6, D25, D94). An action type is one typed `tool` step of one workflow: workflow, step and
  * tool, so its arguments come from a fixed template, never from a model choosing freely. After AUTONOMY_STREAK
  * approvals of that type in a row, each by a person and none edited, the runner tells the decision maker once; the
- * decision maker may grant it in their own terminal (`taskpilot autonomy grant`, a policy change, audited). What a
+ * decision maker may grant it in their own terminal (`taskfollow autonomy grant`, a policy change, audited). What a
  * grant changes, and nothing else: when such a step asks for approval and the level the gate derives at that moment
  * is L2 only because of the tool's declared or default level, the runner approves the item itself, as
  * "earned autonomy (grant <id>)" with the member role. The item, its exact action hash, its single-use token and its
@@ -98,7 +98,7 @@ export async function proposeIfEarned(ctx: ToolContext, roles: Roles | undefined
   const type = actionType(item);
   if (type === null || item.level !== "L2" || (await activeGrant(ctx.home, type, ctx.now()))) return;
   if (streakOf(await listApprovals(ctx.home, ctx.now()), type) !== AUTONOMY_STREAK) return;
-  const text = `${AUTONOMY_STREAK} approvals in a row, none edited, for ${type}. The decision maker may let the runner approve it from now on: 'taskpilot autonomy grant ${type} --as <your name>' in your own terminal.`;
+  const text = `${AUTONOMY_STREAK} approvals in a row, none edited, for ${type}. The decision maker may let the runner approve it from now on: 'taskfollow autonomy grant ${type} --as <your name>' in your own terminal.`;
   let error: string | null = roles ? null : "no decision maker is set (MODE phase)";
   if (roles) {
     try {
@@ -124,7 +124,7 @@ async function grantType(home: string, type: string, by: string, now: string): P
   return grant;
 }
 
-/** `taskpilot autonomy [list | grant <type> | revoke <id>]`: grants and revokes are the decision maker's, in a terminal. */
+/** `taskfollow autonomy [list | grant <type> | revoke <id>]`: grants and revokes are the decision maker's, in a terminal. */
 export async function autonomyCommand(home: string, roles: Roles | undefined, command: { sub?: string; arg?: string; as?: string; reason?: string; interactive: boolean }, now: () => string): Promise<Record<string, unknown>> {
   const items = await listApprovals(home, now());
   if (command.sub === undefined || command.sub === "list") {

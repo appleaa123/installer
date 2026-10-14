@@ -160,7 +160,7 @@ async function replaceVersion(home: string, workflow: Workflow, next: Raw): Prom
   return checked;
 }
 
-const dryRunNext = (id: string, version: number): string => `Version ${version} runs in sandbox until a person confirms a dry run of it: 'taskpilot dryrun ${id}', then 'taskpilot dryrun confirm ${id}'`;
+const dryRunNext = (id: string, version: number): string => `Version ${version} runs in sandbox until a person confirms a dry run of it: 'taskfollow dryrun ${id}', then 'taskfollow dryrun confirm ${id}'`;
 
 function hardenedFile(workflow: Workflow, current: Raw, proposal: Proposal): Raw {
   const agent = agentOf(workflow) as AgentSpec & { readonly id: string };
@@ -190,17 +190,17 @@ export async function rollbackWorkflow(home: string, workflow: Workflow, version
   return { status: "rolled_back", workflow: workflow.id, restored: version, version: next.version, sandbox: true, next: dryRunNext(workflow.id, next.version) };
 }
 
-/** `taskpilot harden <workflow> [apply | rollback --value <n>]`: shows the proposal and its replay; changes need a terminal. */
+/** `taskfollow harden <workflow> [apply | rollback --value <n>]`: shows the proposal and its replay; changes need a terminal. */
 export async function hardenCommand(home: string, id: string | undefined, sub: string | undefined, extra: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   const workflow = await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS);
   if (sub === undefined) {
     const proposal = await proposeHardening(home, workflow);
     if ("reason" in proposal) return { workflow: workflow.id, version: workflow.version, proposal: null, reason: proposal.reason };
-    return { workflow: workflow.id, version: workflow.version, proposal, replay: await replayGate(home, workflow, proposal), next: `A person applies it with 'taskpilot harden ${workflow.id} apply' in their own terminal` };
+    return { workflow: workflow.id, version: workflow.version, proposal, replay: await replayGate(home, workflow, proposal), next: `A person applies it with 'taskfollow harden ${workflow.id} apply' in their own terminal` };
   }
   if (!person.interactive) throw new InputError("Changing a workflow's version is a person's decision: run it in your own terminal, not through the agent");
   const by = person.as?.trim() || "terminal";
   if (sub === "apply") return applyHardening(home, workflow, by, now());
   if (sub === "rollback" && extra !== undefined && /^[1-9]\d*$/.test(extra)) return rollbackWorkflow(home, workflow, Number(extra), by, now());
-  throw new InputError("harden takes: taskpilot harden <workflow> [apply | rollback --value <version>]");
+  throw new InputError("harden takes: taskfollow harden <workflow> [apply | rollback --value <version>]");
 }

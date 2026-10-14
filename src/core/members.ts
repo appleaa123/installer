@@ -8,7 +8,7 @@ import { claimOnce, createRecord, listRecords, replaceRecord } from "./numbered.
 import type { Roles } from "./types.js";
 
 /**
- * Sender identity (spec §11.9, D77): `taskpilot invite <name>` creates a member with a one-time join code; the person
+ * Sender identity (spec §11.9, D77): `taskfollow invite <name>` creates a member with a one-time join code; the person
  * sends it to a channel (`/join CODE`, or the bot's start link, or an email whose first line is `JOIN CODE`), and the
  * gateway binds that channel identity to the member and its role. Only the code's sha256 is stored; a code is used
  * once (an exclusive claim) and expires after 72 hours. One record per invite, so a person on two channels is two
@@ -57,7 +57,7 @@ export function newJoinCode(): string {
 
 export function requireMemberName(name: string | undefined): string {
   const trimmed = name?.trim() ?? "";
-  if (trimmed === "" || trimmed.length > MAX_NAME || /[\u0000-\u001f\u007f]/.test(trimmed)) throw new InputError(`invite needs the person's name (1 to ${MAX_NAME} characters), for example: taskpilot invite "Ada Lovelace"`);
+  if (trimmed === "" || trimmed.length > MAX_NAME || /[\u0000-\u001f\u007f]/.test(trimmed)) throw new InputError(`invite needs the person's name (1 to ${MAX_NAME} characters), for example: taskfollow invite "Ada Lovelace"`);
   return trimmed;
 }
 
@@ -115,7 +115,7 @@ export async function joinWithCode(home: string, code: string, identity: Identit
   return { joined };
 }
 
-/** `taskpilot members remove <id>`: the member can no longer decide anything from a channel. */
+/** `taskfollow members remove <id>`: the member can no longer decide anything from a channel. */
 export async function removeMember(home: string, id: number, now: string): Promise<Member> {
   const member = (await listMembers(home, now)).find((entry) => entry.id === id);
   if (!member) throw new InputError(`No member ${id}`);

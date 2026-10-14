@@ -17,7 +17,7 @@ interface Waiting {
   readonly fail: (error: Error) => void;
 }
 
-/** Spawns `taskpilot --home <home> mcp-serve` the way an agent's MCP client does. */
+/** Spawns `taskfollow --home <home> mcp-serve` the way an agent's MCP client does. */
 export function startStdioMcp(home: string): StdioMcp {
   const child = spawn(process.execPath, [resolve("dist/cli.js"), "--home", home, "mcp-serve"], { stdio: ["pipe", "pipe", "inherit"] });
   child.stdin.on("error", () => undefined);

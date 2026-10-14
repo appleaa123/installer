@@ -32,14 +32,14 @@ describe("the stored sign-in", () => {
   });
 
   it.each([["not JSON", "x"], ["a missing refresh token", JSON.stringify({ client_id: "a", client_secret: "b" })]])("refuses %s", (_name, text) => {
-    expect(() => parseSignIn(text)).toThrow("The stored Google sign-in is damaged: run 'taskpilot secret google' to sign in again");
+    expect(() => parseSignIn(text)).toThrow("The stored Google sign-in is damaged: run 'taskfollow secret google' to sign in again");
   });
 });
 
 describe("connectorTokens (D66: the client's own OAuth app)", () => {
   it("names the command to run when nobody signed in yet", async () => {
     await expect(connectorTokens(def, await env())).rejects.toThrow(ActionFailure);
-    await expect(connectorTokens(def, await env())).rejects.toThrow("No Google sign-in is stored yet: run 'taskpilot secret google'");
+    await expect(connectorTokens(def, await env())).rejects.toThrow("No Google sign-in is stored yet: run 'taskfollow secret google'");
   });
 
   it("refreshes an access token once and reuses it until it expires", async () => {
@@ -53,7 +53,7 @@ describe("connectorTokens (D66: the client's own OAuth app)", () => {
 
   it("says how to sign in again when Google refuses the client", async () => {
     const tokens = await connectorTokens(def, await env(JSON.stringify({ client_id: "client-1", client_secret: "wrong", refresh_token: "refresh-1" })));
-    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'taskpilot secret google' to sign in again");
+    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'taskfollow secret google' to sign in again");
   });
 
   it("reports an unreachable sign-in service as a fixable failure", async () => {
@@ -89,7 +89,7 @@ describe("the loopback sign-in pieces (D66)", () => {
   it("refuses a sign-in after the person removed the installer's access (Review Focus 4)", async () => {
     const tokens = await connectorTokens(def, await env(SIGNED_IN));
     await fake.debug("/debug/revoke", {});
-    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_grant): run 'taskpilot secret google' to sign in again");
+    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_grant): run 'taskfollow secret google' to sign in again");
   });
 });
 
@@ -98,7 +98,7 @@ describe("Google's refusals carry the setup guide's help (live setup guides, 4.6
 
   it("adds what it means, the fix, where to look and what to search to a refused stored sign-in", async () => {
     const tokens = await connectorTokens(def, await env(WRONG_SECRET));
-    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'taskpilot secret google' to sign in again");
+    await expect(tokens.accessToken()).rejects.toThrow("Google refused the stored sign-in (invalid_client): run 'taskfollow secret google' to sign in again");
     await expect(tokens.accessToken()).rejects.toThrow("The client ID or secret is wrong. Copy both again from the client's page and enter them on the sign-in page. Look at: Open the client's page under Credentials and compare the client ID with what was typed. Search for: \"Google OAuth invalid_client client ID secret\"");
   });
 

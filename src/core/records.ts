@@ -32,7 +32,7 @@ function columnIndexes(entityName: string, header: readonly string[], mapped: Re
   return Object.fromEntries(
     Object.entries(mapped).map(([field, column]) => {
       const index = header.findIndex((cell) => cell.trim() === column);
-      if (index < 0) throw new ActionFailure(`Column '${column}' (${entityName}.${field}) is no longer in row 1 of the sheet: run 'taskpilot map ${entityName}' again`);
+      if (index < 0) throw new ActionFailure(`Column '${column}' (${entityName}.${field}) is no longer in row 1 of the sheet: run 'taskfollow map ${entityName}' again`);
       return [field, index];
     }),
   );
@@ -45,9 +45,9 @@ const valuesOf = (cells: readonly string[], columns: Readonly<Record<string, num
 export async function readTable(home: string, entityName: string): Promise<Table> {
   const { entity } = await contractEntity(home, entityName);
   const source = await loadSource(home, entityName);
-  if (!source) throw new InputError(`'${entityName}' is not connected to a sheet yet: run 'taskpilot connect ${entityName} --sheet <link>' first`);
+  if (!source) throw new InputError(`'${entityName}' is not connected to a sheet yet: run 'taskfollow connect ${entityName} --sheet <link>' first`);
   const mapping = await loadMapping(home, entityName);
-  if (!mapping) throw new InputError(`The columns of '${entityName}' are not mapped yet: run 'taskpilot map ${entityName}' first`);
+  if (!mapping) throw new InputError(`The columns of '${entityName}' are not mapped yet: run 'taskfollow map ${entityName}' first`);
   const { sheets } = await openSheets();
   const cells = await sheets.readRows(source);
   const header = cells[0] ?? [];

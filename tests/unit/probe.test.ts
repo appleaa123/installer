@@ -70,7 +70,7 @@ describe("runProbe", () => {
 
   it("keeps an agent on Windows at tier unknown until Windows is certified (D115)", async () => {
     const map = await runProbe({ profiles: [await loadProfile(FAKE)], cwd: await makeTempHome(), platform: "win32" });
-    expect(map).toMatchObject({ c4_headless: true, tier: "unknown", notes: ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs taskpilot certify on Windows"] });
+    expect(map).toMatchObject({ c4_headless: true, tier: "unknown", notes: ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs taskfollow certify on Windows"] });
   });
 
   it("uses the first profile whose agent is installed", async () => {

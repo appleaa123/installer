@@ -11,9 +11,9 @@ first person to run this guide replaces them with the actual output.
 ## What this build can and cannot do
 
 Plan 5 adds: a data contract in the solution with field tags that raise approval levels, pinned and checksummed
-connector packages (one: `google-sheets@1`), the Google sign-in page (`taskpilot secret google`), the commands
-`taskpilot connect <entity>` and `taskpilot map <entity>`, the tools `records.find | get | create | update |
-preview_import | import`, and `taskpilot disconnect google-sheets`. It calls only `oauth2.googleapis.com/token` and
+connector packages (one: `google-sheets@1`), the Google sign-in page (`taskfollow secret google`), the commands
+`taskfollow connect <entity>` and `taskfollow map <entity>`, the tools `records.find | get | create | update |
+preview_import | import`, and `taskfollow disconnect google-sheets`. It calls only `oauth2.googleapis.com/token` and
 `sheets.googleapis.com`. Microsoft Excel is not supported yet. There is no file picker: you paste a sheet's link.
 
 This guide needs no Skills Wiki key and makes no Claude Code calls: you play the agent by running the commands it
@@ -47,13 +47,13 @@ node --version            # must be v22 or later
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskfollow-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
-which taskpilot
+which taskfollow
 cd $T
 ```
 
-**Expected:** `which taskpilot` prints `<your home>/installer-plan5-test/npm/bin/taskpilot`.
+**Expected:** `which taskfollow` prints `<your home>/installer-plan5-test/npm/bin/taskfollow`.
 
 **Record:**
 - Commit shown by `git log`: b5dd237 (fix(core): disconnect even when a connector is broken)
@@ -102,8 +102,8 @@ cat > $T/data-demo.json <<'JSON'
     { "step_id": "mode.decision-maker", "phase": "MODE", "type": "ask", "title": "Who is the decision maker?", "why": "This person approves floor-level actions.", "blocking": true, "input": { "kind": "text" } },
     { "step_id": "mode.derive", "phase": "MODE", "type": "auto", "title": "Choose the setup", "why": "From your answers.", "blocking": true, "auto": { "action": "derive_mode", "args": { "shared_work": "mode.shared-work", "always_on": "mode.always-on", "decision_maker": "mode.decision-maker" } } },
     { "step_id": "data.google", "phase": "DATA", "type": "human_action", "title": "Sign in to Google Sheets", "why": "Your contacts stay in your own sheet.", "blocking": true, "input": { "kind": "oauth", "provider": "google" }, "verify": { "check": "secret_present", "args": { "id": "google" } } },
-    { "step_id": "data.connect", "phase": "DATA", "type": "agent_action", "title": "Connect your contacts sheet", "why": "No copy is kept.", "blocking": true, "intent": "Run taskpilot connect.", "verify": { "check": "source_present", "args": { "entity": "contact" } } },
-    { "step_id": "data.map", "phase": "DATA", "type": "agent_action", "title": "Match your columns", "why": "Fields are found by column name.", "blocking": true, "intent": "Run taskpilot map.", "verify": { "check": "mapping_present", "args": { "entity": "contact" } } }
+    { "step_id": "data.connect", "phase": "DATA", "type": "agent_action", "title": "Connect your contacts sheet", "why": "No copy is kept.", "blocking": true, "intent": "Run taskfollow connect.", "verify": { "check": "source_present", "args": { "entity": "contact" } } },
+    { "step_id": "data.map", "phase": "DATA", "type": "agent_action", "title": "Match your columns", "why": "Fields are found by column name.", "blocking": true, "intent": "Run taskfollow map.", "verify": { "check": "mapping_present", "args": { "entity": "contact" } } }
   ]
 }
 JSON
@@ -123,7 +123,7 @@ installer --home $T/h1 verify data.google
 security find-generic-password -s installer -a google >/dev/null && echo "keychain item present"
 ```
 
-**Expected:** `taskpilot secret google` prints `{"status":"waiting","url":"http://127.0.0.1:…/s/…","pid":…}`; Google's
+**Expected:** `taskfollow secret google` prints `{"status":"waiting","url":"http://127.0.0.1:…/s/…","pid":…}`; Google's
 page lists only "See, edit, create, and delete all your Google Sheets spreadsheets"; the browser ends on "Done, you can
 close this tab."; `verify` prints `{"status":"passed","next":{"status":"step",…"data.connect"…}}`; the last line is
 `keychain item present`.
@@ -147,7 +147,7 @@ installer --home $T/h1 connect contact --sheet new
 installer --home $T/h1 verify data.connect
 ```
 
-**Expected:** `connect` prints `{"status":"connected","entity":"contact","spreadsheet_id":"…","url":"https://docs.google.com/spreadsheets/d/…/edit","next":"Run 'taskpilot map contact' to see its columns"}`.
+**Expected:** `connect` prints `{"status":"connected","entity":"contact","spreadsheet_id":"…","url":"https://docs.google.com/spreadsheets/d/…/edit","next":"Run 'taskfollow map contact' to see its columns"}`.
 Open the `url`: a spreadsheet named `contact` with one tab `contact` whose row 1 is `name | email | notes`. `verify`
 prints `{"status":"passed",…}`.
 
@@ -252,7 +252,7 @@ installer --home $T/h1 tool records.find '{"entity":"contact"}'; echo "exit $?"
 ```
 
 **Expected:** `disconnect` prints `{"status":"disconnected","connector":"google-sheets","secret_deleted":true,"note":"…open https://myaccount.google.com/connections…"}`;
-`records.find` exits 2 with `No Google sign-in is stored yet: run 'taskpilot secret google' and sign in on the page it opens`.
+`records.find` exits 2 with `No Google sign-in is stored yet: run 'taskfollow secret google' and sign in on the page it opens`.
 
 Then remove the app's access: open https://myaccount.google.com/connections, choose your app and remove its access.
 Delete the spreadsheet `contact` from your Google Drive, and the test folder:

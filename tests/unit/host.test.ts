@@ -57,7 +57,7 @@ describe("host readiness, Layer 1 (§5.1, D42, D104)", () => {
     const fixes = Object.fromEntries(readiness.checks.map((entry) => [entry.id, entry.fix]));
     expect(fixes.no_sleep).toEqual(["sudo pmset -a sleep 0"]);
     expect(fixes.power_on).toEqual(["sudo pmset -a autorestart 1"]);
-    expect(fixes.boot_service).toEqual(["taskpilot host service install", "then run the sudo commands it prints, in your own terminal"]);
+    expect(fixes.boot_service).toEqual(["taskfollow host service install", "then run the sudo commands it prints, in your own terminal"]);
     expect(fixes.disk_encryption?.[0]).toContain("the engine never stores it (D43)");
     expect(probe.calls).toEqual(["pmset -g", "systemsetup -getusingnetworktime", "fdesetup status"]);
   });

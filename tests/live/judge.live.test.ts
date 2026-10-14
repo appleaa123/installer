@@ -2,7 +2,7 @@
  * Opt-in live test of one judge call (D48, D83): `npm run test:live` runs ONE headless call through the developer's
  * own Claude Code (`claude -p … --output-format json --tools "" --strict-mcp-config --json-schema …`), which uses
  * their subscription, with a two-label schema. INSTALLER_LIVE_PROFILE names another bundled profile (set by
- * `taskpilot certify --profile <id>`, D116). Skipped when that agent is not installed. It sends no message, writes
+ * `taskfollow certify --profile <id>`, D116). Skipped when that agent is not installed. It sends no message, writes
  * nothing outside a temporary folder and calls no model API directly.
  */
 import { mkdtempSync } from "node:fs";

@@ -68,7 +68,7 @@ describe("the combo step (D37)", () => {
     const { deps, state } = await installWith(fake.url);
     const verified = await verifyStep(deps, state, "brain.combo");
     expect(verified.result).toMatchObject({ status: "failed", hint: expect.stringContaining(`Cannot reach Skills Wiki at '${fake.url}'`), retry: true });
-    expect(verified.next).toMatchObject({ status: "step", view: { resume: "taskpilot verify brain.combo" } });
+    expect(verified.next).toMatchObject({ status: "step", view: { resume: "taskfollow verify brain.combo" } });
   });
 
   it("cannot be completed with --done", async () => {

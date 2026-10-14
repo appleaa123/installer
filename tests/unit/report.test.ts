@@ -30,7 +30,7 @@ describe("buildReport", () => {
     const report = buildReport(basicSolution(), stateWith({ ...Object.fromEntries(ALL.slice(0, 4).map((id) => [id, done])), "brain.register": blocked }));
     expect(report.overall).toBe("blocked");
     expect(report.needs_you).toHaveLength(1);
-    expect(report.needs_you[0]?.detail).toContain("taskpilot resume");
+    expect(report.needs_you[0]?.detail).toContain("taskfollow resume");
   });
 
   it("is ready_with_limits when only a non-blocking step is blocked", () => {
@@ -40,7 +40,7 @@ describe("buildReport", () => {
     expect(report.phase).toBeNull();
   });
 
-  it("lists a failed current verify step once, with attempts and 'taskpilot resume'", () => {
+  it("lists a failed current verify step once, with attempts and 'taskfollow resume'", () => {
     const failed: StepRecord = { status: "failed", at: AT, attempts: 2, hint: "Marker not there yet" };
     const solution = parseSolution({
       id: "retry",
@@ -48,14 +48,14 @@ describe("buildReport", () => {
       steps: [{ step_id: "v", phase: "PREFLIGHT", type: "verify", title: "Check", why: "Needed.", blocking: true, verify: { check: "file_exists", args: { path: "x" } } }],
     });
     const report = buildReport(solution, stateWith({ v: failed }));
-    expect(report.needs_you).toEqual([{ step_id: "v", title: "Check", detail: "Marker not there yet (failed 2 of 3 tries) → then run 'taskpilot resume'" }]);
+    expect(report.needs_you).toEqual([{ step_id: "v", title: "Check", detail: "Marker not there yet (failed 2 of 3 tries) → then run 'taskfollow resume'" }]);
   });
 
-  it("names 'taskpilot verify <id>' for a failed current agent_action", () => {
+  it("names 'taskfollow verify <id>' for a failed current agent_action", () => {
     const failed: StepRecord = { status: "failed", at: AT, attempts: 1, hint: "config/agent-marker.txt not found" };
     const report = buildReport(basicSolution(), stateWith({ ...Object.fromEntries(ALL.slice(0, 4).map((id) => [id, done])), "brain.register": failed }));
     expect(report.needs_you).toHaveLength(1);
-    expect(report.needs_you[0]?.detail).toBe("config/agent-marker.txt not found (failed 1 of 3 tries) → then run 'taskpilot verify brain.register'");
+    expect(report.needs_you[0]?.detail).toBe("config/agent-marker.txt not found (failed 1 of 3 tries) → then run 'taskfollow verify brain.register'");
   });
 
   it("is ready when every step is done", () => {
