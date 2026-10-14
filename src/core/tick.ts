@@ -10,6 +10,7 @@ import { dailyDoctor } from "./doctor.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
+import { keepGatewayRunning, startGateway } from "./gateway-process.js";
 import { listInbox, type InboxItem } from "./inbox.js";
 import { isPaused } from "./pause.js";
 import { collectLearnings, submitLearnings } from "./learning.js";
@@ -53,6 +54,8 @@ export interface TickResult {
   readonly rate_limited: number;
   /** Learnings sent to Skills Wiki (D97). */
   readonly learnings: number;
+  /** What the tick did about the gateway (D130): `started` after finding it dead, `null` when the tick stopped early. */
+  readonly gateway: "running" | "started" | "stopped" | "no_channel" | "skipped" | null;
   /** The daily doctor's overall status when it ran in this tick (D103). */
   readonly doctor: "ok" | "warn" | "fail" | null;
   readonly errors: string[];
@@ -211,8 +214,8 @@ async function guard(tick: Tick, name: string, task: () => Promise<void>): Promi
   }
 }
 
-export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env): Promise<TickResult> {
-  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, doctor: null, errors: [] };
+export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env, start: typeof startGateway = startGateway): Promise<TickResult> {
+  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, gateway: null, doctor: null, errors: [] };
   const lock = await lockTick(home);
   if (lock === null) return { ...result, status: "busy" };
   try {
@@ -242,6 +245,9 @@ export async function tick(home: string, now: () => string = () => new Date().to
     await guard(state, "learning", async () => {
       await collectLearnings(home, state.at);
       result.learnings = (await submitLearnings(home, (await loadState(home))?.skillswiki?.url, state.at)).length;
+    });
+    await guard(state, "gateway", async () => {
+      result.gateway = await keepGatewayRunning(home, now, env ?? process.env, start);
     });
     await guard(state, "doctor", async () => {
       result.doctor = (await dailyDoctor(home, now, env))?.status ?? null;

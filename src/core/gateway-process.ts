@@ -87,6 +87,25 @@ export async function startGateway(home: string, now: () => string): Promise<Rec
   return { status: "started", pid, log: await confinedPath(home, LOG_FILE), ...(current.status === "stale" ? { note: `Replaced a gateway that had stopped without cleaning up (pid ${String(current.pid)})` } : {}) };
 }
 
+/** `none` leaves the gateway alone (the test suite sets it, so no test starts a real process). */
+export const GATEWAY_AUTOSTART_ENV = "INSTALLER_GATEWAY_AUTOSTART";
+type StartGateway = (home: string, now: () => string) => Promise<Record<string, unknown>>;
+
+/**
+ * Called by every tick (D130). A personal install has no boot service, so a gateway lost to a restart or a sign-out would
+ * silently stop join codes, approvals and /unpause. A stale record means it died unexpectedly: start it again. No record
+ * means it was stopped on purpose (`gateway stop` removes it) or never started: leave it.
+ */
+export async function keepGatewayRunning(home: string, now: () => string, env: Readonly<Record<string, string | undefined>> = process.env, start: StartGateway = startGateway): Promise<"running" | "started" | "stopped" | "no_channel" | "skipped"> {
+  if (env[GATEWAY_AUTOSTART_ENV] === "none") return "skipped";
+  if ((await listChannels(home)).length === 0) return "no_channel";
+  const status = (await gatewayStatus(home)).status;
+  if (status === "running") return "running";
+  if (status !== "stale") return "stopped";
+  await start(home, now);
+  return "started";
+}
+
 export async function stopGateway(home: string, now: () => string): Promise<Record<string, unknown>> {
   const record = await readPid(home);
   if (!record || !isAlive(record.pid)) {
