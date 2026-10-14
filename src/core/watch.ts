@@ -33,6 +33,8 @@ interface WatchState {
   readonly services: readonly string[];
   /** D147: the `permissions.ask` rules TaskFollow added (never one the person had already). */
   readonly ask: readonly string[];
+  /** D148: the member who asked for "I noticed" suggestions; only they get them. */
+  readonly suggest_to?: string;
 }
 
 export const settingsPath = (env: Env): string => env[SETTINGS_ENV] || join(homedir(), ".claude", "settings.json");
@@ -129,11 +131,11 @@ async function changeSettings(home: string, path: string, change: (settings: Raw
   throw new InputError(`${path} kept changing while TaskFollow tried to update it (Claude Code may be saving it): close Claude Code's settings and try again.`);
 }
 
-async function loadWatch(home: string): Promise<WatchState> {
+export async function loadWatch(home: string): Promise<WatchState> {
   const raw = await readConfig(home, WATCH_CONFIG);
   const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []);
   if (!isRecord(raw)) return { on: false, services: [], ask: [] };
-  return { on: raw.on === true, services: strings(raw.services), ask: strings(raw.ask) };
+  return { on: raw.on === true, services: strings(raw.services), ask: strings(raw.ask), ...(typeof raw.suggest_to === "string" ? { suggest_to: raw.suggest_to } : {}) };
 }
 
 function requireService(arg: string | undefined): string {
@@ -191,11 +193,20 @@ async function changeAsk(home: string, state: WatchState, sub: "ask" | "unask", 
 export async function watchCommand(home: string, request: { readonly sub: string | undefined; readonly arg?: string; readonly interactive: boolean }, now: () => string, env: Env = process.env): Promise<Raw> {
   const state = await loadWatch(home);
   const sub = request.sub ?? "list";
-  if (sub === "list") return { on: state.on, services: [...state.services], ask: [...state.ask] };
-  if (!["on", "off", "add", "remove", "ask", "unask"].includes(sub)) throw new InputError("watch takes: list, add <service>, remove <service>, on, off, ask <tool rule>, unask <tool rule>");
+  if (sub === "list") return { on: state.on, services: [...state.services], ask: [...state.ask], ...(state.suggest_to ? { suggest_to: state.suggest_to } : {}) };
+  if (!["on", "off", "add", "remove", "ask", "unask", "suggest"].includes(sub)) throw new InputError("watch takes: list, add <service>, remove <service>, on, off, ask <tool rule>, unask <tool rule>, suggest <your member name>|off");
   if (!request.interactive) {
     await appendAudit(home, { ts: now(), actor: "agent", event: "watch.refused", ref: "watch", payload: { sub } });
     throw new InputError("Watching the agent's direct calls is the person's choice: they run 'taskfollow watch " + sub + "' in their own terminal");
+  }
+  if (sub === "suggest") {
+    const name = request.arg?.trim();
+    if (!name) throw new InputError("Say who gets the suggestions: taskfollow watch suggest \"<your member name>\" (or off)");
+    const { suggest_to: _old, ...rest } = state;
+    const changed: WatchState = name === "off" ? rest : { ...rest, suggest_to: name };
+    await writeConfig(home, WATCH_CONFIG, changed);
+    await appendAudit(home, { ts: now(), actor: "human", event: "watch.suggest", ref: "watch", payload: { to: changed.suggest_to ?? null } });
+    return { on: changed.on, services: [...changed.services], ask: [...changed.ask], ...(changed.suggest_to ? { suggest_to: changed.suggest_to } : {}) };
   }
   if (sub === "ask" || sub === "unask") {
     const changed = await changeAsk(home, state, sub, requireRule(request.arg), env, now());

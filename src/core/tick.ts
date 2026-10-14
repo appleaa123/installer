@@ -7,6 +7,7 @@ import { appendAudit } from "./audit.js";
 import { MINUTE_MS, cronTimes } from "./cron.js";
 import { dueReports } from "./daily-report.js";
 import { dailyDoctor } from "./doctor.js";
+import { noticeHabits } from "./watch-notice.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
@@ -248,6 +249,11 @@ export async function tick(home: string, now: () => string = () => new Date().to
     });
     await guard(state, "gateway", async () => {
       result.gateway = await keepGatewayRunning(home, now, env ?? process.env, start);
+    });
+    // D148: at most once a day, a suggestion about work the person's agent did often outside TaskFollow, to them only.
+    await guard(state, "notice", async () => {
+      const ctx = await toolContext(home, "runner", DEFAULT_TOOLS, now);
+      await noticeHabits(home, now, async (member, text) => void (await invokeTool(ctx, "channel.notify", { member, text })));
     });
     await guard(state, "doctor", async () => {
       result.doctor = (await dailyDoctor(home, now, env))?.status ?? null;
