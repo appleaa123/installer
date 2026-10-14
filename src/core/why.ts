@@ -1,10 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { confinedPath } from "./actions.js";
 import { REASON_TOOL, summarize } from "./agent-hook.js";
 import { listApprovals, type ApprovalItem } from "./approvals.js";
 import { InputError } from "./inputs.js";
-import { listRuns, loadStep, RUNS_DIR, type RunRecord, type StepLog } from "./runs.js";
+import { listRuns, listSteps, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
 
 /**
@@ -89,21 +88,10 @@ function stepEntry(log: StepLog): WhyEntry | null {
   return null;
 }
 
-async function stepLogs(home: string, record: RunRecord): Promise<StepLog[]> {
-  let names: string[];
-  try {
-    names = (await readdir(await confinedPath(home, join(RUNS_DIR, record.workflow, record.run_id, "steps")))).filter((name) => name.endsWith(".json"));
-  } catch {
-    return [];
-  }
-  const logs = (await Promise.all(names.map((name) => loadStep(home, record, name.slice(0, -".json".length))))).filter((log): log is StepLog => log !== null);
-  return logs.sort((a, b) => a.started_at.localeCompare(b.started_at) || a.finished_at.localeCompare(b.finished_at) || a.step.localeCompare(b.step));
-}
-
 async function explainRun(home: string, record: RunRecord, now: string): Promise<WhyEntry[]> {
   const approvals = (await listApprovals(home, now)).filter((item) => item.source.run?.workflow === record.workflow && item.source.run.run_id === record.run_id);
   const entries: WhyEntry[] = [{ at: record.started_at, who: ENGINE, what: `started the run (${record.trigger.kind}) of workflow '${record.workflow}'`, why: triggerWhy(record) }];
-  for (const log of await stepLogs(home, record)) {
+  for (const log of await listSteps(home, record)) {
     entries.push(...callEntries(await callLines(home, record, log.step)));
     for (const item of approvals.filter((candidate) => candidate.source.run?.step === log.step)) entries.push(...approvalEntries(item));
     const own = stepEntry(log);

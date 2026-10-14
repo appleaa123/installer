@@ -144,6 +144,29 @@ export async function removeRun(home: string, record: RunRecord): Promise<void> 
   await rm(await confinedPath(home, join(RUNS_DIR, record.workflow, record.run_id)), { recursive: true, force: true });
 }
 
+/** Every step log of a run, in the order the steps started. */
+export async function listSteps(home: string, record: RunRecord): Promise<StepLog[]> {
+  let names: string[];
+  try {
+    names = (await readdir(await confinedPath(home, join(RUNS_DIR, record.workflow, record.run_id, "steps")))).filter((name) => name.endsWith(".json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const logs = (await Promise.all(names.map((name) => loadStep(home, record, name.slice(0, -".json".length))))).filter((log): log is StepLog => log !== null);
+  return logs.sort((a, b) => a.started_at.localeCompare(b.started_at) || a.finished_at.localeCompare(b.finished_at) || a.step.localeCompare(b.step));
+}
+
+/** D144: the outputs of the steps of this workflow's last finished run before this one (same sandbox mode), or null. */
+export async function previousOutputs(home: string, record: RunRecord): Promise<Readonly<Record<string, unknown>> | null> {
+  const earlier = (await listRuns(home, record.workflow))
+    .filter((run) => run.run_id !== record.run_id && run.sandbox === record.sandbox && (run.status === "completed" || run.status === "partial") && run.started_at < record.started_at)
+    .sort((a, b) => a.started_at.localeCompare(b.started_at))
+    .at(-1);
+  if (!earlier) return null;
+  return Object.fromEntries((await listSteps(home, earlier)).filter((log) => log.status === "done").map((log) => [log.step, log.output ?? null]));
+}
+
 export async function loadStep(home: string, record: RunRecord, step: string): Promise<StepLog | null> {
   const raw = await readConfig(home, stepFile(record, step));
   if (raw === null) return null;

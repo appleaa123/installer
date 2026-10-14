@@ -32,7 +32,7 @@ export const FALLBACK_STEP = "fallback";
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 const STEP_ID = /^[a-z][a-z0-9_]*$/;
 /** Names the runner binds itself; a step cannot be called one of them. */
-const RESERVED = ["item", "event", "run", "failure", FALLBACK_STEP];
+const RESERVED = ["item", "event", "run", "failure", "previous", FALLBACK_STEP];
 const FROM = ["external", "member"] as const;
 
 export type Trigger =
@@ -77,6 +77,14 @@ export interface TaskSpec {
   readonly timeout_minutes: number;
 }
 
+/** A calc step (D144): arithmetic on a list an earlier step produced; `compare` is usually `${previous.<step>}`. */
+export interface CalcStepSpec {
+  readonly from: string;
+  readonly group_by?: string;
+  readonly sum: readonly string[];
+  readonly compare?: string;
+}
+
 interface StepBase {
   readonly id: string;
   readonly when?: string;
@@ -87,7 +95,8 @@ export type WorkflowStep =
   | (StepBase & { readonly kind: "judge"; readonly judge: JudgeSpec; readonly foreach?: string })
   | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean })
   | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec })
-  | (StepBase & { readonly kind: "task"; readonly task: TaskSpec });
+  | (StepBase & { readonly kind: "task"; readonly task: TaskSpec })
+  | (StepBase & { readonly kind: "calc"; readonly calc: CalcStepSpec });
 
 export interface Workflow {
   readonly id: string;
@@ -224,12 +233,24 @@ function parseTask(value: unknown, where: string, fail: (message: string) => nev
   };
 }
 
+const FIELD = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+const ONE_REFERENCE = /^\$\{[^}]*\}$/;
+
+function parseCalc(value: unknown, where: string, fail: (message: string) => never): CalcStepSpec {
+  if (!isRecord(value)) return fail(`${where} must be {"from":"\${step.list}","sum":["field"]}`);
+  if (typeof value.from !== "string" || !ONE_REFERENCE.test(value.from)) return fail(`${where}.from must be one reference to a list, for example "\${orders.orders}"`);
+  if (!Array.isArray(value.sum) || value.sum.length === 0 || !value.sum.every((field) => typeof field === "string" && FIELD.test(field))) return fail(`${where}.sum must list the fields to add up, for example ["total"]`);
+  if (value.group_by !== undefined && (typeof value.group_by !== "string" || !FIELD.test(value.group_by))) return fail(`${where}.group_by must be a field name`);
+  if (value.compare !== undefined && (typeof value.compare !== "string" || !ONE_REFERENCE.test(value.compare))) return fail(`${where}.compare must be one reference, for example "\${previous.totals}"`);
+  return { from: value.from, sum: value.sum as string[], ...(value.group_by === undefined ? {} : { group_by: value.group_by as string }), ...(value.compare === undefined ? {} : { compare: value.compare as string }) };
+}
+
 function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: (message: string) => never): WorkflowStep {
   const where = `steps[${index}]`;
   if (!isRecord(value)) return fail(`${where} must be an object`);
   const id = typeof value.id === "string" && STEP_ID.test(value.id) && !RESERVED.includes(value.id) ? value.id : fail(`${where}.id must be lowercase letters, digits and _ (not ${RESERVED.join(", ")})`);
-  const kinds = ["tool", "judge", "approve", "agent", "task"].filter((kind) => value[kind] !== undefined);
-  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve, agent, task`);
+  const kinds = ["tool", "judge", "approve", "agent", "task", "calc"].filter((kind) => value[kind] !== undefined);
+  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve, agent, task, calc`);
   const base = { id, ...(value.when === undefined ? {} : { when: text(value.when, `step '${id}'.when`, fail) }) };
   const foreach = value.foreach === undefined ? {} : { foreach: text(value.foreach, `step '${id}'.foreach`, fail) };
   if (value.judge !== undefined) return { ...base, kind: "judge", judge: parseJudge(value.judge, registry, `step '${id}'.judge`, fail), ...foreach };
@@ -237,6 +258,7 @@ function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: 
   if (value.foreach !== undefined) return fail(`step '${id}': an ${kinds[0]} step cannot use foreach`);
   if (value.agent !== undefined) return { ...base, kind: "agent", agent: parseAgent(value.agent, registry, `step '${id}'.agent`, fail) };
   if (value.task !== undefined) return { ...base, kind: "task", task: parseTask(value.task, `step '${id}'.task`, fail) };
+  if (value.calc !== undefined) return { ...base, kind: "calc", calc: parseCalc(value.calc, `step '${id}'.calc`, fail) };
   const approve = isRecord(value.approve) ? value.approve : fail(`step '${id}'.approve must be {"tool":…,"args":…,"why":…}`);
   return {
     ...base, kind: "approve", tool: workflowTool(registry, approve.tool, `step '${id}'.approve`, fail), args: args(approve.args, `step '${id}'.approve.args`, fail),
@@ -250,6 +272,7 @@ const foreachOf = (step: WorkflowStep): string | undefined => ("foreach" in step
 function argumentRoots(step: WorkflowStep): readonly string[] {
   if (step.kind === "agent") return templateRoots(step.agent.input);
   if (step.kind === "task") return templateRoots(step.task.input);
+  if (step.kind === "calc") return templateRoots([step.calc.from, step.calc.compare ?? ""]);
   const templates = step.kind === "judge" ? [step.judge.input, step.judge.context_tools.map((entry) => entry.args)] : [step.args];
   return templates.flatMap(templateRoots);
 }
@@ -259,7 +282,8 @@ function argumentRoots(step: WorkflowStep): readonly string[] {
  * foreach step. `when` and `foreach` are read once per step, before any item, so they cannot use `item`.
  */
 function checkReferences(workflow: Workflow, fail: (message: string) => never): void {
-  const seen: string[] = ["run", ...(workflow.trigger.kind === "event" ? ["event"] : [])];
+  // `previous`: the step outputs of this workflow's last finished run (D144), null before the first one.
+  const seen: string[] = ["run", "previous", ...(workflow.trigger.kind === "event" ? ["event"] : [])];
   const unknownIn = (roots: readonly string[], allowed: readonly string[]): string | undefined => roots.find((root) => !allowed.includes(root));
   for (const step of workflow.steps) {
     if (seen.includes(step.id)) fail(`step id '${step.id}' is used twice`);
