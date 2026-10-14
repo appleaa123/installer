@@ -5,6 +5,8 @@ their own AI agent. It is a generic, agent-operated installer and runtime that
 deploys Skills Wiki solutions onto a client's own AI agent (Claude Code, Codex, OpenClaw,
 Hermes, Pi, …), then runs their workflows under enforced human approval.
 
+**New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you.
+
 Status: Plans 1–11 implemented; see the [roadmap](docs/superpowers/plans/README.md).
 The package is not published (`"private": true`).
 
