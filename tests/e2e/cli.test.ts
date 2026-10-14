@@ -78,7 +78,7 @@ describe("installer CLI", () => {
       const home = await makeTempHome();
       const result = runCli(args, { home });
       expect(result.code).toBe(2);
-      expect(result.json).toMatchObject({ error: expect.stringContaining("installer start") });
+      expect(result.json).toMatchObject({ error: expect.stringContaining("taskpilot start") });
       await expect(access(statePath(home))).rejects.toThrow();
     },
   );
@@ -221,13 +221,13 @@ describe("installer CLI", () => {
       await expect(access(home)).rejects.toThrow();
     });
 
-    it("installer probe prints the capability map", () => {
+    it("taskpilot probe prints the capability map", () => {
       const result = runCli(["probe", "--profile", FAKE_PROFILE], {});
       expect(result.code).toBe(0);
       expect(result.json).toMatchObject({ profile: "fake-agent", c4_headless: true, c5_resume: true, support_level: 2 });
     });
 
-    it("installer probe names an unknown profile, exit 2", () => {
+    it("taskpilot probe names an unknown profile, exit 2", () => {
       const result = runCli(["probe", "--profile", "no-such-agent"], {});
       expect(result.code).toBe(2);
       expect(result.json).toMatchObject({ error: "Unknown runtime profile 'no-such-agent'" });
@@ -249,7 +249,7 @@ describe("installer CLI", () => {
     });
   });
 
-  describe("installer secret (D47)", () => {
+  describe("taskpilot secret (D47)", () => {
     const pids: number[] = [];
 
     afterEach(() => {
@@ -297,7 +297,7 @@ describe("installer CLI", () => {
       expect(result.stderr).toBe("");
     });
   });
-  describe("installer disconnect", () => {
+  describe("taskpilot disconnect", () => {
     it("deletes the key even when this home has no install, and reports it", async () => {
       const env = await keychainEnv("k-1");
       expect(runCli(["disconnect", "skillswiki"], { home: await makeTempHome(), env }).json).toEqual({ status: "disconnected", unregistered: false, secret_deleted: true });

@@ -63,6 +63,6 @@ describe("the gateway loop (D72)", () => {
     await until(async () => (await logLines(home).catch(() => [])).filter((line) => line.level === "error").length >= 2);
     stop.abort();
     await running;
-    expect((await logLines(home)).find((line) => line.level === "error")).toMatchObject({ loop: "telegram", error: "No telegram secret is stored: run 'installer secret telegram' and enter it on the page that opens" });
+    expect((await logLines(home)).find((line) => line.level === "error")).toMatchObject({ loop: "telegram", error: "No telegram secret is stored: run 'taskpilot secret telegram' and enter it on the page that opens" });
   });
 });

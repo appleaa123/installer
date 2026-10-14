@@ -108,7 +108,7 @@ async function finish(exec: Exec, record: RunRecord, status: RunRecord["status"]
   await saveRun(exec.home, done);
   await auditRun(exec.home, exec.ctx.now(), "run.finished", done, { actions: done.actions, needs_human: done.needs_human, ...(reason ? { reason } : {}) });
   const where = `run ${done.run_id} of workflow '${done.workflow}'`;
-  if (status === "failed") await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'installer run ${done.workflow}' runs it again.`);
+  if (status === "failed") await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'taskpilot run ${done.workflow}' runs it again.`);
   else if (done.needs_human > 0) await tellDecisionMaker(exec, done, `The ${where} has ${done.needs_human} judgement(s) that need a person; see runs/${done.workflow}/${done.run_id} in the engine home.`);
   return done;
 }

@@ -78,7 +78,7 @@ async function notify(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs> {
   const joined = (await listMembers(ctx.home, ctx.now())).filter((member) => member.status === "joined" && member.identity);
   const targets = joined.filter((member) => member.name.toLowerCase() === name && (args.channel === undefined || member.identity?.channel === args.channel));
   const on = args.channel === undefined ? "" : ` on ${args.channel as string}`;
-  if (targets.length === 0) throw new InputError(`No joined member is called '${args.member as string}'${on}; joined: ${[...new Set(joined.map((member) => member.name))].join(", ") || "nobody yet (installer invite)"}`);
+  if (targets.length === 0) throw new InputError(`No joined member is called '${args.member as string}'${on}; joined: ${[...new Set(joined.map((member) => member.name))].join(", ") || "nobody yet (taskpilot invite)"}`);
   const deliveries = [];
   for (const { identity } of targets) {
     if (!identity) continue;
@@ -123,7 +123,7 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
     },
   },
   {
-    name: "channel.notify", description: "Send an internal message to a member of the team who joined with 'installer invite' (logged, no approval). Optional channel: only there.", level: "L1", outbound: true,
+    name: "channel.notify", description: "Send an internal message to a member of the team who joined with 'taskpilot invite' (logged, no approval). Optional channel: only there.", level: "L1", outbound: true,
     fields: { member: { type: "string" }, text: TEXT, channel: CHANNEL }, required: ["member", "text"],
     parse: (args) => {
       onlyKeys(args, ["member", "text", "channel"], "channel.notify");

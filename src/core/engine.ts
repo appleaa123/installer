@@ -5,7 +5,7 @@ import { AGENT_FORBIDDEN_KINDS, validateInput } from "./inputs.js";
 import type { Action, AuditHead, InstallState, Solution, StatePatch, StepDef, StepRecord, StepStatus, StepType } from "./types.js";
 
 export const MAX_VERIFY_ATTEMPTS = 3;
-export const RESUME_HINT = "installer resume";
+export const RESUME_HINT = "taskpilot resume";
 
 export class EngineError extends Error {
   constructor(message: string) {
@@ -56,7 +56,7 @@ export type VerifyResult =
   | { readonly status: "blocked"; readonly hint: string; readonly retry: false };
 
 const SETTLED: readonly StepStatus[] = ["done", "skipped"];
-/** Engine-owned steps are rerun by `installer resume`; a person or agent reruns the rest with `installer verify`. */
+/** Engine-owned steps are rerun by `taskpilot resume`; a person or agent reruns the rest with `taskpilot verify`. */
 const RETRIED_BY_RESUME: readonly StepType[] = ["verify", "auto"];
 
 export function recordOf(state: InstallState, stepId: string): StepRecord | undefined {
@@ -84,7 +84,7 @@ export function currentStep(solution: Solution, state: InstallState): StepDef | 
 
 /** The command that retries a failed step: engine-owned steps rerun through resume, the rest through verify. */
 export function retryCommand(step: StepDef): string {
-  return RETRIED_BY_RESUME.includes(step.type) ? RESUME_HINT : `installer verify ${step.step_id}`;
+  return RETRIED_BY_RESUME.includes(step.type) ? RESUME_HINT : `taskpilot verify ${step.step_id}`;
 }
 
 function viewOf(step: StepDef, record: StepRecord | undefined, profile?: string | null): StepView {
@@ -214,11 +214,11 @@ function submittedRecord(deps: EngineDeps, step: StepDef, payload: SubmitPayload
     if (step.input && AGENT_FORBIDDEN_KINDS.includes(step.input.kind)) {
       throw new EngineError(`Step '${step.step_id}' is completed by the local browser page, never through submit`);
     }
-    if (step.verify) throw new EngineError(`Step '${step.step_id}' is confirmed by a check: run 'installer verify ${step.step_id}'`);
+    if (step.verify) throw new EngineError(`Step '${step.step_id}' is confirmed by a check: run 'taskpilot verify ${step.step_id}'`);
     if (payload.kind !== "done") throw new EngineError(`Step '${step.step_id}' takes no value: use --done`);
     return { status: "done", at: deps.now(), by: "human" };
   }
-  const hint = step.type === "agent_action" ? `: perform the intent, then run 'installer verify ${step.step_id}'` : "";
+  const hint = step.type === "agent_action" ? `: perform the intent, then run 'taskpilot verify ${step.step_id}'` : "";
   throw new EngineError(`Step '${step.step_id}' (${step.type}) cannot be submitted${hint}`);
 }
 
@@ -234,7 +234,7 @@ export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: 
   requireKnown(deps, stepId);
   const settled = (await advance(deps, state)).state;
   const step = requireCurrent(deps, settled, stepId);
-  if (!step.verify) throw new EngineError(`Step '${stepId}' has no check; use 'installer submit'`);
+  if (!step.verify) throw new EngineError(`Step '${stepId}' has no check; use 'taskpilot submit'`);
   const actor: Actor = step.type === "agent_action" ? "agent" : step.type === "human_action" ? "human" : "engine";
   const verified = await runVerify(deps, settled, step, actor);
   const { state: final, result: next } = await advance(deps, verified.state);

@@ -100,17 +100,17 @@ describe("the shadow upgrade (§14.3, D108)", () => {
     const home = await updatedHome();
     await writeConfig(home, HEARTBEAT_FILE, { last: AT, alive: AT, pid: 1 });
     const report = await runDoctor(home, { now: () => AT, freeBytes: async () => 50 * 1024 ** 3 });
-    expect(report.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow passed", fix: expect.stringContaining("installer packs switch <pack>") });
+    expect(report.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow passed", fix: expect.stringContaining("taskpilot packs switch <pack>") });
     expect(await packsCommand(home, "list", undefined, OWNER_ROLES, { interactive: false }, () => AT)).toMatchObject({ packs: [{ pack: "demo", candidate: { shadow: { passed: true } } }] });
     await expect(packsCommand(home, "shadow", undefined, OWNER_ROLES, { interactive: false }, () => AT)).rejects.toThrow("packs takes:");
   });
 
-  it("is not started by the daily doctor from the tick, which only compares the pins; 'installer packs shadow' runs it", async () => {
+  it("is not started by the daily doctor from the tick, which only compares the pins; 'taskpilot packs shadow' runs it", async () => {
     const home = await updatedHome();
     await writeConfig(home, HEARTBEAT_FILE, { last: AT, alive: AT, pid: 1 });
     await writeConfig(home, DOCTOR_NEXT, { at: AT });
     const report = await dailyDoctor(home, () => AT);
-    expect(report?.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow not run", fix: expect.stringContaining("installer packs shadow <pack>") });
+    expect(report?.checks.find((check) => check.id === "packs")).toMatchObject({ status: "warn", detail: "demo: a new version, shadow not run", fix: expect.stringContaining("taskpilot packs shadow <pack>") });
     expect((await loadPacks(home)).demo?.candidate).toBeDefined();
     expect((await loadPacks(home)).demo?.candidate?.shadow).toBeUndefined();
     expect(await listRuns(home)).toHaveLength(1);

@@ -18,7 +18,7 @@ import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID } from "./skillswiki.js";
 import { loadState } from "./state.js";
 
 /**
- * `installer uninstall` (spec §16.4, D34, D109): removes the engine's body and keeps the records. In order: pause, so
+ * `taskpilot uninstall` (spec §16.4, D34, D109): removes the engine's body and keeps the records. In order: pause, so
  * nothing goes out from here on (D101); stop the gateway; remove the agent's MCP registrations (`skillswiki`,
  * `installer`); delete the keychain items the engine stored; delete the schedule and boot service files it wrote
  * under the home; audit it; export the audit to `exports/`. It prints the OS commands that unload what a person
@@ -70,8 +70,8 @@ async function osCommands(home: string, now: () => string, options: ServiceOptio
 
 export async function uninstall(home: string, person: { interactive: boolean; as?: string }, now: () => string, options: ServiceOptions & { env?: Env } = {}): Promise<Record<string, unknown>> {
   if (!person.interactive) {
-    await appendAudit(home, { ts: now(), actor: "agent", event: "engine.uninstall_refused", ref: "uninstall", payload: { command: "installer uninstall" } });
-    throw new InputError("Uninstalling removes the engine's registrations, keys and schedules: the person runs 'installer uninstall' in their own terminal");
+    await appendAudit(home, { ts: now(), actor: "agent", event: "engine.uninstall_refused", ref: "uninstall", payload: { command: "taskpilot uninstall" } });
+    throw new InputError("Uninstalling removes the engine's registrations, keys and schedules: the person runs 'taskpilot uninstall' in their own terminal");
   }
   const by = person.as?.trim() || "terminal";
   await setPaused(home, true, { name: by, actor: "human", via: "cli" }, now(), "uninstall");

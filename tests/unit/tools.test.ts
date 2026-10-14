@@ -109,7 +109,7 @@ describe("the tool gate (§11.1)", () => {
     await expect(invokeTool(ctx, "demo.set", { field: "name" })).resolves.toEqual({ set: 1 });
     await expect(invokeTool(ctx, "demo.set", { field: "amount" })).rejects.toThrow("demo.set is L3 (writes item.amount (financial))");
     const item = await invokeTool(ctx, "approvals.request", { tool: "demo.set", args: { field: "amount" }, why: "Correct the figure." });
-    expect(item).toMatchObject({ level: "L3", required_role: "decision_maker", next: expect.stringContaining("Ask the decision maker to run 'installer approvals approve 1'") });
+    expect(item).toMatchObject({ level: "L3", required_role: "decision_maker", next: expect.stringContaining("Ask the decision maker to run 'taskpilot approvals approve 1'") });
     await expect(approveItem(ctx.home, 1, MEMBER, ctx.now())).rejects.toThrow("needs the decision maker");
     await approveItem(ctx.home, 1, BOSS, ctx.now());
     const token = (await invokeTool(ctx, "approvals.get", { id: 1 })).approval_token;

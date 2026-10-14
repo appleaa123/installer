@@ -1,11 +1,11 @@
 # Plan 10 live test guide (certifying a runtime on your machine)
 
-Use this guide to certify Claude Code on your own Mac with `installer certify` (D116). Each test gives the commands
+Use this guide to certify Claude Code on your own Mac with `taskpilot certify` (D116). Each test gives the commands
 to run, what you should see, and a place to record what you actually saw. If a result differs, collect the items in
 **Diagnostics to capture** at the end of the [Plan 1 guide](2026-10-07-plan-1-live-test.md#diagnostics-to-capture).
 
 The **Expected** lines are predictions: the automated tests replace every suite and the agent with fakes, so
-`installer certify` has never run its real suites. The counts are those of the branch when this plan was written
+`taskpilot certify` has never run its real suites. The counts are those of the branch when this plan was written
 (100 test files, 1358 tests offline; 7 files, 20 tests live; the run that certified Claude Code on 2026-10-12 saw 100 files, 1,360 tests offline and 7 files, 18 tests live with none skipped); later commits change them.
 
 **What this guide changes:** Test 1 and Test 2 run the offline suite (about three minutes, nothing leaves your
@@ -18,9 +18,9 @@ setting is changed and nothing is published.
 
 ## What this build can and cannot do
 
-Plan 10 adds: `installer certify --profile <id>` (also `npm run certify -- …`), which runs the offline suite, the
+Plan 10 adds: `taskpilot certify --profile <id>` (also `npm run certify -- …`), which runs the offline suite, the
 live checks and the probe on the real agent and writes a dated record with its tier (§7.5: Certified only when
-everything ran and passed from a clean checkout); `installer version`; the Codex profile (written from Codex's
+everything ran and passed from a clean checkout); `taskpilot version`; the Codex profile (written from Codex's
 documentation, not run yet, terms pending: used only when named, tier Unknown); Windows support for npm-installed
 agents without a shell (not yet run on Windows: Unknown); the universal injection suite and the connector contract
 checks, which run inside the offline and live suites. Not yet: certified Codex or Windows runs (human tasks 15–17),

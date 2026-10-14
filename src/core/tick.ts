@@ -22,7 +22,7 @@ import { invokeTool, toolContext } from "./tools.js";
 import { loadWorkflow, workflowIds, type Workflow } from "./workflow.js";
 
 /**
- * The runner's minute (D82, D84, D88). One OS scheduler entry runs `installer tick` every minute; the tick, under
+ * The runner's minute (D82, D84, D88). One OS scheduler entry runs `taskpilot tick` every minute; the tick, under
  * a lock so two never overlap: starts each cron run that fell due within its tolerance, records every one that did
  * not as `missed` (D38: never run late), sends one host-back-online notice when the last heartbeat is more than
  * five minutes old, starts the event-triggered runs for new inbox messages, resumes runs whose approval was decided
@@ -125,7 +125,7 @@ async function scheduled(tick: Tick, workflow: Workflow, last: string | null): P
 async function backOnline(tick: Tick, last: string): Promise<void> {
   const minutes = Math.round((Date.parse(tick.at) - Date.parse(last)) / MINUTE_MS);
   const missed = tick.result.missed.length === 0 ? "none" : tick.result.missed.join("; ");
-  const text = `The host is back online. The runner did not run from ${last} to ${tick.at} (${minutes} minutes). Missed runs, not run: ${missed}. To run one now: installer run <workflow>.`;
+  const text = `The host is back online. The runner did not run from ${last} to ${tick.at} (${minutes} minutes). Missed runs, not run: ${missed}. To run one now: taskpilot run <workflow>.`;
   const name = (await loadState(tick.home))?.roles?.decision_maker;
   let error: string | null = name ? null : "no decision maker is set (MODE phase)";
   if (name) {

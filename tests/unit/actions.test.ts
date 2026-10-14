@@ -88,7 +88,7 @@ describe("secret_present", () => {
     const home = await makeTempHome();
     vi.stubEnv("INSTALLER_KEYCHAIN_DIR", await makeTempHome());
     const check = { check: "secret_present", args: { id: "demo" } };
-    await expect(runCheck(home, check)).resolves.toEqual({ ok: false, hint: expect.stringContaining("run 'installer secret demo'") });
+    await expect(runCheck(home, check)).resolves.toEqual({ ok: false, hint: expect.stringContaining("run 'taskpilot secret demo'") });
     await setSecret("demo", "k-1");
     await expect(runCheck(home, check)).resolves.toEqual({ ok: true });
   });

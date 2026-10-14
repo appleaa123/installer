@@ -16,7 +16,7 @@ async function home(): Promise<string> {
   return dir;
 }
 
-describe("installer run, tick, schedule and model (§6.6, D82)", () => {
+describe("taskpilot run, tick, schedule and model (§6.6, D82)", () => {
   it("runs a workflow now and prints the run", async () => {
     const dir = await home();
     const result = runCli(["run", "note"], { home: dir });

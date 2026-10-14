@@ -10,7 +10,7 @@ export interface FakeGoogle {
   readonly stop: () => void;
 }
 
-/** The sign-in a person stores with `installer secret google`, as the keychain holds it. */
+/** The sign-in a person stores with `taskpilot secret google`, as the keychain holds it. */
 export const SIGNED_IN = JSON.stringify({ client_id: "client-1", client_secret: "secret-1", refresh_token: "refresh-1" });
 
 /** Starts tests/fakes/fake-google.mjs in its own process, so the CLI run with spawnSync can still reach it. */

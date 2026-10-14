@@ -111,7 +111,7 @@ export async function runProbe(options: ProbeOptions): Promise<CapabilityMap> {
   const notes = [
     ...(versionOk ? [] : [`${profile.name} ${version ?? "(unknown version)"} is older than the supported ${profile.min_version}`]),
     ...(reviewed ? [] : [`${profile.name}'s terms of service are not reviewed yet (tos_review: ${profile.tos_review.status}), so its tier stays unknown (D32)`]),
-    ...(windows ? ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs installer certify on Windows"] : []),
+    ...(windows ? ["Windows is not certified yet: the probe's results stand, but the tier stays unknown until a person runs taskpilot certify on Windows"] : []),
     ...[headless, schema, resume].flatMap((check) => (check.note ? [check.note] : [])),
   ];
   return {

@@ -12,7 +12,7 @@ import { loadState } from "./state.js";
 /**
  * R6, D79: no real outbound message during the install. Every message the engine sends goes through `deliver`,
  * which sends it only when the install is finished (the report says ready, or ready with limits) and the channel
- * was verified by `installer channel`; otherwise it is recorded in `sandbox/outbox/` (the recording sink, §4.2)
+ * was verified by `taskpilot channel`; otherwise it is recorded in `sandbox/outbox/` (the recording sink, §4.2)
  * and audited. No exception, not even for a join confirmation. Sandbox mode (D91) records them too, and a sandbox
  * run records every other action it would take as well (`recordAction`), so nothing it does is real. While the
  * engine is paused (the kill switch, D101) every message is recorded as well.
@@ -56,7 +56,7 @@ export const SANDBOX_ACTION_REASON = "a sandbox run: actions are recorded, never
 
 /** `run` names the workflow run (`<workflow>/<run_id>`) a recording belongs to, so a dry run can show its own. */
 export async function deliver(home: string, channel: ChannelId, message: OutboundMessage, now: string, env: Env = process.env, sandbox = false, run?: string): Promise<Delivery> {
-  if (!(await loadChannel(home, channel))) throw new InputError(`The ${channel} channel is not set up: run 'installer channel ${channel}' first`);
+  if (!(await loadChannel(home, channel))) throw new InputError(`The ${channel} channel is not set up: run 'taskpilot channel ${channel}' first`);
   const reason = sandbox ? SANDBOX_REASON : await outboundBlock(home);
   if (reason !== null) {
     const recorded = await createRecord<Recorded>(home, OUTBOX_DIR, (id) => ({ id, channel, ...message, at: now, reason, ...(run ? { run } : {}) }));

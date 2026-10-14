@@ -5,7 +5,7 @@ import { createInvite, listMembers, removeMember, requireMemberName, type Member
 import type { Roles } from "./types.js";
 
 /**
- * `installer invite <name>` and `installer members [remove <id>]` (D77). Inviting and removing change who may
+ * `taskpilot invite <name>` and `taskpilot members [remove <id>]` (D77). Inviting and removing change who may
  * decide approvals, so like deciding (D61) they need a person at a terminal; an agent's attempt is refused and
  * audited. The join code is printed once, here, and never stored.
  */
@@ -33,9 +33,9 @@ const shown = ({ code_hash: _hash, ...member }: Member) => member;
 
 export async function inviteCommand(home: string, roles: Roles | undefined, name: string | undefined, interactive: boolean, now: () => string): Promise<unknown> {
   const person = requireMemberName(name);
-  await requireTerminal(home, interactive, `installer invite "${person}"`, now());
+  await requireTerminal(home, interactive, `taskpilot invite "${person}"`, now());
   const channels = await listChannels(home);
-  if (channels.length === 0) throw new InputError("No channel is set up yet: run 'installer channel telegram' or 'installer channel email' first");
+  if (channels.length === 0) throw new InputError("No channel is set up yet: run 'taskpilot channel telegram' or 'taskpilot channel email' first");
   const { member, code } = await createInvite(home, person, roles, now());
   return {
     ...shown(member), code, join: channels.map((channel) => howToJoin(channel, code)),
@@ -46,6 +46,6 @@ export async function inviteCommand(home: string, roles: Roles | undefined, name
 export async function membersCommand(home: string, command: MemberCommand, now: () => string): Promise<unknown> {
   if (command.sub === undefined) return { members: (await listMembers(home, now())).map(shown) };
   if (command.sub !== "remove" || !command.id || !/^[1-9]\d*$/.test(command.id)) throw new InputError(MEMBERS_USAGE);
-  await requireTerminal(home, command.interactive, `installer members remove ${command.id}`, now());
+  await requireTerminal(home, command.interactive, `taskpilot members remove ${command.id}`, now());
   return shown(await removeMember(home, Number(command.id), now()));
 }

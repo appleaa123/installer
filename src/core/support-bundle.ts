@@ -32,7 +32,7 @@ import { ENGINE_SECRETS, EXPORTS_DIR } from "./uninstall.js";
 import { installerVersion } from "./version.js";
 
 /**
- * `installer support bundle` (spec §16.5, D34, D110): one JSON file under `exports/` that the person reads and sends
+ * `taskpilot support bundle` (spec §16.5, D34, D110): one JSON file under `exports/` that the person reads and sends
  * to whoever supports their install; nothing is sent by the engine and there is no remote access. It holds the
  * install's shape (versions, step statuses, report, doctor and readiness findings, recent run summaries, settings,
  * counts, the audit check, the tails of the gateway and tick logs) and never a secret, a person's name or address,
@@ -176,10 +176,10 @@ async function bundleOf(home: string, state: InstallState, now: string): Promise
   };
 }
 
-/** `installer support bundle`: writes the redacted file and says where it is; changes nothing else. */
+/** `taskpilot support bundle`: writes the redacted file and says where it is; changes nothing else. */
 export async function supportBundle(home: string, now: () => string): Promise<Record<string, unknown>> {
   const state = await loadState(home);
-  if (!state) throw new InputError("No install found in this home; run 'installer start --solution <ref>' first");
+  if (!state) throw new InputError("No install found in this home; run 'taskpilot start --solution <ref>' first");
   const at = now();
   const known = await knownValues(home, state, at);
   const fields = personalFields((await loadPinnedSolution(home)).solution.data_contract ?? null);

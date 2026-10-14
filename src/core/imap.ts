@@ -95,7 +95,7 @@ async function signIn(wire: Wire, run: ReturnType<typeof protocol>, account: Mai
   const login = `LOGIN ${quoted(account.user, "user")} ${quoted(password, "app password")}`;
   await run(login, `the sign-in for ${account.user}`).catch((error: unknown) => {
     if (!(error instanceof ActionFailure)) throw error;
-    throw new ActionFailure(`${error.message}: check the user and the app password, then run 'installer secret email' again`);
+    throw new ActionFailure(`${error.message}: check the user and the app password, then run 'taskpilot secret email' again`);
   });
 }
 

@@ -59,7 +59,7 @@ const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, gu
 
 class NoInstallError extends InputError {
   constructor() {
-    super("No install found in this home; run 'installer start --solution <ref>' first");
+    super("No install found in this home; run 'taskpilot start --solution <ref>' first");
     this.name = "NoInstallError";
   }
 }
@@ -149,7 +149,7 @@ function requireArg(arg: string | undefined, command: string): string {
 }
 
 function requireEntityArg(arg: string | undefined, command: string): string {
-  if (!arg) throw new InputError(`${command} needs the name of an entity of the data contract, for example: installer ${command} contact`);
+  if (!arg) throw new InputError(`${command} needs the name of an entity of the data contract, for example: taskpilot ${command} contact`);
   return arg;
 }
 
@@ -216,7 +216,7 @@ async function probeCommand(flags: Flags): Promise<CapabilityMap> {
   }
 }
 
-/** `installer certify --profile <id>` (D116): from a source checkout; the suites and the probe run for real, the record goes under the home. */
+/** `taskpilot certify --profile <id>` (D116): from a source checkout; the suites and the probe run for real, the record goes under the home. */
 async function certifyCommand(home: string, flags: Flags): Promise<unknown> {
   const root = await requireCheckout();
   const deps = {
@@ -226,7 +226,7 @@ async function certifyCommand(home: string, flags: Flags): Promise<unknown> {
   return certify(home, flags.profile, deps);
 }
 
-/** `installer secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
+/** `taskpilot secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
 async function secretCommand(id: string): Promise<unknown> {
   const { url, pid } = await launchSecretPage(requireSecretId(id));
   const hint = headlessHint(url);
@@ -257,9 +257,9 @@ async function headersCommand(id: string): Promise<number> {
   return EXIT.OK;
 }
 
-/** `installer tool <name> '<json>'`: the C6 fallback, through the same gate as the MCP server (§7.4). */
+/** `taskpilot tool <name> '<json>'`: the C6 fallback, through the same gate as the MCP server (§7.4). */
 async function toolCommand(home: string, name: string | undefined, json: string | undefined): Promise<unknown> {
-  if (!name) throw new InputError(`tool needs a tool name and its arguments as JSON, for example: installer tool memo.list '{}'`);
+  if (!name) throw new InputError(`tool needs a tool name and its arguments as JSON, for example: taskpilot tool memo.list '{}'`);
   let args: unknown = {};
   if (json !== undefined) {
     try {

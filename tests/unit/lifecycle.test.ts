@@ -36,7 +36,7 @@ describe("WORKFLOWS: a workflow v1 from a suggestion or from plain words (§6.2,
   it("lists the recipe's suggestions and adds one as version 1, in sandbox", async () => {
     const at = await home();
     expect(await workflowCommand(at, "suggestions", undefined, undefined, () => AT)).toEqual({ suggestions: [{ workflow: "note", description: "Adds a memo each weekday morning", mode: "typed", trigger: NOTE.trigger }] });
-    expect(await check(at, "workflows_present")).toMatchObject({ ok: false, hint: expect.stringContaining("installer workflow suggestions") });
+    expect(await check(at, "workflows_present")).toMatchObject({ ok: false, hint: expect.stringContaining("taskpilot workflow suggestions") });
     expect(await workflowCommand(at, "add", "note", undefined, () => AT)).toMatchObject({ status: "added", workflow: "note", version: 1, mode: "typed", sandbox: true });
     expect(await loadWorkflowState(at, "note")).toEqual({ workflow: "note", sandbox: true });
     expect(await check(at, "workflows_present")).toEqual({ ok: true });
@@ -138,7 +138,7 @@ describe("ACTIVATE (§6.2, D98)", () => {
 
   it("checks that the OS scheduler runs the tick", async () => {
     const at = await makeTempHome();
-    expect(await check(at, "runner_ticking")).toMatchObject({ ok: false, hint: expect.stringContaining("installer schedule install") });
+    expect(await check(at, "runner_ticking")).toMatchObject({ ok: false, hint: expect.stringContaining("taskpilot schedule install") });
     await writeConfig(at, HEARTBEAT_FILE, { last: new Date().toISOString(), pid: 1 });
     expect(await check(at, "runner_ticking")).toEqual({ ok: true });
   });

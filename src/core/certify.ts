@@ -6,7 +6,7 @@ import type { CapabilityMap } from "./types.js";
 
 /**
  * Local certification (spec §15 as adapted by D48 and D116): no paid CI, so a person certifies a runtime on their
- * own machine with `installer certify --profile <id>`. It runs the offline suite, then the opt-in live checks
+ * own machine with `taskpilot certify --profile <id>`. It runs the offline suite, then the opt-in live checks
  * (tests/live, through their INSTALLER_LIVE gate, as a child process), probes the real agent (C2, C4, C4 schema,
  * C5; C6 is the live suite's rehearsal) and writes a dated record under `<home>/certification/`. The tier follows
  * §7.5: Certified only when everything ran and passed on a bundled profile whose vendor terms were reviewed, from a
@@ -102,7 +102,7 @@ export function tierOf(parts: Parts, profile: RuntimeProfile): { readonly tier: 
 
 /** Runs the matrix for one profile on this machine and writes the dated record (D116). The live checks run only after the offline suite passed. */
 export async function certify(home: string, profileId: string | undefined, deps: CertifyDeps): Promise<CertificationRecord & { readonly file: string }> {
-  if (!profileId) throw new InputError("certify needs --profile <id>, for example: installer certify --profile claude-code");
+  if (!profileId) throw new InputError("certify needs --profile <id>, for example: taskpilot certify --profile claude-code");
   const profile = await loadProfileById(profileId);
   const at = deps.now();
   // The commit is read first: it names what the suites below test.

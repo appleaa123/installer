@@ -27,7 +27,7 @@ async function lastEvent(home: string): Promise<string> {
   return (JSON.parse(last) as { event: string }).event;
 }
 
-describe("installer tool (C6 fallback, §7.4)", () => {
+describe("taskpilot tool (C6 fallback, §7.4)", () => {
   it("runs an L1 tool and prints its result", async () => {
     const home = await installed();
     const result = runCli(["tool", "memo.add", '{"text":"Ship the order on Monday"}'], { home });
@@ -49,7 +49,7 @@ describe("installer tool (C6 fallback, §7.4)", () => {
     const home = await installed();
     runCli(["tool", "memo.add", '{"text":"a"}'], { home });
     const asked = runCli(["tool", "approvals.request", '{"tool":"memo.edit","args":{"id":1,"text":"b"},"why":"The note is out of date."}'], { home });
-    expect(asked.json).toMatchObject({ id: 1, status: "pending", level: "L2", next: expect.stringContaining("installer approvals approve 1") });
+    expect(asked.json).toMatchObject({ id: 1, status: "pending", level: "L2", next: expect.stringContaining("taskpilot approvals approve 1") });
     const refused = runCli(["approvals", "approve", "1"], { home });
     expect(refused.code).toBe(2);
     expect(refused.json).toMatchObject({ error: expect.stringContaining("Approvals are decided by a person in their own terminal") });
@@ -91,6 +91,6 @@ describe("installer tool (C6 fallback, §7.4)", () => {
     const home = await makeTempHome();
     const result = runCli(args, { home });
     expect(result.code).toBe(2);
-    expect(result.json).toMatchObject({ error: "No install found in this home; run 'installer start --solution <ref>' first" });
+    expect(result.json).toMatchObject({ error: "No install found in this home; run 'taskpilot start --solution <ref>' first" });
   });
 });

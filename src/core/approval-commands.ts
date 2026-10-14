@@ -4,7 +4,7 @@ import { DEFAULT_TOOLS } from "./tool-set.js";
 import { argsOf, prepareAction, requireTool, toolContext } from "./tools.js";
 import type { Roles } from "./types.js";
 
-/** `installer approvals list | approve <id> | edit <id> --value <json> | reject <id> [--reason <text>]` (D61). */
+/** `taskpilot approvals list | approve <id> | edit <id> --value <json> | reject <id> [--reason <text>]` (D61). */
 export interface ApprovalsCommand {
   readonly sub: string | undefined;
   readonly id: string | undefined;
@@ -42,7 +42,7 @@ async function decide(home: string, roles: Roles | undefined, command: Approvals
   const id = parseId(command.id);
   const decider = deciderFor(command.as, roles);
   if (!command.interactive) {
-    const reason = `Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'installer approvals ${command.sub} ${id}' there`;
+    const reason = `Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'taskpilot approvals ${command.sub} ${id}' there`;
     return refuseDecision(home, await getApproval(home, id, now()), decider.name, reason, now(), "agent");
   }
   if (command.sub === "approve") return approveItem(home, id, decider, now());

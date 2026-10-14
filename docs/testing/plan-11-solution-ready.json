@@ -1,7 +1,7 @@
 { "id": "plan11-live", "version": "1.0.0",
   "steps": [
     { "step_id": "data.google", "phase": "DATA", "type": "human_action", "title": "Sign in to Google Sheets", "why": "Your contacts stay in your own Google account.", "blocking": true, "guide": "google-sheets",
-      "instructions": ["Follow the guide the agent reads for you", "Open the page that 'installer secret google' printed and sign in", "Tell the agent when the page says Done"],
+      "instructions": ["Follow the guide the agent reads for you", "Open the page that 'taskpilot secret google' printed and sign in", "Tell the agent when the page says Done"],
       "input": { "kind": "oauth", "provider": "google" },
       "verify": { "check": "secret_present", "args": { "id": "google" } } },
     { "step_id": "data.google-ready", "phase": "DATA", "type": "agent_action", "title": "Check that the Google sign-in works", "why": "Proves the sign-in and the Sheets API.", "blocking": true,

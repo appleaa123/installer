@@ -24,11 +24,11 @@ async function installed(): Promise<string> {
   return home;
 }
 
-describe("installer connect and installer map (D68)", () => {
+describe("taskpilot connect and taskpilot map (D68)", () => {
   it("creates the default sheet, shows its columns and saves the confirmed mapping", async () => {
     const home = await installed();
     const connected = runCli(["connect", "contact", "--sheet", "new"], { home, env });
-    expect(connected).toMatchObject({ code: 0, json: { status: "connected", entity: "contact", next: "Run 'installer map contact' to see its columns" } });
+    expect(connected).toMatchObject({ code: 0, json: { status: "connected", entity: "contact", next: "Run 'taskpilot map contact' to see its columns" } });
     expect(runCli(["map", "contact"], { home, env }).json).toMatchObject({ columns: ["name", "email", "notes", "balance"], sample: [] });
     const mapped = runCli(["map", "contact", "--value", '{"name":"name","email":"email","notes":"notes","balance":"balance"}'], { home, env });
     expect(mapped).toMatchObject({ code: 0, json: { status: "mapped", entity: "contact" } });
@@ -45,7 +45,7 @@ describe("installer connect and installer map (D68)", () => {
   });
 
   it.each([
-    ["connect without an entity", ["connect"], "connect needs the name of an entity of the data contract, for example: installer connect contact"],
+    ["connect without an entity", ["connect"], "connect needs the name of an entity of the data contract, for example: taskpilot connect contact"],
     ["connect without --sheet", ["connect", "contact"], "connect needs --sheet <link of the Google Sheet that holds the contact records>, or --sheet new to create one"],
     ["map before connect", ["map", "contact"], "Connect 'contact' first"],
     ["a sheet Google does not have", ["connect", "contact", "--sheet", "nope"], "Google Sheets has no spreadsheet nope: check the link"],
