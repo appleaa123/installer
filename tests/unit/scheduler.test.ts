@@ -2,7 +2,7 @@ import { access, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { InputError } from "../../src/core/inputs.js";
-import { CRONTAB, LAUNCHD, SCHEDULE_DIR, backendFor, crontabLine, plistText, scheduleCommand, tickEntry } from "../../src/core/scheduler.js";
+import { CRONTAB, LAUNCHD, SCHEDULE_DIR, SCHTASKS, backendFor, crontabLine, plistText, scheduleCommand, taskXml, tickEntry } from "../../src/core/scheduler.js";
 import { tick } from "../../src/core/tick.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { writeWorkflow } from "../helpers/workflow-home.js";
@@ -49,10 +49,54 @@ describe("the OS scheduler entry (D82)", () => {
     expect(CRONTAB.remove("", ENTRY)).toEqual([`crontab -l 2>/dev/null | grep -v '# ${ENTRY.label}' | crontab -`]);
   });
 
-  it("picks launchd on macOS, crontab elsewhere, and refuses Windows", () => {
+  it("picks launchd on macOS, Task Scheduler on Windows and crontab elsewhere", () => {
     expect(backendFor("darwin").id).toBe("launchd");
     expect(backendFor("linux").id).toBe("crontab");
-    expect(() => backendFor("win32")).toThrow("not supported yet");
+    expect(backendFor("win32").id).toBe("schtasks");
+  });
+});
+
+describe("Windows Task Scheduler entry (D128, Preview)", () => {
+  const WIN = {
+    label: "com.installer.tick.abcd1234",
+    argv: ["C:\\Program Files\\nodejs\\node.exe", "C:\\Users\\Jo Lee\\taskfollow\\dist\\cli.js", "--home", "C:\\Users\\Jo Lee\\R&D\\home", "tick"],
+    log: "C:\\Users\\Jo Lee\\R&D\\home\\runtime\\schedule\\tick.log",
+  };
+
+  it("repeats every minute, runs on battery and in the person's own session, and runs one at a time", () => {
+    const text = taskXml(WIN);
+    expect(text).toContain("<Interval>PT1M</Interval>");
+    expect(text).toContain("<StopAtDurationEnd>false</StopAtDurationEnd>");
+    expect(text).toContain("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>");
+    expect(text).toContain("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
+    expect(text).toContain("<LogonType>InteractiveToken</LogonType>");
+    expect(text).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+    expect(text).toContain("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>");
+  });
+
+  it("runs the tick through a hidden console, with every argument double-quoted and & escaped for XML", () => {
+    const text = taskXml(WIN);
+    expect(text).toContain("<Command>conhost.exe</Command>");
+    expect(text).toContain('<Arguments>--headless &quot;C:\\Program Files\\nodejs\\node.exe&quot; &quot;C:\\Users\\Jo Lee\\taskfollow\\dist\\cli.js&quot; &quot;--home&quot; &quot;C:\\Users\\Jo Lee\\R&amp;D\\home&quot; &quot;tick&quot;</Arguments>');
+  });
+
+  it("refuses a home path that quoting cannot protect", () => {
+    expect(() => taskXml({ ...WIN, argv: [...WIN.argv.slice(0, 3), "C:\\50%\\home", "tick"] })).toThrow(InputError);
+  });
+
+  it("prints schtasks lines that need no administrator rights", () => {
+    expect(SCHTASKS.install("C:\\h\\x.xml", WIN)).toEqual([`schtasks /Create /TN "taskfollow\\${WIN.label}" /XML "C:\\h\\x.xml" /F`]);
+    expect(SCHTASKS.remove("", WIN)).toEqual([`schtasks /Delete /TN "taskfollow\\${WIN.label}" /F`]);
+    expect(SCHTASKS.file(WIN)).toBe(`${WIN.label}.xml`);
+  });
+
+  it("writes the file as UTF-16LE with a byte order mark, which schtasks /XML always accepts", async () => {
+    const home = await makeTempHome();
+    const result = await scheduleCommand(home, "install", undefined, NOW, { platform: "win32", node: "C:\\node.exe", cli: "C:\\cli.js" });
+    expect(result).toMatchObject({ backend: "schtasks" });
+    const bytes = await readFile(String(result.file));
+    expect([bytes[0], bytes[1]]).toEqual([0xff, 0xfe]);
+    expect(bytes.subarray(2).toString("utf16le")).toContain("PT1M");
   });
 });
 
