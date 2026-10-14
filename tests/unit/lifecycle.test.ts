@@ -57,6 +57,26 @@ describe("WORKFLOWS: a workflow v1 from a suggestion or from plain words (§6.2,
   });
 });
 
+describe("WORKFLOWS: a workflow the agent writes as fixed steps (D142)", () => {
+  const STEPS = {
+    description: "Looks up an order when a customer asks",
+    trigger: { event: "message.received", from: "external" },
+    steps: [{ id: "lookup", task: { prompt: "Find the order.", input: { message: "${event.text}" }, may_use: ["mcp__shopify__get_order"], output: { type: "object", properties: { order_found: { type: "boolean" } }, required: ["order_found"] } } }],
+  };
+
+  it("adds steps the agent wrote as a typed version 1, in sandbox", async () => {
+    const at = await home();
+    expect(await workflowCommand(at, "add", "order-status", JSON.stringify(STEPS), () => AT)).toMatchObject({ status: "added", workflow: "order-status", version: 1, mode: "typed", sandbox: true });
+    expect((await workflowCommand(at, "list", undefined, undefined, () => AT)).workflows).toEqual([expect.objectContaining({ workflow: "order-status", mode: "typed", sandbox: true })]);
+  });
+
+  it("refuses steps that do not hold together, with the reason", async () => {
+    const at = await home();
+    await expect(workflowCommand(at, "add", "bad", JSON.stringify({ ...STEPS, steps: [{ id: "lookup", task: { prompt: "x", may_use: ["*"], output: STEPS.steps[0]?.task.output } }] }), () => AT)).rejects.toThrow("may_use");
+    await expect(workflowCommand(at, "add", "bad", JSON.stringify({ steps: STEPS.steps }), () => AT)).rejects.toThrow("needs the person's description");
+  });
+});
+
 describe("DRY RUN: a sandbox run the person reads and confirms (§6.2, D98)", () => {
   it("shows what the workflow would do, changes nothing, and is confirmed in a terminal only", async () => {
     const at = await home();

@@ -129,6 +129,16 @@ Each task says why it is needed and what to do, step by step.
 6. Leave the gateway running overnight, close the laptop for an hour, open it again, and send a message: it must arrive once, and once only.
 7. Remove the app from Slack (Apps, Manage) and watch `taskfollow doctor`: it should say the Slack app was removed in plain words.
 
+### 25. Check task steps with the real Claude Code and your Shopify CLI (before task steps are promised to a client)
+
+**Why:** task steps (D142) were built against a fake agent. About 30 minutes on this Mac, with your Shopify CLI signed in to a test store (`shopify store auth -s <store> --scopes read_orders`). Tell Claude the result of each item, with the exact wording of anything that surprises you.
+
+1. Ask Claude to add a workflow with one task step that looks up your latest order read-only (`may_use: ["Bash(shopify store execute:*)"]`) and to run it with `taskfollow run <id> --sandbox`. Expect the step's answer to show the order.
+2. `taskfollow why <run id>`: the shopify call should be there with Claude's reason.
+3. Ask Claude to change the workflow so the task tries a mutation (`--allow-mutations`). Expect it refused, and the refusal in `why`.
+4. Add `"may_use": ["mcp__<your Shopify MCP server>__<a read tool>"]` instead, if you use a Shopify MCP server: does it load in the task run? (The run uses `--restricted`; we need to know whether your MCP servers still load there.)
+5. Tell Claude whether anything appeared in `~/.claude/projects` for these runs (it should not: no transcript is saved).
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
