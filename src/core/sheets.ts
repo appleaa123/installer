@@ -119,3 +119,58 @@ export function sheetsClient(def: ConnectorDef, tokens: AccessTokenSource, env: 
     },
   };
 }
+
+/** A spreadsheet id that cannot exist: asking for it proves the sign-in and the API without touching any real sheet. */
+export const READINESS_PROBE_ID = "installer-readiness-probe";
+
+export type SheetsProbe =
+  | { readonly state: "enabled" }
+  | { readonly state: "disabled" }
+  | { readonly state: "refused" }
+  | { readonly state: "other"; readonly status: number; readonly reason: string };
+
+/** Google's reason codes are upper-case words; anything else is never repeated (it would reach the agent's instructions). */
+const SAFE_REASON = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Google's error status (`error.status`), empty when absent. */
+function errorStatus(body: unknown): string {
+  return isRecord(body) && isRecord(body.error) && typeof body.error.status === "string" ? body.error.status : "";
+}
+
+/** Google's first error reason (`details[].reason`), else its error status, else empty; empty too when it is not a plain code. */
+function errorReason(body: unknown): string {
+  if (!isRecord(body) || !isRecord(body.error)) return "";
+  const details = Array.isArray(body.error.details) ? body.error.details : [];
+  const reason = details.find((detail): detail is Raw => isRecord(detail) && typeof detail.reason === "string");
+  const code = typeof reason?.reason === "string" ? reason.reason : errorStatus(body);
+  return SAFE_REASON.test(code) ? code : "";
+}
+
+/** Google's answer for a project that never enabled the API: 403 with reason SERVICE_DISABLED (or its message). */
+function apiDisabled(body: unknown): boolean {
+  if (errorReason(body) === "SERVICE_DISABLED") return true;
+  return isRecord(body) && isRecord(body.error) && typeof body.error.message === "string" && /Sheets API has not been used in project/i.test(body.error.message);
+}
+
+/**
+ * Live setup guides, 4.5: one GET for a spreadsheet that cannot exist. 404 with Google's status NOT_FOUND = the API is
+ * enabled and the token works (a bare 404 from a proxy is not trusted); 403 SERVICE_DISABLED = the API is off in the
+ * person's project; 401 = the token was refused. Anything else is reported as it is, so the step fails and can be
+ * retried. It calls only the Sheets API.
+ */
+export async function probeSheetsApi(def: ConnectorDef, tokens: AccessTokenSource, env: Env = process.env): Promise<SheetsProbe> {
+  const token = await tokens.accessToken();
+  let response: Response;
+  try {
+    response = await fetch(`${connectorUrl(def.api.base_url, env)}/spreadsheets/${READINESS_PROBE_ID}?fields=spreadsheetId`, {
+      headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(SHEETS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new ActionFailure(`Cannot reach Google Sheets (${(error as Error).message})`);
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (response.status === 404 && errorStatus(body) === "NOT_FOUND") return { state: "enabled" };
+  if (response.status === 401) return { state: "refused" };
+  if (response.status === 403 && apiDisabled(body)) return { state: "disabled" };
+  return { state: "other", status: response.status, reason: errorReason(body) };
+}

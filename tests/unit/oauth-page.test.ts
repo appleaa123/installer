@@ -85,6 +85,32 @@ describe("the OAuth sign-in page (D66)", () => {
     expect((await request(url)).status).toBe(200);
   });
 
+  it("shows the setup guide's help when Google refuses the client", async () => {
+    const { url } = await page();
+    const reply = await callback(await consentUrl(url, "client_id=client-1&client_secret=wrong"), "code=code-1");
+    expect(reply.status).toBe(400);
+    expect(reply.text).toContain("Google refused the sign-in (invalid_client)");
+    expect(reply.text).toContain("Search for: &#34;Google OAuth invalid_client"); // Google's text is HTML-escaped by the page
+    expect(reply.text).not.toContain('Search for: "Google');
+  });
+
+  it("does not tell a first sign-in about a stored sign-in when the one-time code is refused", async () => {
+    const { url } = await page();
+    const reply = await callback(await consentUrl(url), "code=not-the-code");
+    expect(reply.status).toBe(400);
+    expect(reply.text).toContain("Google refused the sign-in (invalid_grant)");
+    expect(reply.text).toContain("Search for:");
+    expect(reply.text).not.toContain("The stored sign-in");
+  });
+
+  it("shows the setup guide's help when the person pressed Deny", async () => {
+    const { url } = await page();
+    const reply = await callback(await consentUrl(url), "error=access_denied");
+    expect(reply.status).toBe(400);
+    expect(reply.text).toContain("Google did not grant access (access_denied)");
+    expect(reply.text).toContain("Search for:");
+  });
+
   it("refuses a code that arrives before any client was entered", async () => {
     const { url } = await page();
     expect((await request(`${new URL(url).origin}/?code=code-1&state=x`)).status).toBe(400);

@@ -61,6 +61,8 @@ export interface StepDef {
   readonly auto?: Action;
   readonly verify?: Check;
   readonly hints?: Readonly<Record<string, readonly string[]>>;
+  /** The id of a pinned connector whose `installer guide` the agent follows for this step (live setup guides). */
+  readonly guide?: string;
 }
 
 export interface Solution {

@@ -89,3 +89,40 @@ describe("loadSolution", () => {
     await expect(loadSolution(`file:${bad}`)).rejects.toThrow(/not valid JSON/);
   });
 });
+
+describe("a step's guide (live setup guides, 4.4)", () => {
+  const withGuide = (guide: unknown) => ({
+    id: "s", version: "1",
+    steps: [{ step_id: "a", phase: "PREFLIGHT", type: "human_action", title: "t", why: "w", blocking: true, instructions: ["do it"], guide }],
+  });
+
+  it("accepts a guide that names a connector of the catalog", () => {
+    expect(parseSolution(withGuide("google-sheets")).steps[0]?.guide).toBe("google-sheets");
+  });
+
+  it("keeps a step without a guide as it was", () => {
+    const solution = parseSolution({ id: "s", version: "1", steps: [{ step_id: "a", phase: "PREFLIGHT", type: "human_action", title: "t", why: "w", blocking: true }] });
+    expect(solution.steps[0]).not.toHaveProperty("guide");
+  });
+
+  it.each([["an unknown connector", "nope"], ["a path", "../google-sheets"], ["a number", 7], ["an object-prototype name", "constructor"]])("refuses a guide naming %s", (_name, guide) => {
+    expect(() => parseSolution(withGuide(guide))).toThrow(SolutionError);
+    expect(() => parseSolution(withGuide(guide))).toThrow("steps[0].guide must name a connector in this installer's catalog");
+  });
+});
+
+describe("the oauth_ready check (live setup guides, 4.5)", () => {
+  const withReady = (id: unknown) => ({
+    id: "s", version: "1",
+    steps: [{ step_id: "a", phase: "DATA", type: "agent_action", title: "t", why: "w", blocking: true, intent: "do it", verify: { check: "oauth_ready", args: { id } } }],
+  });
+
+  it("accepts the sign-in of a connector of the catalog", () => {
+    expect(parseSolution(withReady("google")).steps[0]?.verify).toEqual({ check: "oauth_ready", args: { id: "google" } });
+  });
+
+  it.each([["a secret that is no connector's sign-in", "skillswiki"], ["nothing", undefined], ["a number", 7]])("refuses %s", (_name, id) => {
+    expect(() => parseSolution(withReady(id))).toThrow(SolutionError);
+    expect(() => parseSolution(withReady(id))).toThrow("oauth_ready needs args.id, the sign-in secret of a connector");
+  });
+});

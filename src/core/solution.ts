@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
 import { parseChannelPolicy } from "./channel-policy.js";
+import { CONNECTOR_PINS, CONNECTOR_SECRETS } from "./connectors.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
 import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
@@ -62,7 +63,15 @@ function parseHints(value: unknown, where: string): Readonly<Record<string, read
   );
 }
 
-function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">> {
+/** A step's guide names a connector of the catalog; whether it has a setup block is `installer guide`'s check. */
+function parseGuide(value: unknown, where: string): string {
+  if (typeof value !== "string" || !Object.hasOwn(CONNECTOR_PINS, value)) {
+    throw new SolutionError(`${where} must name a connector in this installer's catalog (${Object.keys(CONNECTOR_PINS).join(", ")}), got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">> {
   const result: Record<string, unknown> = {};
   if (Array.isArray(value.instructions)) {
     result.instructions = value.instructions.map((line) => text(line, `${where}.instructions`));
@@ -88,7 +97,10 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   if (value.hints !== undefined) {
     result.hints = parseHints(value.hints, `${where}.hints`);
   }
-  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints">>;
+  if (value.guide !== undefined) {
+    result.guide = parseGuide(value.guide, `${where}.guide`);
+  }
+  return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">>;
 }
 
 function parseStep(value: unknown, index: number): StepDef {
@@ -159,6 +171,17 @@ function checkSecretSteps(steps: readonly StepDef[]): void {
     }
   }
 }
+/** oauth_ready names the keychain item of a catalog connector's sign-in (live setup guides, 4.5), so it cannot fail on every run. */
+function checkOauthReadySteps(steps: readonly StepDef[]): void {
+  const secrets = Object.values(CONNECTOR_SECRETS);
+  for (const step of steps) {
+    if (step.verify?.check !== "oauth_ready") continue;
+    const id = step.verify.args?.id;
+    if (typeof id !== "string" || !secrets.includes(id)) {
+      throw new SolutionError(`Step '${step.step_id}': oauth_ready needs args.id, the sign-in secret of a connector (${secrets.join(", ")})`);
+    }
+  }
+}
 /** source_present and mapping_present name an entity of the solution's own data contract (§9.4). */
 function checkDataSteps(steps: readonly StepDef[], contract: DataContract | undefined): void {
   for (const step of steps) {
@@ -209,6 +232,7 @@ export function parseSolution(raw: unknown): Solution {
   checkModeReferences(steps);
   checkProbeArgs(steps);
   checkSecretSteps(steps);
+  checkOauthReadySteps(steps);
   checkBrainOrder(steps);
   const contract = parseDataContract(raw.data_contract);
   checkDataSteps(steps, contract);

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ConnectorDef } from "./connectors.js";
-import { authorizeUrl, exchangeCode, pkcePair, type OAuthClient } from "./google-auth.js";
+import { authorizeUrl, exchangeCode, pkcePair, symptomHelp, type OAuthClient } from "./google-auth.js";
 import { InputError } from "./inputs.js";
 import { requireSecretValue } from "./keychain.js";
 import { DONE_PAGE, SECRET_PAGE_TTL_MS, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
@@ -82,11 +82,11 @@ async function finishConsent(query: URLSearchParams, res: ServerResponse, page: 
   const denied = query.get("error");
   const code = query.get("code");
   if (denied || !code) {
-    send(res, 400, formPage(def, page.path, `Google did not grant access (${denied ?? "no code"}). Try again.`), def);
+    send(res, 400, formPage(def, page.path, `Google did not grant access (${denied ?? "no code"})${denied ? symptomHelp(denied, def.setup?.symptoms) : ""}. Try again.`), def);
     return false;
   }
   try {
-    const refreshToken = await exchangeCode(def.auth, pending.client, { code, redirectUri: `${page.origin}/`, verifier: pending.verifier }, options.env);
+    const refreshToken = await exchangeCode(def.auth, pending.client, { code, redirectUri: `${page.origin}/`, verifier: pending.verifier }, options.env, def.setup?.symptoms);
     await options.store(JSON.stringify({ ...pending.client, refresh_token: refreshToken }));
   } catch (error) {
     send(res, 400, formPage(def, page.path, (error as Error).message), def);

@@ -7,7 +7,9 @@
 // Test-only endpoints, no auth: GET|PUT /debug/sheets/<id> reads or seeds a spreadsheet as
 // {"title":…,"tabs":{"<tab>":[[…row…],…]}} (the first tab is the first sheet); GET /debug/token-requests counts
 // token calls; POST /debug/revoke makes the refresh token invalid; POST /debug/fail {"status":500,"times":1}
-// makes the next Sheets answers fail.
+// makes the next Sheets answers fail (add "reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT" for a Google error reason, "error_status":"NOT_FOUND" for Google's error status, default UNAVAILABLE);
+// POST /debug/disable-sheets and /debug/enable-sheets switch the Sheets API off and on (403 SERVICE_DISABLED, like a
+// project that never enabled it).
 import { createServer } from "node:http";
 
 const clientId = process.env.FAKE_GOOGLE_CLIENT_ID ?? "client-1";
@@ -19,6 +21,7 @@ const issued = new Set();
 const sheets = new Map();
 let tokenRequests = 0;
 let revoked = false;
+let sheetsDisabled = false;
 let failing = { status: 0, times: 0 };
 let created = 0;
 
@@ -116,9 +119,18 @@ function batchUpdate(res, sheet, body) {
 
 function sheetsApi(req, res, url, body) {
   if (!issued.has((req.headers.authorization ?? "").replace(/^Bearer /, ""))) return googleError(res, 401, "Request had invalid authentication credentials.", "UNAUTHENTICATED");
+  if (sheetsDisabled) {
+    return send(res, 403, {
+      error: {
+        code: 403, status: "PERMISSION_DENIED", message: "Google Sheets API has not been used in project 123 before or it is disabled.",
+        details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SERVICE_DISABLED", domain: "googleapis.com" }],
+      },
+    });
+  }
   if (failing.times > 0) {
     failing = { ...failing, times: failing.times - 1 };
-    return googleError(res, failing.status, "The service is currently unavailable.", "UNAVAILABLE");
+    const error = { code: failing.status, message: "The service is currently unavailable.", status: failing.error_status ?? "UNAVAILABLE", ...(failing.reason ? { details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: failing.reason }] } : {}) };
+    return send(res, failing.status, { error });
   }
   if (req.method === "POST" && url.pathname === "/v4/spreadsheets") return createSpreadsheet(res, JSON.parse(body || "{}"));
   const batch = /^\/v4\/spreadsheets\/([^/]+)\/values:batchUpdate$/.exec(url.pathname);
@@ -140,6 +152,10 @@ function debug(req, res, url, body) {
   }
   if (url.pathname === "/debug/fail") {
     failing = JSON.parse(body);
+    return send(res, 200, {});
+  }
+  if (url.pathname === "/debug/disable-sheets" || url.pathname === "/debug/enable-sheets") {
+    sheetsDisabled = url.pathname === "/debug/disable-sheets";
     return send(res, 200, {});
   }
   const id = decodeURIComponent(url.pathname.slice("/debug/sheets/".length));
