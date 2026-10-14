@@ -31,6 +31,7 @@ import { inviteCommand, membersCommand } from "./core/invite-commands.js";
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
+import { startEmailPage } from "./core/email-page.js";
 import { startOAuthPage } from "./core/oauth-page.js";
 import { pauseCommand, unpauseCommand } from "./core/pause.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
@@ -241,8 +242,14 @@ async function certifyCommand(home: string, flags: Flags): Promise<unknown> {
 }
 
 /** `taskfollow secret <id>`: starts the page detached, opens the browser, returns at once (D47). */
+/** The email setup page fills `email-settings` itself; nothing else may write the servers that receive the app password (D127). */
+function requirePageSecret(id: string): string {
+  if (requireSecretId(id) === "email-settings") throw new InputError("'email-settings' is filled by the email setup page: run 'taskfollow secret email' instead");
+  return id;
+}
+
 async function secretCommand(id: string): Promise<unknown> {
-  const { url, pid } = await launchSecretPage(requireSecretId(id));
+  const { url, pid } = await launchSecretPage(requirePageSecret(id));
   const hint = headlessHint(url);
   if (!hint) openBrowser(url);
   return { status: "waiting", url, pid, ...(hint ? { hint } : {}) };
@@ -250,9 +257,9 @@ async function secretCommand(id: string): Promise<unknown> {
 
 /** The detached page process: serves the form (an OAuth sign-in for a connector's secret, D66), writes the keychain once, then exits. Never touches the engine home. */
 async function secretServeCommand(id: string): Promise<number> {
-  const store = (value: string): Promise<void> => setSecret(id, value);
+  const store = (value: string): Promise<void> => setSecret(requirePageSecret(id), value);
   const def = await oauthConnectorFor(requireSecretId(id));
-  const page = def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
+  const page = id === "email" ? await startEmailPage({ store: (itemId, value) => setSecret(itemId, value) }) : def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
   if (process.send) {
     process.send({ url: page.url });
     process.disconnect();

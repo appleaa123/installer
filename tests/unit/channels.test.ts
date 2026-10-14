@@ -105,6 +105,30 @@ describe("taskfollow channel (D73)", () => {
     expect(await events(home)).toEqual(["channel.refused"]);
   });
 
+  it("with no --value, finishes the mailbox from the servers the setup page stored, then deletes that hand-off (D127)", async () => {
+    const { imap, smtp, value } = await mailServers();
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD, "email-settings": value });
+    expect(await channelCommand(home, "email", undefined, now, env, false)).toMatchObject({ status: "verified", channel: "email", address: MAIL_USER });
+    expect(imap.logins.length + smtp.logins.length).toBeGreaterThan(0);
+    expect(await getSecret("email-settings", env)).toBeNull();
+    expect(await loadChannel(home, "email")).toMatchObject({ channel: "email", address: MAIL_USER });
+    expect(await events(home)).toEqual(["channel.verified"]);
+  });
+
+  it("with no --value and no hand-off, says to run 'taskfollow secret email' first, and signs in nowhere", async () => {
+    const { imap, smtp } = await mailServers();
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    await expect(channelCommand(home, "email", undefined, now, env, false)).rejects.toThrow("taskfollow secret email");
+    expect([...imap.logins, ...smtp.logins]).toEqual([]);
+  });
+
+  it("with no --value and no hand-off, checks the saved mailbox again", async () => {
+    const { value } = await mailServers();
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    await channelCommand(home, "email", value, now, env, true);
+    expect(await channelCommand(home, "email", undefined, now, env, false)).toMatchObject({ status: "verified", channel: "email" });
+  });
+
   it("lists the configured channels, refuses an unknown one and a value for Telegram", async () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
     await channelCommand(home, "telegram", undefined, now, env);
@@ -202,6 +226,16 @@ describe("the channel connectors (§12.2)", () => {
   });
 });
 
+describe("the channel_verified check (D127)", () => {
+  it("tells the email setup order: the page first, then the channel command, with no servers to type", async () => {
+    const { home } = await setup({});
+    const result = await runCheck(home, { check: "channel_verified", args: { channel: "email" } });
+    expect(result).toMatchObject({ ok: false, hint: expect.stringContaining("taskfollow secret email") });
+    expect(result.ok ? "" : result.hint).toContain("'taskfollow channel email'");
+    expect(result.ok ? "" : result.hint).not.toContain("<servers>");
+  });
+});
+
 describe("taskfollow disconnect <channel> (§14.2)", () => {
   it("deletes the secret and the channel's settings, and says what else to do", async () => {
     const { home, env, now } = await setup({ telegram: BOT_TOKEN });
@@ -211,5 +245,14 @@ describe("taskfollow disconnect <channel> (§14.2)", () => {
     vi.unstubAllEnvs();
     expect(await getSecret("telegram", env)).toBeNull();
     expect(await loadChannel(home, "telegram")).toBeNull();
+  });
+
+  it("also deletes a setup page's unused email hand-off (D127)", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD, "email-settings": "{}" });
+    vi.stubEnv("INSTALLER_KEYCHAIN_DIR", env.INSTALLER_KEYCHAIN_DIR);
+    await disconnect(home, "email", now);
+    vi.unstubAllEnvs();
+    expect(await getSecret("email", env)).toBeNull();
+    expect(await getSecret("email-settings", env)).toBeNull();
   });
 });

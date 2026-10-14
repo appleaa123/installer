@@ -1,8 +1,9 @@
 import { appendAudit } from "./audit.js";
-import { CHANNEL_FACTS, channelSecret, listChannels, requireChannelId, saveChannel, saveCursor, type ChannelConfig, type ChannelId, type EmailConfig } from "./channels.js";
+import { CHANNEL_FACTS, channelSecret, listChannels, loadChannel, requireChannelId, saveChannel, saveCursor, type ChannelConfig, type ChannelId, type EmailConfig } from "./channels.js";
 import { MAILBOX, startCursor } from "./email-channel.js";
 import { withImap } from "./imap.js";
 import { InputError } from "./inputs.js";
+import { deleteSecret, getSecret } from "./keychain.js";
 import { smtpVerify, type MailAccount } from "./smtp.js";
 import { telegramApi } from "./telegram.js";
 import { MAIL_SECURITY, type MailSecurity } from "./wire.js";
@@ -11,7 +12,9 @@ import { MAIL_SECURITY, type MailSecurity } from "./wire.js";
  * `taskfollow channel [telegram | email --value <json>]` (D73): checks the channel live at once (Telegram getMe;
  * email IMAP sign-in + EXAMINE and SMTP sign-in, nothing sent) and saves it as verified, or exits 2 with what to
  * fix. Without an id it lists the configured channels. The CHANNELS phase completes through `channel_verified`.
- * Setting up email needs a person at their own terminal, since its servers receive the app password.
+ * The mailbox's servers receive the app password, so only a person chooses them: on the setup page of
+ * `taskfollow secret email` (D127), which stores them as `email-settings`, or with `--value` in their own terminal.
+ * `channel email` with no `--value` then checks what the page stored, or the saved mailbox again.
  */
 type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
@@ -53,6 +56,17 @@ async function verifyTelegram(now: string, env: Env): Promise<ChannelConfig> {
   return { channel: "telegram", bot, verified_at: now };
 }
 
+/** The item the email setup page leaves for this command: the servers the person chose in their own browser. */
+export const EMAIL_HANDOFF = "email-settings";
+
+async function emailHandoff(home: string, env: Env): Promise<{ readonly value: string; readonly fromPage: boolean }> {
+  const stored = await getSecret(EMAIL_HANDOFF, env);
+  if (stored !== null) return { value: stored, fromPage: true };
+  const saved = await loadChannel(home, "email");
+  if (saved?.channel === "email") return { value: JSON.stringify({ address: saved.address, imap: saved.imap, smtp: saved.smtp }), fromPage: false };
+  throw new InputError("The mailbox is not set up yet: run 'taskfollow secret email', let the person finish the page that opens, then run 'taskfollow channel email' again");
+}
+
 async function verifyEmail(home: string, value: string | undefined, now: string, env: Env): Promise<ChannelConfig> {
   const setup = parseEmailSetup(value);
   const password = await channelSecret("email", env);
@@ -81,16 +95,18 @@ export const describeChannel = (config: ChannelConfig) => ({
 async function requireTerminal(home: string, interactive: boolean, now: string): Promise<void> {
   if (interactive) return;
   await appendAudit(home, { ts: now, actor: "agent", event: "channel.refused", ref: "email", payload: { command: "taskfollow channel email" } });
-  throw new InputError("The mailbox's servers are set by a person in their own terminal, not by the agent: open a terminal and run 'taskfollow channel email --value <servers>' there");
+  throw new InputError("The mailbox's servers are set by a person in their own terminal, not by the agent: let the person use the page that 'taskfollow secret email' opens, which asks for the address and the app password only");
 }
 
 export async function channelCommand(home: string, id: string | undefined, value: string | undefined, now: () => string, env: Env = process.env, interactive = false): Promise<unknown> {
   if (id === undefined) return { channels: (await listChannels(home)).map(describeChannel) };
   const channel: ChannelId = requireChannelId(id);
   if (channel === "telegram" && value !== undefined) throw new InputError("channel telegram takes no --value: it reads the bot token stored with 'taskfollow secret telegram'");
-  if (channel === "email") await requireTerminal(home, interactive, now());
-  const config = channel === "telegram" ? await verifyTelegram(now(), env) : await verifyEmail(home, value, now(), env);
+  if (channel === "email" && value !== undefined) await requireTerminal(home, interactive, now());
+  const handoff = channel === "email" && value === undefined ? await emailHandoff(home, env) : undefined;
+  const config = channel === "telegram" ? await verifyTelegram(now(), env) : await verifyEmail(home, value ?? handoff?.value, now(), env);
   await saveChannel(home, config);
+  if (handoff?.fromPage) await deleteSecret(EMAIL_HANDOFF, env);
   await appendAudit(home, { ts: now(), actor: "agent", event: "channel.verified", ref: channel, payload: describeChannel(config) });
   return { status: "verified", ...describeChannel(config), next: "Run 'taskfollow invite <name>' in a terminal for each person who will approve from this channel" };
 }

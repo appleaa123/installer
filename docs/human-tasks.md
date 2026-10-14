@@ -84,6 +84,19 @@ Each task says why it is needed and what to do, step by step.
 
 **Result of steps 1 to 3, 2026-10-14:** the app was set to In production (the console then shows "Your app requires verification", which needs no action) and the sign-in shows "Google hasn't verified this app" (Advanced, then Go to the app). The token response lists `access_token,expires_in,scope,token_type`: `refresh_token_expires_in` is gone, so the sign-in is not marked to expire. A first probe returned `invalid_grant` only because the old Testing token was still in `.env`. **Step 4 is still open: repeat the probe on or after 2026-10-22.** The token in `~/.config/installer-dev/.env` stays valid for it; do not remove the app's access at Google before then.
 
+### 21. Try the email setup page with real mailboxes (before email is promised to a client)
+
+**Why:** the provider table (D127) was read from each provider's help pages, but no real mailbox has signed in through the page yet. About 10 minutes per mailbox you have; skip any provider you have no account with and tell Claude which ones were not tried.
+
+1. Run `taskfollow secret email`, open the page, and enter a **Gmail** address. Make an app password with the page's steps and paste it **with its spaces**. Expect "Connected". Then try a wrong password: expect a plain message that mentions the app password and 2-Step Verification, and nothing stored.
+2. Try a **Google Workspace** (work) address if you have one: does the App passwords option exist? Tell Claude what you see.
+3. **iCloud:** expect "Connected". If the sign-in is refused, tell Claude: the IMAP sign-in name may need to be the full address, not the part before the @.
+4. **Yahoo**, **Fastmail**, **Zoho** (with IMAP access off, then on): expect "Connected" when set up as the page says; with Zoho IMAP off, the message names IMAP.
+5. An **outlook.com** and a **Microsoft 365** address: expect the page to say it cannot connect Outlook/Hotmail (outlook.com) before asking for any password. A Microsoft 365 work address on its own domain is not recognised yet and will reach the password step: tell Claude what happens.
+6. A wrong server under **Advanced**: expect the "could not reach the mail server" message within about 30 seconds.
+7. After "Connected", run `taskfollow channel email` and then `taskfollow gateway start`; send the mailbox one message and check that the assistant sees it.
+8. Leave the page open for 15 minutes before pasting the password: it should still work (the limit is 30 minutes).
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

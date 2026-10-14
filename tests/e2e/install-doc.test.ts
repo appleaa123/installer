@@ -39,6 +39,16 @@ describe("INSTALL.md", () => {
     expect(DOC.indexOf("taskfollow secret skillswiki")).toBeLessThan(DOC.indexOf("--url {{SKILLSWIKI_URL}}"));
   });
 
+  it("sets up email through the page: no JSON for the person to type, and the page comes before the channel check (D127)", () => {
+    const channels = DOC.slice(DOC.indexOf("## 7."), DOC.indexOf("## 8."));
+    expect(channels).not.toContain("--value '{");
+    expect(channels).not.toContain("IMAP and SMTP servers, then ask");
+    expect(channels.indexOf("taskfollow secret email")).toBeGreaterThan(-1);
+    expect(channels.indexOf("taskfollow secret email")).toBeLessThan(channels.indexOf("taskfollow channel email"));
+    expect(channels).toContain("Outlook");
+    expect(channels).toContain("Telegram");
+  });
+
   it("never asks for Skills Wiki before the optional section", () => {
     const base = DOC.slice(0, DOC.indexOf("## 11."));
     expect(base).not.toMatch(/skills ?wiki/i);
