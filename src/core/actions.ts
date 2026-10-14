@@ -81,6 +81,17 @@ async function startGatewayAction(home: string): Promise<StatePatch> {
   return {};
 }
 
+/** A channel added after the install: the running gateway must start again to read it (D134). */
+async function restartGatewayAction(home: string): Promise<StatePatch> {
+  try {
+    await (await import("./gateway-process.js")).restartGateway(home, now);
+  } catch (error) {
+    if (error instanceof InputError) throw new ActionFailure(`${error.message}; then run 'taskfollow resume'`);
+    throw error;
+  }
+  return {};
+}
+
 async function probeDir(home: string): Promise<string> {
   const cwd = await confinedPath(home, PROBE_DIR);
   await mkdir(cwd, { recursive: true, mode: 0o700 });
@@ -135,6 +146,7 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   },
   leave_sandbox: async (home) => leaveSandbox(home),
   start_gateway: async (home) => startGatewayAction(home),
+  restart_gateway: async (home) => restartGatewayAction(home),
   probe_mcp: async (home, _args, state) => {
     const { runtime, profile } = await probedRuntime(state);
     const expectedSlug = await activeComboSlug(await skillswikiTarget(state?.skillswiki?.url));

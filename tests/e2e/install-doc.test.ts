@@ -1,10 +1,12 @@
 import { guideCommand } from "../../src/core/guide-commands.js";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
-import { saveChannel } from "../../src/core/channels.js";
+import { channelCommand } from "../../src/core/channel-commands.js";
+import { loadChannel, saveChannel } from "../../src/core/channels.js";
 import { dryrunCommand } from "../../src/core/lifecycle.js";
 import { createInvite, joinWithCode } from "../../src/core/members.js";
 import { getSecret, setSecret } from "../../src/core/keychain.js";
@@ -14,13 +16,14 @@ import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
+import { MAIL_PASSWORD, MAIL_USER, TEST_TLS_ENV, startFakeImap, startFakeSmtp, type FakeServer } from "../helpers/fake-mail.js";
 import { BOT_TOKEN } from "../helpers/fake-telegram.js";
 import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { STARTER_REF, operate, starterScript } from "../operator/scripted-operator.js";
 
 const DOC = readFileSync("INSTALL.md", "utf8");
-const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "guide", "disconnect", "tool", "approvals", "connect", "map", "channel", "invite", "members", "gateway", "run", "schedule", "model", "workflow", "dryrun", "sandbox", "harden", "autonomy", "alerts", "learnings", "doctor", "pause", "unpause", "host", "packs", "retention", "support", "uninstall"];
+const COMMANDS = ["start", "add", "next", "submit", "verify", "resume", "report", "probe", "secret", "guide", "disconnect", "tool", "approvals", "connect", "map", "channel", "invite", "members", "gateway", "run", "schedule", "model", "workflow", "dryrun", "sandbox", "harden", "autonomy", "alerts", "learnings", "doctor", "pause", "unpause", "host", "packs", "retention", "support", "uninstall"];
 
 describe("START-HERE.md, the page for the person (D129)", () => {
   const START = readFileSync("START-HERE.md", "utf8");
@@ -164,12 +167,21 @@ describe("INSTALL.md", () => {
   });
 });
 
+/** Asynchronous on purpose: the fake mail servers live in this process and must keep answering while the gateway shuts down. */
+const stopGateway = (home: string, env: Record<string, string>): Promise<void> =>
+  new Promise((done) => {
+    execFile(process.execPath, [resolve("dist/cli.js"), "--home", home, "gateway", "stop"], { env: { ...process.env, ...env } }, () => done());
+  });
+
 describe("starter install, operated the way INSTALL.md says", () => {
   const servers: (FakeMcp | FakeGoogle)[] = [];
   const installs: { home: string; env: Record<string, string> }[] = [];
 
-  afterEach(() => {
-    installs.splice(0).forEach(({ home, env }) => runCli(["gateway", "stop"], { home, env }));
+  const mailFakes: FakeServer[] = [];
+  afterEach(async () => {
+    // The gateway holds a connection to the fake mail server: stop it first, or the server waits for it for ever.
+    await Promise.all(installs.splice(0).map(({ home, env }) => stopGateway(home, env)));
+    await Promise.all(mailFakes.splice(0).map((fake) => fake.stop()));
     servers.splice(0).forEach((fake) => fake.stop());
   });
 
@@ -237,7 +249,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "services.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets" },
+      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -275,7 +287,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "services.who": "me", "mode.name": "Sam", "services.records": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -288,7 +300,71 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(state).toMatchObject({ mode: "personal", roles: { decision_maker: "Sam" } });
     expect(state?.steps["data.google"]).toBeUndefined();
     const report = runCli(["report"], { home, env }).stdout;
-    expect(report).not.toMatch(/google|decision maker/i);
+    expect(report).not.toMatch(/decision maker/i);
+    // Google may be offered under "Can add", but is never a step of this person's setup.
+    expect(report.split("\n").filter((line) => !line.includes("Can add"))).not.toEqual(expect.arrayContaining([expect.stringMatching(/google/i)]));
+  });
+
+  /** The person's email steps, with a fake mail server: the page's hand-off is written to the keychain as the page would. */
+  async function emailSteps(keychain: Record<string, string>, env: Record<string, string>) {
+    const imap = await startFakeImap("ssl", []);
+    const smtp = await startFakeSmtp("starttls");
+    mailFakes.push(imap, smtp);
+    return {
+      "channels.email-key": async (): Promise<void> => {
+        await setSecret("email", MAIL_PASSWORD, keychain);
+        await setSecret("email-settings", JSON.stringify({ address: MAIL_USER, imap: { host: "127.0.0.1", port: imap.port, security: "ssl" }, smtp: { host: "127.0.0.1", port: smtp.port, security: "starttls" } }), keychain);
+      },
+      // In this process, not through the command line: the fake mail servers live here, and a spawned child would wait for them while this process waits for the child.
+      "channels.email": async (home: string): Promise<void> => void (await channelCommand(home, "email", undefined, () => new Date().toISOString(), env, false)),
+    };
+  }
+
+  const SOLO_CALLS = JSON.stringify([
+    { tool: "memo.list", args: {} }, { tool: "channel.list", args: {} },
+    { tool: "channel.notify", args: { member: "Sam", text: "No memos" } }, { tool: "done", summary: "Told Sam" },
+  ]);
+
+  it("email chosen during the install is connected, and the gateway reads it (D134)", async () => {
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
+    const script = {
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email" },
+      perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
+    };
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script, startArgs: [], env });
+    expect(run.final.status).toBe("complete");
+    expect(await loadChannel(home, "email")).toMatchObject({ channel: "email", address: MAIL_USER });
+    expect(await getSecret("email-settings", keychain)).toBeNull();
+    expect(runCli(["report"], { home, env }).stdout).not.toContain("taskfollow add email");
+  });
+
+  it("email added after the install with 'taskfollow add' shows only its steps and ends complete again (D134)", async () => {
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS };
+    const solutionRef = `file:${await pinnedStarter()}`;
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const first = await operate({
+      home, solutionRef, startArgs: [], env,
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+    });
+    expect(first.final.status).toBe("complete");
+    expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
+    expect(await loadChannel(home, "email")).toBeNull();
+
+    const added = runCli(["add", "email"], { home, env });
+    expect(added.code).toBe(0);
+    expect(added.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.email-key" } } });
+    expect(runCli(["add", "email"], { home, env }).stderr).toContain("already part of this setup");
+    expect(runCli(["add", "outlook"], { home, env }).stderr).toContain("You can add");
+
+    const second = await operate({ home, solutionRef, startArgs: [], env, script: { answers: {}, perform: await emailSteps(keychain, env) } });
+    expect(second.final.status).toBe("complete");
+    expect(await loadChannel(home, "email")).toMatchObject({ channel: "email" });
+    expect(runCli(["report"], { home, env }).stdout).not.toContain("taskfollow add email");
   });
 
   it("ends READY at level 3 with Skills Wiki registered in the agent; disconnect then removes it all", async () => {

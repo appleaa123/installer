@@ -41,6 +41,7 @@ import { packsCommand } from "./core/shadow.js";
 import { supportBundle } from "./core/support-bundle.js";
 import { uninstall } from "./core/uninstall.js";
 import { nodeTooOld } from "./core/node-version.js";
+import { addService } from "./core/services.js";
 import { installerVersion } from "./core/version.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
@@ -59,7 +60,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "instructions, start, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -329,6 +330,8 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
 /** Commands that run on the install in the home. */
 const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   next: async ({ state, deps }) => (await advance(deps, state)).result,
+  /** D134: add a service the person did not choose during the install; its steps then appear. */
+  add: async ({ state, deps }, _flags, arg) => (await addService(deps, state, requireArg(arg, "add"))).result,
   submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
   verify: async ({ state, deps }, _flags, arg) => {
     const verified = await verifyStep(deps, state, requireArg(arg, "verify"));

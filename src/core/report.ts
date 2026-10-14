@@ -1,4 +1,5 @@
 import { MAX_VERIFY_ATTEMPTS, RESUME_HINT, currentStep, recordOf, retryCommand } from "./engine.js";
+import { addableOptions } from "./services.js";
 import { visibleSteps } from "./visibility.js";
 import type { CapabilityMap, InstallState, Phase, Solution, StepDef, StepRecord } from "./types.js";
 
@@ -23,6 +24,8 @@ export interface Report {
   readonly runtime_limits: readonly string[];
   /** True when this install has Skills Wiki connected; an install without it has nothing to check there. */
   readonly skillswiki: boolean;
+  /** Services the person did not choose and can add with `taskfollow add` (D134). */
+  readonly can_add: readonly string[];
 }
 
 const HEADLINE: Readonly<Record<Overall, string>> = {
@@ -72,7 +75,7 @@ export function buildReport(solution: Solution, state: InstallState): Report {
     hardBlocked.length > 0 ? "blocked" : current ? "in_progress" : limited.length > 0 || limits.length > 0 ? "ready_with_limits" : "ready";
   return {
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
-    working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined,
+    working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined, can_add: addableOptions(solution, state),
   };
 }
 
@@ -89,6 +92,7 @@ export function renderReport(report: Report): string {
   if (report.working.length > 0) lines.push(`✅ Working    ${report.working.map((entry) => entry.title).join(" · ")}`);
   const agent = agentLine(report);
   if (agent) lines.push(agent);
+  if (report.can_add.length > 0) lines.push(`➕ Can add    ${report.can_add.map((option) => `${option.replace(/-/g, " ")} (taskfollow add ${option})`).join(" · ")}`);
   report.limited.forEach((entry, index) => lines.push(`${index === 0 ? "⚠️ Limited   " : "             "}${entry.title} — ${entry.detail}`));
   report.needs_you.forEach((entry, index) => lines.push(`${index === 0 ? "⛔ Needs you " : "             "}${index + 1}. ${entry.title} — ${entry.detail}`));
   return lines.join("\n");
