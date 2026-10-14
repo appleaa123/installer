@@ -15,6 +15,9 @@ Decided by the owner:
 | Where do the client's keys live? | On the client's own computer (the standing rule: client work and keys are never under the owner's account). Hosting keys in Skills Wiki stays an optional idea that must not be required. |
 | What if the client's computer is off? | Design for a **spare always-on machine** at the client (the existing "team host" mode). |
 | Skills Wiki | Optional (D126). |
+| Supabase keys | **Anon key only**, with row-level security. The `service_role` key is refused (decided 2026-10-14). |
+| WhatsApp | Build the **minimum**: connect, send and receive (decided 2026-10-14). Design in 5.5. |
+| Choosing services during install | Ask which service the person uses in each area, and show only the steps for those (requested 2026-10-14). Design in 5.6. |
 
 ## 2. What exists today
 
@@ -68,7 +71,7 @@ A service is described in a JSON file, pinned by sha256 like connectors today. T
 - Secrets: the OS keychain, one item per connection; never in arguments, results, logs or audit; auth headers are dropped from error text.
 - Audit line: tool, level, action hash, host, method, path template, status, bytes, truncated. Never query values, bodies or the secret.
 - PII: tags on response and body paths feed the same tag system as the data contract.
-- Supabase `service_role` keys bypass row-level security: refuse them and require the anon key with row-level security.
+- Supabase: **only the anon key**, with row-level security (decided). The `service_role` key bypasses row-level security, so one prompt-injected mistake or one leaked key would expose the whole database. Cost: a client without row-level security rules set up will see nothing or too much, so the setup guide must say how to create them.
 
 **Code that must change first** (`src/core/connectors.ts`): `interface` accepts only `records_source`; the setup validator accepts only `google.com` sources; one secret per connector id; and the adapter list. `connectors/google-sheets/1/` must not change by a byte, or every install's pin breaks. New fields go in new files (`<id>/2`).
 
@@ -96,7 +99,7 @@ Changes: list MIME parts (name, type, size) and store attachment bytes inside th
 One generic definition can cover **sending** for most platforms. **Receiving needs code per platform**, because how new messages are found, how the sender is proven and what the reply window is all differ. The channel contract grows: `attachments` (kinds, size limit), `reply_window` (`none|24h|48h`), `templates_required_after_window`, `inbound` (`long_poll|webhook|socket`), plus `in_reply_to`, `attachments` and `template` on outgoing messages. The fixed list of channels becomes a registry.
 
 - **Slack:** feasible. Polling with `conversations.history` risks Slack's 2025 limits for non-Marketplace apps; Slack says [internal customer-built apps keep their limits](https://docs.slack.dev/changelog/2025/06/03/rate-limits-clarity/), but its own docs disagree on apps created after May 2025. Prefer Slack's push connection (Socket Mode over Node's built-in WebSocket, no public address needed). Settle with one live test.
-- **WhatsApp Business:** receives only by webhook, so it needs an always-on public address (the spare machine behind a tunnel, or a small relay the client rents that only forwards raw bodies and signatures). It also has a 24-hour window and needs Meta-approved templates. Deferred until the hosting question is settled.
+- **WhatsApp Business:** receives only by webhook, so it needs a public address. The minimum is designed in 5.5.
 - **Messenger, WeChat (unverified):** both need an official business account on the platform (a Facebook Page and app review; a verified WeChat account, realistically for a Chinese business entity, or WeCom for internal teams). Rule kept: a channel whose API is not official is never used for outside audiences.
 
 ### 5.3 Google Calendar, Drive, Docs (third)
@@ -106,6 +109,54 @@ One definition per API with its own keychain item, reusing the person's own Goog
 ### 5.4 Services reached with an API key (fourth)
 
 Pure data on the `http` adapter: Airtable, Notion (bearer token plus a version header), Supabase (anon key and row-level security). A `custom` service (a base URL and auth kind typed on a local page) starts with every operation unlisted, so L2 at least.
+
+### 5.5 WhatsApp, the minimum (decided to build)
+
+Opus checked Meta's official documentation on 2026-10-14 (sources in the table). Items marked **unverified** need one live test.
+
+**Facts**
+
+| Fact | Status |
+|---|---|
+| Incoming messages arrive only as a **webhook** to a public https address with a valid certificate. No polling or socket option appears in the pages read. | Verified that none is mentioned ([webhooks](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview.md)); that none exists is unverified |
+| One-time handshake: Meta sends `hub.verify_token` and `hub.challenge`; the address must echo the challenge. Each message carries `X-Hub-Signature-256`, an HMAC-SHA256 of the body keyed with the **app secret**. Meta retries a non-200 answer for up to 7 days, so duplicates happen. | Verified ([endpoint](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/create-webhook-endpoint.md)) |
+| A business may reply freely only within **24 hours of the person's last message**. Outside it, only approved templates can be sent. | Verified ([pricing](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing.md)) |
+| Messages inside the window are free; templates are charged by category and country. A new account may start conversations with 250 people per day until its business is verified. App review and business verification are **not** needed to start. | Verified ([limits](https://developers.facebook.com/documentation/business-messaging/whatsapp/messaging-limits.md)) |
+| Since April 2026 a sender may be identified by a business-scoped user id, not a phone number (people who choose a username). | Verified ([BSUID](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids.md)); whether sending to such an id works today is unverified |
+| The business must own a phone number that can receive a verification call or text and is not already in the WhatsApp app. | Verified |
+
+**Getting webhooks to the assistant (the hard part).** A quick tunnel changes address on every restart; a named tunnel, ngrok or Tailscale Funnel each needs a program, an account and a public listener next to the keychain. None suits a non-technical client. A relay hosted by the owner would pass client messages through the owner's account, which breaks the standing rule. **Recommended: a tiny relay in the client's own free Cloudflare account** (one Worker with a small database), deployed by the installer from one pasted Cloudflare token (the upload endpoint is documented; the workers.dev address step is unverified). The assistant **pulls** from the relay over its normal outgoing connection, the same pattern as Telegram's `getUpdates`, so the computer opens no port and no program is added.
+
+**What the relay does** (about 120 lines in one pinned file): answer Meta's handshake; store each raw body and signature (at most 1 MB each; answer 503 when 5,000 are queued, so Meta's own retry is the back-pressure); hand them to the assistant on request and delete them once acknowledged, and in any case after 72 hours. It never holds the access token or the app secret. **The assistant verifies every signature** and drops (and audits) any message that does not match. **The relay does see message text** for a short time, and so do Meta and Cloudflare; clients should be told.
+
+**Cost to the client:** nothing to start. Two free accounts (Meta, with a business portfolio and developer app; and Cloudflare), about a dozen guided steps. Money starts only when they send templates, which the minimum does not do. Use Meta's test number first.
+
+**Inside the installer**
+- WhatsApp becomes a third channel; the fixed list becomes a registry with capabilities (`inbound: relay_poll`, `reply_window: 24h`, sender verified). About ten places that name a channel today become capability lookups.
+- One keychain item holds the access token, the app secret and the pull token; the relay address and phone number id are saved as settings. A guided page (`taskfollow secret whatsapp`, same style as the email page) deploys the relay, takes the Meta details, and waits for one real signed message before it says Connected.
+- A member joins by sending the invite code in a message, as with the other channels, and a reply link is printed for them. The sender's phone number or user id is the identity.
+- **The 24-hour rule is the biggest effect.** Sending to a WhatsApp contact outside the window is refused **before** an approval is asked, with a plain sentence: ask them to message you on WhatsApp, or use another channel. Approval announcements to a member outside the window fall back to their other channel before the item is claimed, so none is lost. Templates are not in the minimum.
+- Approvals, consent, quiet hours, rate limits and the audit do not change. New audit events: `channel.signature_rejected` and `channel.window_closed`.
+
+**Tests first (fakes only):** relay contract (handshake, size cap, full queue, bad token, acknowledgement, 72-hour expiry, run from the real relay code under a small HTTP shim); signature checks (accepted, altered, missing); inbound parsing (text kept, delivery statuses and media dropped, user-id-only sender, duplicate message collapsed); the 24-hour window at 23:59 and 24:01; send error mapping with the token never in an error; join; page and deployer. A fake Meta server and a fake Cloudflare record what is sent.
+
+**Slices:** (1) channel registry, no behaviour change; (2) relay and its contract tests; (3) Meta client, signature check, inbound, connector; (4) the 24-hour gates and the announcer fallback; (5) deployer and setup page; (6) joining, INSTALL.md, doctor, support bundle.
+
+**A human must check with a real number:** which switch makes the app "Live" and what it demands; whether the callback registers at once; the test number's recipient list; a real message arrives with a matching signature; a send inside the window works and one past 24 hours is refused by the engine; a username-only sender arrives; whether a token that never expires can be chosen; whether a card is needed for a real number; whether a brand-new Cloudflare account can serve a workers.dev address.
+
+### 5.6 Choosing services during the install (requested)
+
+**Experience.** Right after the decision-maker question, the helper asks one plain question per area where there is a real choice. Two for the starter: "Which apps should your assistant use to message you and your team?" (Telegram, Email; more than one allowed) and "Where do you keep your contact list?" (Google Sheets, or not now). If the person is unsure, the helper explains each option in a sentence and, if still unsure, uses a safe default and says it can change later. If they name something not available (Outlook, WhatsApp until it ships), the helper says so and that it can be added later; free text is never guessed into an option. Then the helper says once what they will need on hand, and the install shows only the steps for what was chosen ("5 of 17 steps").
+
+**Engine.** A step may carry `when: { step, includes | equals }` pointing at an earlier question. The question is an ordinary `ask` step; its answer is stored as an ordinary step record; which steps are visible is computed from those answers every time and never stored. The pinned solution text is unchanged, so its hash is stable, and installs made before this keep working exactly as they do (they have no `when`). Hidden steps are never written as skipped. Compared and rejected: expanding steps from a catalog at install time (install steps would depend on bytes outside the pinned text; revisit when there are three or four services), and composing several small solutions (the pin, state and report all assume one).
+
+**Adding a service later.** `taskfollow add email` writes the new answer, reveals that service's steps, and the install returns to "in progress" until they are done. The gateway reads its channels only when it starts, so adding a channel ends with a restart step. A service the installed solution does not list cannot be added this way (that needs a solution upgrade path, which does not exist yet).
+
+**Tests first:** a hidden step stays hidden and is refused if addressed; the current step skips what was not chosen; resume never reopens a hidden step; the total counts visible steps; a revised answer leaves the pinned hash alone; an old install still completes unchanged; the scripted operator needs an answer for each question.
+
+**Slices:** (1) `when`, visibility, report totals and the contact-list question (the smallest useful slice); (2) the chat question, the email steps and the gateway restart; (3) `taskfollow add` and the "can add" line in the report; (4) catalog-driven expansion later.
+
+**One thing this opens up:** the same mechanism can ask "just you, or a team?" and hide the decision-maker, invite and team-channel steps for a single person. That is a scope decision for the owner (section 10, question 8).
 
 ## 6. If the computer is off
 
@@ -122,7 +173,8 @@ Decided: a spare always-on machine, using the existing team-host mode (Mac or Li
 | 5 | Google Calendar and Drive on the core | extended Google auth tests; definitions against the fake Google | M |
 | 6 | Key-based services: Airtable, Notion, Supabase | definition fixtures against the fake REST server | S each |
 | 7 | Signed catalog fetch from Skills Wiki | bad signature rejected; a new host needs approval | M |
-| 8 | Webhook relay and WhatsApp | relay signature tests | L, after the hosting answer |
+| 8 | WhatsApp, minimum (six slices in 5.5) | relay contract, signature, 24-hour window, join | L overall |
+| 10 | Choosing services during install (four slices in 5.6) | hidden-step, resume, report, old-install tests | S–M each |
 | 9 | Microsoft sign-in for Outlook and Microsoft 365 mail | XOAUTH2 against a fake server | M, if the owner wants it (question 1) |
 
 ## 8. What will not change
@@ -137,8 +189,13 @@ Decided: a spare always-on machine, using the existing team-host mode (Mac or Li
 
 ## 10. Questions for the owner (recommended answer in brackets)
 
+Already decided: webhook channels go through a relay (WhatsApp minimum, 5.5); Supabase uses the anon key only.
+
 1. **Outlook / Microsoft 365 mail:** build Microsoft sign-in (slice 9) even though the client probably needs to register their own Microsoft app? [Not now: offer Telegram or another mailbox, and decide after the first real users ask.]
-2. **Webhook channels (WhatsApp):** a tunnel from the spare machine, a relay the client rents, or one hosted by Skills Wiki? [A relay the client rents that stores and forwards raw bodies and never holds keys; Skills Wiki hosting stays optional.]
-3. **Custom services with unlisted endpoints at L2:** allow, off by default, enabled per connection from the person's terminal? [Yes.]
-4. **Who signs catalog definitions?** [The owner only, with an offline key.]
-5. **Supabase `service_role` keys:** refuse? [Yes.]
+2. **The WhatsApp relay** lives in the client's own free Cloudflare account and holds message text for at most 72 hours. Acceptable? [Yes. No owner-hosted option.]
+3. **WhatsApp templates** (writing to someone first, or after the 24 hours): leave out of the minimum? [Yes: block with a plain sentence; add a utility template later.]
+4. **Custom services with unlisted endpoints at L2:** allow, off by default, enabled per connection from the person's terminal? [Yes.]
+5. **Who signs catalog definitions?** [The owner only, with an offline key.]
+6. **Picker: email-only installs** (no Telegram, approvals typed in the terminal)? [No for the first version: Telegram is always set up and email is an extra.]
+7. **Picker: may the agent run `taskfollow add`** itself, or only the person? [The agent may; secrets are still entered on the page.]
+8. **Just you, or a team?** Should the picker hide the decision-maker, invite and team-channel steps for a single person? [Yes. It is a usability win, but it changes who the original design was for, so this is your call.]
