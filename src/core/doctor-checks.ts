@@ -228,10 +228,12 @@ async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   if (!ctx.host) return ok("host", `host readiness not checked here (${HOST_CHECKS_ENV}=none)`);
   const readiness = await hostReadiness(ctx.home, ctx.state, ctx.host, ctx.now);
   await saveReadiness(ctx.home, readiness);
-  const open = readiness.checks.filter((entry) => entry.status === "fix").map((entry) => entry.id);
-  if (!readiness.applies) return ok("host", `readiness ${readiness.score} (Personal mode: for information only)`);
-  if (open.length === 0) return ok("host", `readiness ${readiness.score}`);
-  return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}`, fix: "'installer host' prints each fix; a person with administrator rights runs them in their own terminal" };
+  const ids = (status: string) => readiness.checks.filter((entry) => entry.status === status).map((entry) => entry.id);
+  const [open, unread] = [ids("fix"), ids("unknown")];
+  const notRead = unread.length === 0 ? "" : `; not read: ${unread.join(", ")}`;
+  if (!readiness.applies) return ok("host", `readiness ${readiness.score} (Personal mode: for information only)${notRead}`);
+  if (open.length === 0) return ok("host", `readiness ${readiness.score}${notRead}`);
+  return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}${notRead}`, fix: "'installer host' prints each fix; a person with administrator rights runs them in their own terminal" };
 }
 
 /** §14.3, D107, D108: a new version of a pinned pack is found, tried in shadow, and left for the decision maker. */

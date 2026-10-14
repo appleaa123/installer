@@ -78,11 +78,11 @@ describe("host readiness, Layer 1 (§5.1, D42, D104)", () => {
     expect(readiness.dedicated_user).toBeUndefined();
   });
 
-  it("does not score what it cannot read", async () => {
+  it("counts what it cannot read as not yet verified", async () => {
     const { home, state } = await homeWith("team_host");
     const readiness = await hostReadiness(home, state, fakeHost("darwin", { "pmset -g": null, "systemsetup -getusingnetworktime": "You need administrator access to run this tool... exiting!\n", "fdesetup status": null }), AT);
     expect(statuses(readiness)).toMatchObject({ no_sleep: "unknown", power_on: "unknown", time_sync: "unknown", disk_encryption: "unknown", boot_service: "fix" });
-    expect(readiness.score).toBe("0/1");
+    expect(readiness.score).toBe("0/5");
   });
 
   it("finds the quiet window: the longest gap in a day between scheduled runs and reports", async () => {
@@ -119,6 +119,11 @@ describe("host readiness, Layer 1 (§5.1, D42, D104)", () => {
     const report = await runDoctor(home, { now: () => AT, freeBytes: async () => 50 * 1024 ** 3, host: fakeHost("darwin", MAC_ASLEEP) });
     expect(report.checks.find((entry) => entry.id === "host")).toMatchObject({ status: "warn", detail: "readiness 1/5; not right yet: no_sleep, power_on, boot_service, disk_encryption" });
     expect(JSON.parse(await readFile(join(home, READINESS_FILE), "utf8"))).toMatchObject({ score: "1/5", applies: true });
+    const unread = { ...MAC_READY, "systemsetup -getusingnetworktime": "You need administrator access to run this tool... exiting!\n" };
+    const partly = await runDoctor(home, { now: () => AT, freeBytes: async () => 50 * 1024 ** 3, host: fakeHost("darwin", unread, true) });
+    expect(partly.checks.find((entry) => entry.id === "host")).toMatchObject({ status: "ok", detail: "readiness 4/5; not read: time_sync" });
+    const both = await runDoctor(home, { now: () => AT, freeBytes: async () => 50 * 1024 ** 3, host: fakeHost("darwin", { ...MAC_ASLEEP, "systemsetup -getusingnetworktime": "" }) });
+    expect(both.checks.find((entry) => entry.id === "host")).toMatchObject({ status: "warn", detail: "readiness 0/5; not right yet: no_sleep, power_on, boot_service, disk_encryption; not read: time_sync" });
     expect((await runDoctor(home, { now: () => AT })).checks.find((entry) => entry.id === "host")).toMatchObject({ status: "ok", detail: expect.stringContaining("INSTALLER_HOST_CHECKS=none") });
     expect(await hostCommand(home, undefined, undefined, () => AT)).toMatchObject({ status: "skipped" });
     expect(dedicatedUserSteps("linux")[0]).toContain(`sudo useradd --create-home --shell /bin/bash ${ENGINE_USER}`);

@@ -42,7 +42,7 @@ export interface ReadinessCheck {
 export interface Readiness {
   readonly mode: Mode | null;
   readonly applies: boolean;
-  /** Checks that are right, of those the engine could read and that a person can change (`ok` or `fix`). */
+  /** Checks that are right, of those a person can change (`ok`, `fix`, or `unknown`: not yet verified). */
   readonly score: string;
   readonly checked_at: string;
   readonly checks: readonly ReadinessCheck[];
@@ -135,7 +135,7 @@ export async function hostReadiness(home: string, state: InstallState | null, pr
   const mode = state?.mode ?? null;
   const applies = mode === "team_host" || mode === "hybrid";
   const found = [...(await platformChecks(probe, home)), ...(await adviceChecks(home, probe.platform, now))];
-  const scored = found.filter((entry) => entry.status === "ok" || entry.status === "fix");
+  const scored = found.filter((entry) => entry.status === "ok" || entry.status === "fix" || entry.status === "unknown");
   const score = `${scored.filter((entry) => entry.status === "ok").length}/${scored.length}`;
   if (!applies) return { mode, applies, score, checked_at: now, checks: found.map(({ fix: _fix, ...rest }) => rest), note: PERSONAL_NOTE };
   return { mode, applies, score, checked_at: now, checks: found, dedicated_user: dedicatedUserSteps(probe.platform) };

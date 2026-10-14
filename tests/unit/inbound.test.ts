@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { chmod, mkdir, readdir } from "node:fs/promises";
+import { chmod, mkdir, readdir, rm } from "node:fs/promises";
 import { getApproval } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
-import { isOptedOut } from "../../src/core/channel-policy.js";
+import { OPT_OUTS_DIR, isOptedOut, recordOptOut } from "../../src/core/channel-policy.js";
 import { saveChannel } from "../../src/core/channels.js";
 import { SEEN_DIR, handleInbound } from "../../src/core/inbound.js";
 import { INBOX_DIR, listInbox } from "../../src/core/inbox.js";
@@ -240,6 +240,19 @@ describe("announcing pending approvals", () => {
     await expect(announceApprovals(ctx)).rejects.toThrow("chat not found");
     await expect(announceApprovals(ctx)).rejects.toThrow("chat not found");
     expect(await isClaimed(ctx.home, ANNOUNCED_DIR, 1)).toBe(false);
+  });
+
+  it("skips a member who opted out, without a send or an audit line each round, and tells them again once they opt back in", async () => {
+    const ctx = await gateway(true);
+    await recordOptOut(ctx.home, OWNER, NOW);
+    await queue(ctx);
+    expect(await announceApprovals(ctx)).toEqual([1]);
+    const lines = (await events(ctx.home)).length;
+    expect(await announceApprovals(ctx)).toEqual([]);
+    expect((await events(ctx.home)).length).toBe(lines);
+    expect(await isClaimed(ctx.home, ANNOUNCED_DIR, 2)).toBe(false);
+    await rm(join(ctx.home, OPT_OUTS_DIR), { recursive: true });
+    expect(await announceApprovals(ctx)).toEqual([2]);
   });
 
   it("records an announcement once while the install is not finished, and sends it once it is (R6)", async () => {
