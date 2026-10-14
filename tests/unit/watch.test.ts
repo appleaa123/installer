@@ -62,7 +62,7 @@ describe("taskfollow watch (D146)", () => {
   it("is for the person at their terminal only: the agent can list, not change", async () => {
     const home = await runnerHome();
     const file = await settingsFile({});
-    expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toEqual({ on: false, services: [] });
+    expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toEqual({ on: false, services: [], ask: [] });
     for (const sub of ["on", "off", "add", "remove"]) {
       await expect(watchCommand(home, { sub, arg: "mcp:shopify", interactive: false }, NOW, env(file))).rejects.toThrow("own terminal");
     }
@@ -91,7 +91,7 @@ describe("taskfollow watch (D146)", () => {
     expect(entry?.matcher).toBe("^(mcp__(shopify)__.*|mcp__installer__actions_reason|Bash)$");
     await watchCommand(home, { sub: "off", interactive: true }, NOW, env(file));
     expect(await read(file)).toEqual({ model: "opus", hooks: { PostToolUse: [OTHER_HOOK] } });
-    expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toEqual({ on: false, services: ["mcp:shopify", "cli:shopify"] });
+    expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toEqual({ on: false, services: ["mcp:shopify", "cli:shopify"], ask: [] });
   });
 
   it("creates the settings file when there is none", async () => {
