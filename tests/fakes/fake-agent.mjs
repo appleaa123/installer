@@ -98,6 +98,60 @@ function judge(prompt) {
   const structured = valueOf("--json-schema") && drop !== "schema" && !text ? { structured_output: answer } : {};
   process.stdout.write(JSON.stringify({ result: text ? answer.__text : JSON.stringify(answer), session_id: randomUUID(), is_error: false, ...structured }));
 }
+// Task steps (D139): FAKE_AGENT_TASK is {"calls":[{tool,input,response?}],"answer":{…}}. Like Claude Code, each call
+// first runs the PreToolUse hooks named in --settings (exit 2 or a "deny" answer refuses it), then runs (Bash: the
+// command through the shell; anything else: the scripted response), then the PostToolUse or PostToolUseFailure hooks.
+// What happened is written to <store>/task-run.json: the arguments, the refused tools and the command outputs.
+function runHooks(settings, event, payload) {
+  const groups = settings.hooks?.[event] ?? [];
+  const results = [];
+  for (const group of groups) {
+    for (const hook of group.hooks ?? []) {
+      try {
+        const stdout = execSync(hook.command, { input: JSON.stringify({ ...payload, hook_event_name: event }), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+        results.push({ code: 0, stdout });
+      } catch (error) {
+        results.push({ code: error.status ?? 1, stdout: String(error.stdout ?? "") });
+      }
+    }
+  }
+  return results;
+}
+const refusedBy = (results) =>
+  results.some(({ code, stdout }) => {
+    if (code === 2) return true;
+    try {
+      return JSON.parse(stdout).hookSpecificOutput?.permissionDecision === "deny";
+    } catch {
+      return false;
+    }
+  });
+function task() {
+  const script = JSON.parse(process.env.FAKE_AGENT_TASK);
+  const settings = JSON.parse(valueOf("--settings") ?? "{}");
+  const session = randomUUID();
+  const run = { args, denied: [], outputs: [] };
+  script.calls.forEach((call, index) => {
+    const payload = { session_id: session, tool_use_id: `toolu_${index}`, tool_name: call.tool, tool_input: call.input };
+    if (refusedBy(runHooks(settings, "PreToolUse", payload))) return run.denied.push(call.tool);
+    const started = Date.now();
+    let response = call.response ?? { ok: true };
+    let failed = false;
+    if (call.tool === "Bash") {
+      try {
+        response = execSync(call.input.command, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      } catch (error) {
+        failed = true;
+        response = String(error.message);
+      }
+      run.outputs.push(response);
+    }
+    const after = { ...payload, duration_ms: Date.now() - started, ...(failed ? { error: response } : { tool_response: response }) };
+    runHooks(settings, failed ? "PostToolUseFailure" : "PostToolUse", after);
+  });
+  writeFileSync(join(store, "task-run.json"), JSON.stringify(run));
+  process.stdout.write(JSON.stringify({ result: JSON.stringify(script.answer), session_id: session, is_error: false, ...(valueOf("--json-schema") ? { structured_output: script.answer } : {}) }));
+}
 async function main() {
   if (args[0] === "--version") return process.stdout.write("9.9.9 (Fake Agent)\n");
   if (args[0] === "mcp") return mcp(args.slice(1));
@@ -108,6 +162,7 @@ async function main() {
   const session = resumed && drop !== "c5" ? resumed : randomUUID();
   mkdirSync(store, { recursive: true });
   if (process.env.FAKE_AGENT_JUDGE && prompt.includes(JUDGE_MARK)) return judge(prompt);
+  if (process.env.FAKE_AGENT_TASK && valueOf("--settings")) return task();
   const remember = /Remember this word: (\S+?)\./.exec(prompt);
   if (remember) writeFileSync(join(store, `${session}.txt`), remember[1]);
   const tool = /Call the tool mcp__([a-z0-9-]+)__get_active_combo/.exec(prompt);

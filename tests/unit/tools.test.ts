@@ -154,7 +154,7 @@ describe("the tool gate (§11.1)", () => {
 describe("the default tool set", () => {
   it("offers no way to decide an approval: deciding is for a person at the terminal (D61)", () => {
     expect([...DEFAULT_TOOLS.keys()]).toEqual([
-      "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
+      "approvals.request", "approvals.list", "approvals.get", "actions.reason", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
       "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send",
     ]);

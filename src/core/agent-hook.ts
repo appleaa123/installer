@@ -9,7 +9,8 @@ import { appendFile, readFile } from "node:fs/promises";
  * tool's output. The agent's stated reason is the `actions.reason` call itself, recorded the same way. Inside a run
  * the hook fails closed: when it cannot read its input, or cannot record a refusal, the call is blocked (exit 2).
  */
-export const REASON_TOOL = "mcp__installer__actions.reason";
+/** Claude Code shows TaskFollow's `actions.reason` tool under this name (dots become underscores, D56). */
+export const REASON_TOOL = "mcp__installer__actions_reason";
 /** Claude Code reads exit 2 from a hook as "block this call". */
 export const HOOK_BLOCK = 2;
 const SUMMARY_MAX = 200;

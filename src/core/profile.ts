@@ -34,6 +34,8 @@ export interface RuntimeProfile {
   /** Run by the engine, never by the agent, to add or remove an MCP server (D46, D52). */
   readonly mcp_register?: { readonly cmd: readonly string[] };
   readonly mcp_remove?: { readonly cmd: readonly string[] };
+  /** A task step's command (D139): the agent with its own tools, limited to `{may_use}`, under the hook in `{settings_json}`. */
+  readonly task?: { readonly cmd: readonly string[] };
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -63,6 +65,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "resume.cmd": ["profile_dir", "prompt", "session_id"],
   "mcp_register.cmd": ["profile_dir", "name", "config_json"],
   "mcp_remove.cmd": ["profile_dir", "name"],
+  "task.cmd": ["profile_dir", "prompt", "may_use", "tools", "settings_json", "mcp_config"],
 };
 
 function argv(value: unknown, where: string, ...placeholders: string[]): readonly string[] {
@@ -147,6 +150,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     headless: headlessPart(raw),
     ...optionalParts(raw),
     ...mcpParts(raw),
+    ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };
