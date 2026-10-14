@@ -81,6 +81,7 @@ const CHANNEL_NOTES: Readonly<Record<ChannelId, string>> = {
 /** `taskfollow disconnect telegram | email` (§14.2): delete the secret and the channel's settings, and audit it. */
 async function disconnectChannel(home: string, id: ChannelId, now: () => string): Promise<ConnectorDisconnected> {
   const deleted = await deleteSecret(id);
+  if (id === "email") await deleteSecret("email-settings");
   const removed = await removeChannel(home, id);
   if (await loadState(home)) await appendAudit(home, { ts: now(), actor: "human", event: "channel.disconnected", ref: id, payload: { secret_deleted: deleted, settings_removed: removed } });
   return { status: "disconnected", connector: id, secret_deleted: deleted, note: CHANNEL_NOTES[id] };

@@ -48,6 +48,22 @@ describe("taskfollow channel and disconnect from the shell (D73)", () => {
   });
 });
 
+describe("taskfollow secret email (D127)", () => {
+  it("cannot be used to fill the page's hand-off item directly", async () => {
+    const { home, env } = await install({});
+    const refused = runCli(["secret", "email-settings"], { home, env });
+    expect(refused.code).toBe(2);
+    expect(refused.json).toMatchObject({ error: expect.stringContaining("email-settings") });
+  });
+
+  it("finishes the mailbox from the agent's shell with no --value, once the page has stored the servers", async () => {
+    const { home, env } = await install({ email: "app-pass" });
+    const missing = runCli(["channel", "email"], { home, env });
+    expect(missing.code).toBe(2);
+    expect(missing.json).toMatchObject({ error: expect.stringContaining("taskfollow secret email") });
+  });
+});
+
 describe("taskfollow invite and members from the shell (D77)", () => {
   it("refuses to invite from an agent's shell (no terminal) and lists no members", async () => {
     const { home, env } = await install({ telegram: BOT_TOKEN });

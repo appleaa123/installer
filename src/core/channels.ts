@@ -96,8 +96,8 @@ export const saveChannel = (home: string, config: ChannelConfig): Promise<void> 
 export async function channelCheck(home: string, id: string): Promise<{ ok: boolean; hint?: string }> {
   const channel = requireChannelId(id);
   if (await loadChannel(home, channel)) return { ok: true };
-  const command = channel === "email" ? "taskfollow channel email --value '<servers>'" : "taskfollow channel telegram";
-  return { ok: false, hint: `The ${channel} channel is not set up yet: store its secret with 'taskfollow secret ${channel}', run '${command}', then run the verify again` };
+  const setup = channel === "email" ? "let the person finish the page that 'taskfollow secret email' opens" : "store its secret with 'taskfollow secret telegram'";
+  return { ok: false, hint: `The ${channel} channel is not set up yet: ${setup}, run 'taskfollow channel ${channel}', then run the verify again` };
 }
 
 /** The configured channels, in CHANNEL_IDS order. */
