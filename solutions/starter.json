@@ -16,7 +16,7 @@
   "workflows": [
     { "workflow": "contacts-summary", "description": "Every Monday morning, tells the decision maker how many contacts the sheet holds.", "mode": "agentic",
       "instructions": "Find the contacts with records.find (entity contact). Find the decision maker's name with channel.list (role decision_maker). Send them one short internal message with channel.notify: how many contacts there are, and the names of up to five.",
-      "tools": ["records.find", "channel.list", "channel.notify"], "trigger": { "cron": "0 9 * * 1", "tz": "UTC" } }
+      "tools": ["records.find", "channel.list", "channel.notify"], "trigger": { "cron": "0 9 * * 1", "tz": "local" } }
   ],
   "steps": [
     { "step_id": "preflight.probe", "phase": "PREFLIGHT", "type": "auto", "title": "Check what your agent can do", "why": "Later steps adapt to what your agent supports.", "blocking": true,
@@ -72,7 +72,7 @@
       "auto": { "action": "leave_sandbox" } },
     { "step_id": "activate.gateway", "phase": "ACTIVATE", "type": "verify", "title": "Check that the gateway runs", "why": "Messages arrive and approvals are announced only while it runs.", "blocking": true,
       "verify": { "check": "gateway_running" } },
-    { "step_id": "activate.schedule", "phase": "ACTIVATE", "type": "human_action", "title": "Let your computer wake the installer every minute", "why": "Scheduled workflows run only when the operating system starts the installer's runner; the installer never changes that by itself.", "blocking": false,
+    { "step_id": "activate.schedule", "phase": "ACTIVATE", "type": "human_action", "title": "Let your computer wake the installer every minute", "why": "Scheduled workflows run only when the operating system starts the installer's runner; the installer never changes that by itself.", "blocking": true,
       "instructions": ["The agent runs 'taskfollow schedule install' and shows you the commands it prints", "Run those commands in your own terminal", "Tell the agent when you did; it checks that the runner ticks"],
       "verify": { "check": "runner_ticking" } },
     { "step_id": "report.final", "phase": "REPORT", "type": "auto", "title": "Finish the install", "why": "Marks the install as finished.", "blocking": true,

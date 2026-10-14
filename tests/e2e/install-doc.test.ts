@@ -127,6 +127,13 @@ describe("INSTALL.md", () => {
     expect(usesSkillswiki(starter)).toBe(false);
   });
 
+  it.each(["solutions/starter.json", "solutions/starter-skillswiki.json"])("%s lets the schedule block the install and runs its workflow in the computer's own zone (D130)", (file) => {
+    const starter = parseSolution(JSON.parse(readFileSync(file, "utf8")));
+    expect(starter.steps.find((step) => step.step_id === "activate.schedule")?.blocking).toBe(true);
+    expect(JSON.stringify(starter.workflows)).toContain('"tz":"local"');
+    expect(JSON.stringify(starter.workflows)).not.toContain('"tz":"UTC"');
+  });
+
   it("the Skills Wiki starter keeps the BRAIN steps for people who have an account", () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter-skillswiki.json", "utf8")));
     expect(starter.id).toBe("starter-skillswiki");
