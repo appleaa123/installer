@@ -5,6 +5,7 @@ import { AUDIT_FILE, appendAudit, verifyAudit, withAuditLock } from "./audit.js"
 import { CHANNEL_IDS } from "./channels.js";
 import { CONNECTOR_SECRETS } from "./connectors.js";
 import { unregisterEverywhere } from "./disconnect.js";
+import { stopWatching } from "./watch.js";
 import { ActionFailure } from "./failure.js";
 import { stopGateway } from "./gateway-process.js";
 import { serviceCommand, type ServiceOptions } from "./host-service.js";
@@ -74,13 +75,15 @@ export async function uninstall(home: string, person: { interactive: boolean; as
     throw new InputError("Uninstalling removes the engine's registrations, keys and schedules: the person runs 'taskfollow uninstall' in their own terminal");
   }
   const by = person.as?.trim() || "terminal";
+  // D146: the person's own Claude Code settings lose TaskFollow's hook before anything it runs is removed.
+  const watch = await stopWatching(home, options.env ?? process.env, now());
   await setPaused(home, true, { name: by, actor: "human", via: "cli" }, now(), "uninstall");
   const gateway = (await stopGateway(home, now)).status;
   const profile = (await loadState(home))?.runtime?.profile;
   const unregistered = { [SKILLSWIKI_MCP_NAME]: await unregisterEverywhere(home, profile, SKILLSWIKI_MCP_NAME), [TOOLS_MCP_NAME]: await unregisterEverywhere(home, profile, TOOLS_MCP_NAME) };
   const secrets = await deleteSecrets(options.env);
   const commands = await osCommands(home, now, options);
-  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, secrets } });
+  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, secrets, watch_removed: watch } });
   return {
     status: "uninstalled", gateway, unregistered, secrets, audit_export: await exportAudit(home, now()), commands,
     kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above"],

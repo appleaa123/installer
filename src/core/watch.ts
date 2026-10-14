@@ -1,0 +1,205 @@
+import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { appendAudit } from "./audit.js";
+import { readConfig, writeConfig } from "./data-source.js";
+import { InputError } from "./inputs.js";
+import { installerCliPath, shellQuote, winQuote } from "./register.js";
+import { REASON_NAME } from "./watch-record.js";
+
+/**
+ * `taskfollow watch` (D146): an opt-in hook in the person's own Claude Code settings, so calls their agent makes
+ * directly to a watched service (outside TaskFollow) are recorded and `taskfollow why direct` can show them. Only the
+ * person, at their own terminal, turns it on or off or changes the list. TaskFollow's entry is one PostToolUse hook,
+ * marked by its command (`watch-hook.js`); everything else in the file is left as it was. Before each change the file
+ * is copied to the home (0600); a change is written to a temporary file and moved into place only if the file did
+ * not change meanwhile (Claude Code writes it too). A file that is not plain JSON is never touched.
+ */
+type Env = Readonly<Record<string, string | undefined>>;
+type Raw = Record<string, unknown>;
+const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const WATCH_MARK = "watch-hook.js";
+export const WATCH_CONFIG = join("config", "watch.json");
+export const SETTINGS_ENV = "INSTALLER_CLAUDE_SETTINGS";
+export const SETTINGS_BACKUP_DIR = join("state", "claude-settings-backup");
+const SERVICE = /^(mcp:[A-Za-z0-9_-]+|cli:[A-Za-z0-9_.-]+)$/;
+const HOOK_TIMEOUT_S = 5;
+const WRITE_ATTEMPTS = 3;
+
+interface WatchState {
+  readonly on: boolean;
+  readonly services: readonly string[];
+}
+
+export const settingsPath = (env: Env): string => env[SETTINGS_ENV] || join(homedir(), ".claude", "settings.json");
+
+/** Only the watched services' tools, TaskFollow's reason tool, and Bash when a command-line tool is watched. */
+export function watchMatcher(services: readonly string[]): string {
+  const servers = services.filter((service) => service.startsWith("mcp:")).map((service) => service.slice(4));
+  const parts = [...(servers.length > 0 ? [`mcp__(${servers.join("|")})__.*`] : []), REASON_NAME, ...(services.some((service) => service.startsWith("cli:")) ? ["Bash"] : [])];
+  return `^(${parts.join("|")})$`;
+}
+
+const ours = (entry: unknown): boolean => isRecord(entry) && Array.isArray(entry.hooks) && entry.hooks.some((hook) => isRecord(hook) && typeof hook.command === "string" && hook.command.includes(WATCH_MARK));
+
+export function settingsWithout(settings: Raw): Raw {
+  const hooks = isRecord(settings.hooks) ? settings.hooks : undefined;
+  if (!hooks || !Array.isArray(hooks.PostToolUse)) return settings;
+  const kept = hooks.PostToolUse.filter((entry) => !ours(entry));
+  const { PostToolUse: _old, ...otherHooks } = hooks;
+  const nextHooks = kept.length > 0 ? { ...otherHooks, PostToolUse: kept } : otherHooks;
+  const { hooks: _hooks, ...rest } = settings;
+  return Object.keys(nextHooks).length > 0 ? { ...rest, hooks: nextHooks } : rest;
+}
+
+export function settingsWith(settings: Raw, matcher: string, command: string): Raw {
+  const base = settingsWithout(settings);
+  const hooks = isRecord(base.hooks) ? base.hooks : {};
+  const post = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : [];
+  return { ...base, hooks: { ...hooks, PostToolUse: [...post, { matcher, hooks: [{ type: "command", command, timeout: HOOK_TIMEOUT_S }] }] } };
+}
+
+function hookCommand(home: string, platform: string = process.platform): string {
+  const quote = platform === "win32" ? winQuote : shellQuote;
+  return `${quote(process.execPath)} ${quote(join(dirname(installerCliPath()), WATCH_MARK))} ${quote(home)}`;
+}
+
+interface SettingsFile {
+  readonly value: Raw;
+  readonly raw: string | null;
+  readonly mark: string | null;
+}
+
+const markOf = async (path: string): Promise<string | null> => {
+  try {
+    const info = await stat(path);
+    return `${info.mtimeMs}:${info.size}`;
+  } catch {
+    return null;
+  }
+};
+
+async function readSettings(path: string): Promise<SettingsFile> {
+  const mark = await markOf(path);
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { value: {}, raw: null, mark: null };
+    throw error;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new InputError(`${path} is not plain JSON (comments are not supported here), so TaskFollow did not change it. Fix or remove the comment, then try again.`);
+  }
+  if (!isRecord(value) || (value.hooks !== undefined && !isRecord(value.hooks)) || (isRecord(value.hooks) && value.hooks.PostToolUse !== undefined && !Array.isArray(value.hooks.PostToolUse))) {
+    throw new InputError(`${path} has a shape TaskFollow does not expect (hooks.PostToolUse must be a list), so it did not change it.`);
+  }
+  return { value, raw, mark };
+}
+
+/** Applies `change` to the settings file without losing a change Claude Code made at the same moment. */
+async function changeSettings(home: string, path: string, change: (settings: Raw) => Raw, now: string): Promise<void> {
+  for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+    const current = await readSettings(path);
+    const next = change(current.value);
+    if (current.raw !== null) {
+      const dir = join(home, SETTINGS_BACKUP_DIR);
+      await mkdir(dir, { recursive: true, mode: 0o700 });
+      const backup = join(dir, `${now.replace(/[:.]/g, "-")}.json`);
+      await copyFile(path, backup);
+      await chmod(backup, 0o600);
+    }
+    await mkdir(dirname(path), { recursive: true });
+    const mode = current.raw === null ? 0o600 : (await stat(path)).mode & 0o777;
+    const temp = `${path}.taskfollow-${process.pid}`;
+    await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`, { mode });
+    if ((await markOf(path)) === current.mark) {
+      await rename(temp, path);
+      return;
+    }
+    await rm(temp, { force: true });
+  }
+  throw new InputError(`${path} kept changing while TaskFollow tried to update it (Claude Code may be saving it): close Claude Code's settings and try again.`);
+}
+
+async function loadWatch(home: string): Promise<WatchState> {
+  const raw = await readConfig(home, WATCH_CONFIG);
+  if (!isRecord(raw)) return { on: false, services: [] };
+  return { on: raw.on === true, services: Array.isArray(raw.services) ? raw.services.filter((entry): entry is string => typeof entry === "string") : [] };
+}
+
+function requireService(arg: string | undefined): string {
+  if (!arg || !SERVICE.test(arg)) throw new InputError("Name a service as mcp:<server> or cli:<tool>, for example: taskfollow watch add mcp:shopify, or taskfollow watch add cli:shopify");
+  return arg;
+}
+
+async function apply(home: string, state: WatchState, env: Env, now: string): Promise<Raw | null> {
+  const path = settingsPath(env);
+  if (!state.on || state.services.length === 0) {
+    await changeSettings(home, path, settingsWithout, now);
+    return null;
+  }
+  const matcher = watchMatcher(state.services);
+  const command = hookCommand(home);
+  await changeSettings(home, path, (settings) => settingsWith(settings, matcher, command), now);
+  return { file: path, matcher, command };
+}
+
+export async function watchCommand(home: string, request: { readonly sub: string | undefined; readonly arg?: string; readonly interactive: boolean }, now: () => string, env: Env = process.env): Promise<Raw> {
+  const state = await loadWatch(home);
+  const sub = request.sub ?? "list";
+  if (sub === "list") return { on: state.on, services: [...state.services] };
+  if (!["on", "off", "add", "remove"].includes(sub)) throw new InputError("watch takes: list, add <service>, remove <service>, on, off");
+  if (!request.interactive) {
+    await appendAudit(home, { ts: now(), actor: "agent", event: "watch.refused", ref: "watch", payload: { sub } });
+    throw new InputError("Watching the agent's direct calls is the person's choice: they run 'taskfollow watch " + sub + "' in their own terminal");
+  }
+  let next: WatchState = state;
+  if (sub === "add") next = { ...state, services: [...new Set([...state.services, requireService(request.arg)])] };
+  if (sub === "remove") next = { ...state, services: state.services.filter((service) => service !== requireService(request.arg)) };
+  if (sub === "on") {
+    if (state.services.length === 0) throw new InputError("Nothing to watch yet: first run 'taskfollow watch add mcp:<server>' or 'taskfollow watch add cli:<tool>'");
+    next = { ...state, on: true };
+  }
+  if (sub === "off") next = { ...state, on: false };
+  const wrote = sub === "add" || sub === "remove" ? (next.on ? await apply(home, next, env, now()) : null) : await apply(home, next, env, now());
+  await writeConfig(home, WATCH_CONFIG, next);
+  await appendAudit(home, { ts: now(), actor: "human", event: `watch.${sub}`, ref: "watch", payload: { services: next.services, on: next.on } });
+  return {
+    on: next.on, services: [...next.services], ...(wrote ? { wrote } : {}),
+    ...(sub === "on" ? { restart: "Restart any open Claude Code sessions: they read their settings when they start.", records: "Each watched call keeps only the tool, the first words of a command or the names of its arguments, never their values." } : {}),
+  };
+}
+
+/** Uninstall (D146): the entry leaves the person's settings first, so nothing points at a removed program. */
+export async function stopWatching(home: string, env: Env, now: string): Promise<boolean> {
+  const state = await loadWatch(home);
+  if (!state.on) return false;
+  await changeSettings(home, settingsPath(env), settingsWithout, now);
+  await writeConfig(home, WATCH_CONFIG, { ...state, on: false });
+  return true;
+}
+
+/** `doctor`: when watching is on, TaskFollow's entry is still in the settings and the programs it names exist. */
+export async function watchHealth(home: string, env: Env): Promise<{ readonly on: boolean; readonly problem?: string }> {
+  const state = await loadWatch(home);
+  if (!state.on) return { on: false };
+  const settings = await readSettings(settingsPath(env));
+  const hooks = isRecord(settings.value.hooks) && Array.isArray(settings.value.hooks.PostToolUse) ? settings.value.hooks.PostToolUse : [];
+  const entry = hooks.find(ours);
+  if (!entry) return { on: true, problem: "TaskFollow's entry is no longer in the Claude Code settings" };
+  const command = String(((entry as { hooks: Raw[] }).hooks.find((hook) => String(hook.command).includes(WATCH_MARK)) ?? {}).command ?? "");
+  const paths = [...command.matchAll(/'([^']*)'|"([^"]*)"/g)].map((match) => match[1] ?? match[2] ?? "").slice(0, 2);
+  for (const path of paths) {
+    try {
+      await stat(path);
+    } catch {
+      return { on: true, problem: `the program the hook runs is missing (${path})` };
+    }
+  }
+  return { on: true };
+}

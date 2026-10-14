@@ -1,3 +1,5 @@
+import { SETTINGS_BACKUP_DIR } from "./watch.js";
+import { CALLS_DIR } from "./watch-record.js";
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { confinedPath } from "./actions.js";
@@ -38,6 +40,9 @@ export interface Pruned {
   readonly recordings: number;
   readonly sent: number;
   readonly seen: number;
+  /** D146: the record of the agent's direct calls, and copies of the Claude Code settings taken before a change. */
+  readonly direct_calls: number;
+  readonly settings_backups: number;
 }
 
 type Raw = Record<string, unknown>;
@@ -132,6 +137,8 @@ export async function pruneOld(home: string, now: string): Promise<Pruned> {
     recordings: await pruneNumbered(home, OUTBOX_DIR, "at", cutoff),
     sent: await pruneNumbered(home, SENT_DIR, "at", cutoff),
     seen: await pruneFiles(home, SEEN_DIR, Date.parse(cutoff)),
+    direct_calls: await pruneFiles(home, CALLS_DIR, Date.parse(cutoff)),
+    settings_backups: await pruneFiles(home, SETTINGS_BACKUP_DIR, Date.parse(cutoff)),
   };
   if (Object.values(pruned).some((count) => count > 0)) await appendAudit(home, { ts: now, actor: "engine", event: "retention.pruned", ref: RETENTION_FILE, payload: { days, before: cutoff, ...pruned } });
   return pruned;

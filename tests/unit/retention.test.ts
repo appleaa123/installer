@@ -89,7 +89,7 @@ describe("retention (§14.5, D102)", () => {
     expect((await events(home)).length).toBe(before + 1);
     expect((await events(home)).at(-1)).toBe("retention.pruned");
     expect(await verifyAudit(home)).toEqual({ ok: true, lines: before + 1 });
-    expect(await pruneOld(home, AT)).toEqual({ runs: 0, inbox: 0, recordings: 0, sent: 0, seen: 0 });
+    expect(await pruneOld(home, AT)).toEqual({ runs: 0, inbox: 0, recordings: 0, sent: 0, seen: 0, direct_calls: 0, settings_backups: 0 });
     expect((await events(home)).length).toBe(before + 1);
   });
 });

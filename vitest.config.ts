@@ -28,6 +28,8 @@ export default defineConfig({
       INSTALLER_GATEWAY_AUTOSTART: "none",
       // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
       INSTALLER_CLI: resolve("dist/cli.js"),
+      // D146: `taskfollow watch` never edits the real ~/.claude/settings.json during a test run.
+      INSTALLER_CLAUDE_SETTINGS: join(mkdtempSync(join(tmpdir(), "installer-claude-")), "settings.json"),
     },
   },
 });
