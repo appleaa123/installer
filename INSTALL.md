@@ -6,14 +6,16 @@ You are the operator of this install. A person asked you to install a solution. 
 
 The person may never have used a terminal. Check the points below yourself, and tell the person only what they need to do.
 
-1. **Node 22 or newer.** Run `node --version`. If it says `command not found` (or `not recognized`), or prints a number below `v22`, tell the person to download the **LTS** version from https://nodejs.org, open the downloaded file and click through the installer, then tell you when it is done. Run `node --version` again before you go on. A terminal that was already open may need to be closed and opened again.
+1. **Node 22 or newer.** Run `node --version`. If it says `command not found` (or `not recognized`), or prints a number below `v22`, tell the person to download the **LTS** version from https://nodejs.org, open the downloaded file and click through the installer, then tell you when it is done. Run `node --version` again before you go on. **You may still not see Node:** Claude Code keeps the setup it started with, so the person may need to quit Claude Code and open it again in the same folder (`claude --continue` brings the conversation back), then you run `node --version` once more.
 2. **Which computer.** Run `node -p process.platform`. It prints `darwin` on a Mac, `win32` on Windows and `linux` on Linux. The installer is certified on macOS only: it keeps secrets in the macOS password safe and starts its scheduler with launchd. **Windows is a Preview**: it uses Windows' own protected storage and Task Scheduler, and it has not yet been tried on a real PC by anyone but its builder, so tell the person plainly that it is new and that you will stop and ask for help if a step fails. On Windows, an always-on team host (boot services, section 10 point 2) is not available, and if the computer sleeps or is signed out the scheduled runs are recorded as missed. On Linux, say that it is untested and go on only if the person accepts that.
-3. **Their own Google account**, if the solution keeps records in Google Sheets (section 6).
+3. **What the person has on hand:** their own Google account (section 6), and the Telegram app on their phone with an account (the default team channel, section 7). Ask for both now so they are not a surprise later.
+4. **Claude Code in a terminal.** You are running in it, so this is normally true. If you cannot run `claude --version`, say so plainly and ask the person to install the Claude Code command-line tool before you go on.
 
 How to talk to the person:
 
 - Use plain words. Give a one-sentence meaning the first time you must use a technical word, for example: keychain = "your computer's password safe"; terminal = "the window where you type commands".
-- **Opening a terminal on a Mac:** press Command and Space, type `Terminal`, press Return. **On Windows use Command Prompt, and only that, for every command the person runs in their own terminal:** press the Windows key, type `cmd`, press Enter. (Git Bash and PowerShell cannot tell the person from you, so the installer would refuse their approvals.) Paste with a right-click or Ctrl and V. When you ask them to run a command, give the complete line, tell them to paste it with Command and V and press Return, and ask what it printed. Say beforehand what a good result looks like.
+- **Every command the person runs themselves goes in a new window, not in the chat with you.** Tell them to open a new Terminal (or Command Prompt) window first, to paste the line there, and to come back to this chat afterwards.
+- **Opening a terminal on a Mac:** press Command and Space, type `Terminal`, press Return. **On Windows use Command Prompt, and only that, for every command the person runs in their own terminal:** press the Windows key, type `cmd`, press Enter. (Git Bash and PowerShell cannot tell the person from you, so the installer would refuse their approvals.) Paste with a right-click or Ctrl and V. On Windows use double quotes wherever this document shows single quotes in a command the person runs, for example `--as "Jane Smith"`. When you ask them to run a command, give the complete line, tell them to paste it with Command and V and press Return, and ask what it printed. Say beforehand what a good result looks like.
 - Before a command that is printed for the person to run (anything with `sudo` or `launchctl`), say in one sentence what it does. `sudo` asks for the computer's password; nothing shows while they type it, and that is normal.
 - **If the person pastes a key, token, client secret or password into the chat**, tell them at once not to do that, that it must now be treated as exposed, and that they should create a new one where they got it (a new Google client secret, a new Telegram bot token, a new email app password) and enter that on the installer's page. Never repeat the value.
 - **If a page does not open**, copy the web address that starts with `http://127.0.0.1` and ask the person to paste it into their browser's address bar. If they closed the page before it said Done, run the same `taskfollow secret ...` command again.
@@ -23,8 +25,12 @@ How to talk to the person:
 ## 1. Install the installer
 
 ```bash
-{{INSTALL_COMMAND}}
+npm install -g taskfollow
 ```
+
+If the person was given a file named `taskfollow-<number>.tgz` instead, install that file: `npm install -g <path to the file>`.
+
+If it ends with `EACCES` or `permission denied` (common on a Mac where Node came from nodejs.org), you cannot fix it from here, because it needs the computer's password. Tell the person to open a new Terminal window, paste `sudo npm install -g taskfollow`, press Return, and type their Mac password (nothing shows while they type, and that is normal), then tell you when it has finished. This does not happen on Windows. If PowerShell says running scripts is disabled, use `taskfollow.cmd` instead of `taskfollow` in every command, or have the person use Command Prompt. When it is done, `taskfollow version` prints a line of JSON.
 
 ## 2. Work from the right folder
 
@@ -33,7 +39,7 @@ Do the rest of the install from the folder where the person started this chat wi
 ## 3. Start the install
 
 ```bash
-taskfollow start --solution {{SOLUTION_REF}}
+taskfollow start --solution starter
 ```
 
 Nothing else is needed to start: no account and no key. If the output has a `hint` about a browser page, relay it in plain words (it says how to reach the page from another computer); do not read command text aloud, and if it mentions `ssh`, say that this computer has no browser and ask whoever set it up for help.
@@ -53,7 +59,7 @@ Every command prints one line of JSON. Read its `status`:
 
 ## 5. The installer's tools and approvals
 
-The install connects you to the installer's own MCP server, `installer`; its tools appear to you as `mcp__installer__memo_list`, `mcp__installer__approvals_request` and so on. If you cannot use MCP tools, run the same tools from the shell: `taskfollow tool <name> '<json arguments>'`, for example `taskfollow tool memo.list '{}'`. Both follow the same rules.
+The install connects you to the installer's own MCP server, `installer`; its tools appear to you as `mcp__installer__memo_list`, `mcp__installer__approvals_request` and so on. If the tools do not appear (a new tool server can need Claude Code to be restarted; do not ask the person for that), run the same tools from the shell: `taskfollow tool <name> '<json arguments>'`, for example `taskfollow tool memo.list '{}'`. Both follow the same rules.
 
 A tool that changes something a person must approve first (level L2 or L3) refuses to run and says so. Then:
 
@@ -117,7 +123,7 @@ Skills Wiki is a separate service that supplies curated skills to workflows and 
 
 ```bash
 taskfollow secret skillswiki
-taskfollow start --solution <the reference of the starter-skillswiki solution> --url {{SKILLSWIKI_URL}}
+taskfollow start --solution starter-skillswiki --url {{SKILLSWIKI_URL}}
 ```
 
 `taskfollow secret skillswiki` opens a page in the person's browser; they paste the API key from their dashboard and press Save, and it goes into the keychain without passing through you. Wait until the person says the page shows Done. `--url` is the MCP URL from their dashboard; it is not a secret. `taskfollow start` refuses to run while the key is missing and says so.

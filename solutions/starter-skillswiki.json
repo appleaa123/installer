@@ -27,7 +27,7 @@
       "input": { "kind": "choice", "options": ["no", "yes", "both"] } },
     { "step_id": "mode.always-on", "phase": "MODE", "type": "ask", "title": "Must anything run when every laptop is closed?", "why": "Scheduled jobs and round-the-clock replies need a machine that stays on.", "blocking": true,
       "input": { "kind": "choice", "options": ["no", "yes"] } },
-    { "step_id": "mode.decision-maker", "phase": "MODE", "type": "ask", "title": "Who is the decision maker?", "why": "This person approves important actions and receives urgent alerts.", "blocking": true,
+    { "step_id": "mode.decision-maker", "phase": "MODE", "type": "ask", "title": "Who is the decision maker?", "why": "This person approves important actions and receives urgent alerts. If that is you, type your own name; you will use exactly the same name when you join the team channel.", "blocking": true,
       "input": { "kind": "text" } },
     { "step_id": "mode.derive", "phase": "MODE", "type": "auto", "title": "Choose the setup", "why": "Your answers decide between a personal, team host or hybrid setup.", "blocking": true,
       "auto": { "action": "derive_mode", "args": { "shared_work": "mode.shared-work", "always_on": "mode.always-on", "decision_maker": "mode.decision-maker" } } },

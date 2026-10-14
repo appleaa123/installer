@@ -22,6 +22,32 @@ import { STARTER_REF, operate, starterScript } from "../operator/scripted-operat
 const DOC = readFileSync("INSTALL.md", "utf8");
 const COMMANDS = ["start", "next", "submit", "verify", "resume", "report", "probe", "secret", "guide", "disconnect", "tool", "approvals", "connect", "map", "channel", "invite", "members", "gateway", "run", "schedule", "model", "workflow", "dryrun", "sandbox", "harden", "autonomy", "alerts", "learnings", "doctor", "pause", "unpause", "host", "packs", "retention", "support", "uninstall"];
 
+describe("START-HERE.md, the page for the person (D129)", () => {
+  const START = readFileSync("START-HERE.md", "utf8");
+
+  it("gets from nothing to a running agent, then hands over with one sentence", () => {
+    for (const step of ["nodejs.org", "npm install -g @anthropic-ai/claude-code", "claude", "npx --yes taskfollow instructions"]) expect(START).toContain(step);
+    expect(START.indexOf("nodejs.org")).toBeLessThan(START.indexOf("npm install -g @anthropic-ai/claude-code"));
+    expect(START.indexOf("npm install -g @anthropic-ai/claude-code")).toBeLessThan(START.indexOf("npx --yes taskfollow instructions"));
+  });
+
+  it("says what to have on hand and never to paste a password or key into the chat", () => {
+    expect(START).toMatch(/Google account/);
+    expect(START).toMatch(/Telegram/);
+    expect(START).toMatch(/never paste/i);
+  });
+
+  it("covers both computers and how to get back after a closed window", () => {
+    expect(START).toMatch(/Mac/);
+    expect(START).toMatch(/Windows/);
+    expect(START).toContain("claude --continue");
+  });
+
+  it("uses no jargon the person would not know", () => {
+    expect(START).not.toMatch(/\b(MCP|OAuth|keychain|JSON|API|IMAP|SMTP|CLI|launchd|schtasks)\b/);
+  });
+});
+
 describe("INSTALL.md", () => {
   it("states the five operator rules from spec §6.1", () => {
     for (const rule of ["1. Never invent an answer", "2. Always tell the person why", "3. Never request, repeat or store secrets", "4. At a blocking human step, stop", "5. After every `agent_action`, run the step's verify", "6. Never approve, edit or reject an approval yourself"]) {
@@ -29,14 +55,13 @@ describe("INSTALL.md", () => {
     }
   });
 
-  it("has the placeholders the solution server fills in; the base start needs no Skills Wiki URL (D126)", () => {
-    expect(DOC).toContain("{{INSTALL_COMMAND}}");
-    expect(DOC).toContain("taskfollow start --solution {{SOLUTION_REF}}\n");
-    expect(DOC).toContain("--url {{SKILLSWIKI_URL}}");
+  it("keeps one placeholder, for the optional Skills Wiki URL, after the optional section starts (D129)", () => {
     const optional = DOC.indexOf("## 11.");
     expect(optional).toBeGreaterThan(0);
+    expect(DOC.indexOf("{{SKILLSWIKI_URL}}")).toBeGreaterThan(optional);
     expect(DOC.indexOf("taskfollow secret skillswiki")).toBeGreaterThan(optional);
     expect(DOC.indexOf("taskfollow secret skillswiki")).toBeLessThan(DOC.indexOf("--url {{SKILLSWIKI_URL}}"));
+    expect(DOC).toContain("--solution starter-skillswiki");
   });
 
   it("sets up email through the page: no JSON for the person to type, and the page comes before the channel check (D127)", () => {
@@ -58,6 +83,26 @@ describe("INSTALL.md", () => {
     expect(DOC).toMatch(/Windows key/);
     expect(DOC).not.toMatch(/On Windows, stop/);
     expect(DOC).toMatch(/team host.{0,80}Windows|Windows.{0,80}team host/s);
+  });
+
+  it("is ready to run as written: real commands, no placeholders in the base path (D129)", () => {
+    const base = DOC.slice(0, DOC.indexOf("## 11."));
+    expect(base).not.toContain("{{");
+    expect(base).toContain("npm install -g taskfollow");
+    expect(base).toContain("taskfollow start --solution starter\n");
+    expect(base).toMatch(/EACCES|permission denied/i);
+    expect(base).toContain("sudo npm install -g taskfollow");
+  });
+
+  it("lists everything the person needs before starting, Telegram and Claude Code included", () => {
+    const before = DOC.slice(DOC.indexOf("## Before you start"), DOC.indexOf("## 1."));
+    expect(before).toMatch(/Telegram/);
+    expect(before).toMatch(/Claude Code/);
+    expect(before).toMatch(/quit Claude Code and open it again/i);
+  });
+
+  it("tells the person to use a new window for their own commands, not the agent's prompt", () => {
+    expect(DOC).toMatch(/new (terminal )?window/i);
   });
 
   it("never asks for Skills Wiki before the optional section", () => {
