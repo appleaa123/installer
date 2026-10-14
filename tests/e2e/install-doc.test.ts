@@ -33,6 +33,7 @@ describe("START-HERE.md, the page for the person (D129)", () => {
 
   it("says what to have on hand and never to paste a password or key into the chat", () => {
     expect(START).toMatch(/Google account/);
+    expect(START).toMatch(/the helper asks/i);
     expect(START).toMatch(/Telegram/);
     expect(START).toMatch(/never paste/i);
   });
@@ -105,6 +106,13 @@ describe("INSTALL.md", () => {
     expect(DOC).toMatch(/new (terminal )?window/i);
   });
 
+  it("tells the agent how to handle the choice questions and a person on their own (D131)", () => {
+    expect(DOC).toMatch(/not sure/i);
+    expect(DOC).toContain("`default`");
+    expect(DOC).toMatch(/on their own/i);
+    expect(DOC).toMatch(/nobody else is invited/);
+  });
+
   it("never asks for Skills Wiki before the optional section", () => {
     const base = DOC.slice(0, DOC.indexOf("## 11."));
     expect(base).not.toMatch(/skills ?wiki/i);
@@ -122,7 +130,7 @@ describe("INSTALL.md", () => {
     expect(starter.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
     expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "data.google", "data.connect", "channels.telegram", "activate.schedule"]));
     expect(starter.steps.map((step) => step.phase)).toEqual(expect.arrayContaining(["CHANNELS", "WORKFLOWS", "DRY_RUN", "ACTIVATE"]));
-    expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary"]);
+    expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary", "weekly-note"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
     expect(usesSkillswiki(starter)).toBe(false);
   });
@@ -170,22 +178,24 @@ describe("starter install, operated the way INSTALL.md says", () => {
    * one test connector server is the fake Google), the decision maker joins, a suggested workflow is added, dry-run
    * and confirmed in the person's terminal, and the OS scheduler's first tick is simulated with 'taskfollow tick'.
    */
-  function lifecycleSteps(keychain: Record<string, string>, env: Record<string, string>) {
+  function lifecycleSteps(keychain: Record<string, string>, env: Record<string, string>, flow: { workflow: string; owner: string } = { workflow: "contacts-summary", owner: "Owner" }) {
     const cli = (args: string[]) => async (home: string): Promise<void> => {
       const result = runCli(args, { home, env });
       if (result.code !== 0) throw new Error(`taskfollow ${args.join(" ")} failed: ${result.stderr}`);
     };
     const now = (): string => new Date().toISOString();
+    const join = async (home: string): Promise<void> => {
+      const { code } = await createInvite(home, flow.owner, { decision_maker: flow.owner }, now());
+      await joinWithCode(home, code, { channel: "telegram", address: "1002" }, now());
+    };
     return {
       "channels.telegram-key": () => setSecret("telegram", BOT_TOKEN, keychain),
       "channels.telegram": (home: string) => saveChannel(home, { channel: "telegram", bot: { id: 999, username: "desk_test_bot" }, verified_at: now() }),
-      "channels.join": async (home: string) => {
-        const { code } = await createInvite(home, "Owner", { decision_maker: "Owner" }, now());
-        await joinWithCode(home, code, { channel: "telegram", address: "1002" }, now());
-      },
-      "workflows.choose": cli(["workflow", "add", "contacts-summary"]),
+      "channels.join": join,
+      "channels.join-solo": join,
+      "workflows.choose": cli(["workflow", "add", flow.workflow]),
       "dryrun.run": cli(["dryrun"]),
-      "dryrun.confirm": async (home: string) => void (await dryrunCommand(home, "confirm", "contacts-summary", { interactive: true, as: "Owner" }, now)),
+      "dryrun.confirm": async (home: string) => void (await dryrunCommand(home, "confirm", flow.workflow, { interactive: true, as: flow.owner }, now)),
       "activate.schedule": cli(["tick"]),
     };
   }
@@ -227,7 +237,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner" },
+      answers: { "services.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -245,6 +255,40 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(JSON.stringify(run.calls.map((call) => call.stdout))).not.toMatch(/skills ?wiki/i);
     expect(runCli(["doctor"], { home, env }).stdout).not.toMatch(/skills ?wiki/i);
     expect(runCli(["report"], { home, env }).stdout).not.toMatch(/skills ?wiki|MCP not checked/i);
+  });
+
+  /** The shipped starter with only the test agent pinned: the shipped file lets the probe find a real agent on the machine. */
+  async function pinnedStarter(): Promise<string> {
+    const shipped = JSON.parse(readFileSync("solutions/starter.json", "utf8")) as { steps: { auto?: { args?: Record<string, unknown> } }[] };
+    const probe = shipped.steps[0]?.auto;
+    if (probe) probe.args = { profile: "fake-agent" };
+    const pinned = join(await makeTempHome(), "starter.json");
+    await writeFile(pinned, JSON.stringify(shipped), "utf8");
+    return pinned;
+  }
+
+  it("a person on their own with no contact list is never asked about teams, decision makers or Google (D131)", async () => {
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const solo = JSON.stringify([
+      { tool: "memo.list", args: {} }, { tool: "channel.list", args: {} },
+      { tool: "channel.notify", args: { member: "Sam", text: "No memos" } }, { tool: "done", summary: "Told Sam" },
+    ]);
+    const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
+    const script = {
+      answers: { "services.who": "me", "mode.name": "Sam", "services.records": "none" },
+      perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
+    };
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script, startArgs: [], env });
+    expect(run.final.status).toBe("complete");
+    const shown = JSON.stringify(run.calls.map((call) => call.stdout));
+    for (const hidden of ["mode.shared-work", "mode.always-on", "mode.decision-maker", "data.google", "data.connect", "data.map"]) expect(shown).not.toContain(hidden);
+    const state = await loadState(home);
+    expect(state).toMatchObject({ mode: "personal", roles: { decision_maker: "Sam" } });
+    expect(state?.steps["data.google"]).toBeUndefined();
+    const report = runCli(["report"], { home, env }).stdout;
+    expect(report).not.toMatch(/google|decision maker/i);
   });
 
   it("ends READY at level 3 with Skills Wiki registered in the agent; disconnect then removes it all", async () => {
