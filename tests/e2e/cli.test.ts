@@ -106,7 +106,7 @@ describe("installer CLI", () => {
     const result = runCli(["next", option], { home });
     const raw = option.split("=")[0];
     expect(result.code).toBe(2);
-    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --done, --json, --profile, --url, --as, --reason, --sheet, --sandbox`, code: 2 });
+    expect(result.json).toEqual({ error: `Unknown option '${raw}'. Options: --home, --solution, --value, --value-file, --done, --json, --profile, --url, --as, --reason, --sheet, --sandbox`, code: 2 });
   });
 
   it("records the solution's content sha as recipe_version", async () => {
@@ -366,6 +366,42 @@ describe("installer CLI", () => {
     const result = runCli(["submit", "mode.size", "--value=-5"], { home });
     expect(result.code).toBe(0);
     expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.manual" } } });
+  });
+
+  describe("--value-file (answers that are awkward to quote in a shell)", () => {
+    async function started(): Promise<string> {
+      const home = await makeTempHome();
+      await mkdir(join(home, "config"));
+      await writeFile(join(home, "config", "late-marker.txt"), "ok\n", "utf8");
+      runCli(["start", "--solution", `file:${LIVE_RETRY_PATH}`], { home });
+      return home;
+    }
+
+    it("reads the answer from a file, so a name with an apostrophe needs no shell quoting", async () => {
+      const home = await started();
+      const file = join(await makeTempHome(), "answer.json");
+      await writeFile(file, `"O'Brien's team"\n`, "utf8");
+      const named = runCli(["submit", "mode.name", "--value-file", file], { home });
+      expect(named.code).toBe(0);
+      expect(named.json).toMatchObject({ status: "step", view: { step: { step_id: "mode.size" } } });
+      const state = JSON.stringify(await loadState(home));
+      expect(state).toContain("O'Brien's team");
+    });
+
+    it("refuses --value together with --value-file", async () => {
+      const home = await started();
+      const result = runCli(["submit", "mode.name", "--value", '"x"', "--value-file", "/nonexistent"], { home });
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("--value-file");
+    });
+
+    it("names the missing file and exits 2", async () => {
+      const home = await started();
+      const result = runCli(["submit", "mode.name", "--value-file", join(home, "nope.json")], { home });
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("Cannot read");
+      expect(result.stderr).toContain("nope.json");
+    });
   });
 
   it("exits 3 and leaves the audit file untouched when its last line is damaged", async () => {

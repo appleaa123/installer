@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -68,6 +69,7 @@ interface Flags {
   readonly home?: string;
   readonly solution?: string;
   readonly value?: string;
+  readonly "value-file"?: string;
   readonly done?: boolean;
   readonly json?: boolean;
   readonly profile?: string;
@@ -83,7 +85,7 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
 }
 
 const OPTIONS = {
-  home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
+  home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, "value-file": { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
   profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" }, sheet: { type: "string" },
   sandbox: { type: "boolean" },
 } as const;
@@ -98,10 +100,22 @@ function unknownOption(argv: readonly string[]): string | undefined {
   return undefined;
 }
 
+/** `--value-file <path>` is `--value` read from a file, so an answer with quotes or apostrophes needs no shell quoting. */
+function withValueFile(flags: Flags): Flags {
+  const path = flags["value-file"];
+  if (path === undefined) return flags;
+  if (flags.value !== undefined) throw new InputError("Use either --value or --value-file, not both");
+  try {
+    return { ...flags, value: readFileSync(path, "utf8").replace(/\r?\n$/, "") };
+  } catch (error) {
+    throw new InputError(`Cannot read ${path}: ${(error as NodeJS.ErrnoException).code ?? "unreadable"}`);
+  }
+}
+
 function parse(argv: readonly string[]): { flags: Flags; positionals: string[] } {
   try {
     const { values, positionals } = parseArgs({ args: [...argv], allowPositionals: true, options: OPTIONS });
-    return { flags: values, positionals };
+    return { flags: withValueFile(values), positionals };
   } catch (error) {
     const unknown = (error as { code?: string }).code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? unknownOption(argv) : undefined;
     throw new InputError(unknown ? `Unknown option '${unknown}'. Options: ${OPTION_LIST}` : (error as Error).message);
