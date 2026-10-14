@@ -25,6 +25,8 @@ export interface Exec {
   readonly state: InstallState | undefined;
   readonly contract: DataContract | null;
   readonly backend: () => Promise<JudgeBackend>;
+  /** The environment a task step's agent starts from (narrowed further by agent-task.ts). */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export type StepOutcome =

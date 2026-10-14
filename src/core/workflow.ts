@@ -24,6 +24,8 @@ export const DEFAULT_TOLERANCE_MINUTES = 5;
 export const DEFAULT_MAX_TOOL_CALLS = 3;
 export const DEFAULT_MAX_TURNS = 8;
 export const MAX_TURNS = 20;
+export const DEFAULT_TASK_MINUTES = 10;
+export const MAX_TASK_MINUTES = 30;
 /** The id of the one step of an agentic workflow, and of the step a drifting run falls back to. */
 export const AGENT_STEP = "agent";
 export const FALLBACK_STEP = "fallback";
@@ -63,6 +65,18 @@ export interface AgentSpec {
   readonly input?: unknown;
 }
 
+/** A task step (D139): the person's own agent does the work with its own tools, limited to `may_use`, under the hook. */
+export interface TaskSpec {
+  readonly prompt: string;
+  readonly input?: unknown;
+  /** Claude Code permission rules: `mcp__<server>`, `mcp__<server>__<tool>` (a trailing * allowed), `Bash(<command>:*)`. */
+  readonly may_use: readonly string[];
+  /** Whether the task may change things; false means read only (the hook refuses known write flags). */
+  readonly changes: boolean;
+  readonly output: Readonly<Record<string, unknown>>;
+  readonly timeout_minutes: number;
+}
+
 interface StepBase {
   readonly id: string;
   readonly when?: string;
@@ -72,7 +86,8 @@ export type WorkflowStep =
   | (StepBase & { readonly kind: "tool"; readonly tool: string; readonly args: ArgsTemplate; readonly foreach?: string })
   | (StepBase & { readonly kind: "judge"; readonly judge: JudgeSpec; readonly foreach?: string })
   | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean })
-  | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec });
+  | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec })
+  | (StepBase & { readonly kind: "task"; readonly task: TaskSpec });
 
 export interface Workflow {
   readonly id: string;
@@ -178,18 +193,50 @@ function parseAgent(value: unknown, registry: ToolRegistry, where: string, fail:
   return { instructions: text(value.instructions, `${where}.instructions`, fail), tools, max_turns: turns, ...(value.input === undefined ? {} : { input: value.input }) };
 }
 
+const MCP_RULE = /^mcp__[A-Za-z0-9_-]+(__[A-Za-z0-9_.-]+\*?)?$/;
+const BASH_RULE = /^Bash\(([^;&|`<>$\n\r*]+)(:\*)?\)$/;
+
+function parseMayUse(value: unknown, where: string, fail: (message: string) => never): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) return fail(`${where}.may_use must list the tools the agent may use`);
+  return value.map((rule, index) => {
+    const at = `${where}.may_use[${index}]`;
+    if (typeof rule !== "string" || !(MCP_RULE.test(rule) || BASH_RULE.test(rule))) {
+      return fail(`${at} must be mcp__<server>, mcp__<server>__<tool>, or Bash(...) with a command, for example Bash(shopify store execute:*)`);
+    }
+    if (rule.startsWith("mcp__installer")) return fail(`${at}: TaskFollow's own tools are used through tool and approve steps, not by a task`);
+    return rule;
+  });
+}
+
+function parseTask(value: unknown, where: string, fail: (message: string) => never): TaskSpec {
+  if (!isRecord(value)) return fail(`${where} must be {"prompt":…,"may_use":[…],"output":{…}}`);
+  try {
+    checkSchema(value.output, `${where}.output`);
+  } catch (error) {
+    return fail((error as Error).message);
+  }
+  const minutes = value.timeout_minutes ?? DEFAULT_TASK_MINUTES;
+  if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TASK_MINUTES) return fail(`${where}.timeout_minutes must be a whole number from 1 to ${MAX_TASK_MINUTES}`);
+  if (value.changes !== undefined && typeof value.changes !== "boolean") return fail(`${where}.changes must be true or false`);
+  return {
+    prompt: text(value.prompt, `${where}.prompt`, fail), may_use: parseMayUse(value.may_use, where, fail), changes: value.changes === true,
+    output: value.output as Raw, timeout_minutes: minutes, ...(value.input === undefined ? {} : { input: value.input }),
+  };
+}
+
 function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: (message: string) => never): WorkflowStep {
   const where = `steps[${index}]`;
   if (!isRecord(value)) return fail(`${where} must be an object`);
   const id = typeof value.id === "string" && STEP_ID.test(value.id) && !RESERVED.includes(value.id) ? value.id : fail(`${where}.id must be lowercase letters, digits and _ (not ${RESERVED.join(", ")})`);
-  const kinds = ["tool", "judge", "approve", "agent"].filter((kind) => value[kind] !== undefined);
-  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve, agent`);
+  const kinds = ["tool", "judge", "approve", "agent", "task"].filter((kind) => value[kind] !== undefined);
+  if (kinds.length !== 1) return fail(`step '${id}' must have exactly one of tool, judge, approve, agent, task`);
   const base = { id, ...(value.when === undefined ? {} : { when: text(value.when, `step '${id}'.when`, fail) }) };
   const foreach = value.foreach === undefined ? {} : { foreach: text(value.foreach, `step '${id}'.foreach`, fail) };
   if (value.judge !== undefined) return { ...base, kind: "judge", judge: parseJudge(value.judge, registry, `step '${id}'.judge`, fail), ...foreach };
   if (value.tool !== undefined) return { ...base, kind: "tool", tool: workflowTool(registry, value.tool, `step '${id}'`, fail), args: args(value.args, `step '${id}'.args`, fail), ...foreach };
   if (value.foreach !== undefined) return fail(`step '${id}': an ${kinds[0]} step cannot use foreach`);
   if (value.agent !== undefined) return { ...base, kind: "agent", agent: parseAgent(value.agent, registry, `step '${id}'.agent`, fail) };
+  if (value.task !== undefined) return { ...base, kind: "task", task: parseTask(value.task, `step '${id}'.task`, fail) };
   const approve = isRecord(value.approve) ? value.approve : fail(`step '${id}'.approve must be {"tool":…,"args":…,"why":…}`);
   return {
     ...base, kind: "approve", tool: workflowTool(registry, approve.tool, `step '${id}'.approve`, fail), args: args(approve.args, `step '${id}'.approve.args`, fail),
@@ -202,6 +249,7 @@ const foreachOf = (step: WorkflowStep): string | undefined => ("foreach" in step
 /** The roots a step's arguments refer to; `item` is allowed there inside foreach. */
 function argumentRoots(step: WorkflowStep): readonly string[] {
   if (step.kind === "agent") return templateRoots(step.agent.input);
+  if (step.kind === "task") return templateRoots(step.task.input);
   const templates = step.kind === "judge" ? [step.judge.input, step.judge.context_tools.map((entry) => entry.args)] : [step.args];
   return templates.flatMap(templateRoots);
 }
