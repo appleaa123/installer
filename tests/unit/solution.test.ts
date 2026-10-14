@@ -126,3 +126,45 @@ describe("the oauth_ready check (live setup guides, 4.5)", () => {
     expect(() => parseSolution(withReady(id))).toThrow("oauth_ready needs args.id, the sign-in secret of a connector");
   });
 });
+
+describe("conditional steps and defaults (D131)", () => {
+  const ask = (step_id: string, input: object, extra: object = {}) => ({ step_id, phase: "MODE", type: "ask", title: step_id, why: "Needed.", blocking: true, input, ...extra });
+  const build = (...steps: object[]) => parseSolution({ id: "s", version: "1", steps });
+  const PICK = ask("pick", { kind: "choice", options: ["a", "b"] });
+  const MANY = ask("many", { kind: "multi_choice", options: ["x", "y"] });
+
+  it("accepts a step that depends on an earlier choice", () => {
+    expect(build(PICK, ask("only-a", { kind: "text" }, { when: { step: "pick", equals: "a" } })).steps[1]?.when).toEqual({ step: "pick", equals: "a" });
+    expect(build(MANY, ask("only-x", { kind: "text" }, { when: { step: "many", includes: "x" } })).steps).toHaveLength(2);
+  });
+
+  it.each([
+    ["names a step that does not exist", { step: "nope", equals: "a" }, "earlier ask step"],
+    ["names a step that comes later", { step: "late", equals: "a" }, "earlier ask step"],
+    ["asks for a value that is not an option", { step: "pick", equals: "z" }, "one of its options"],
+    ["uses includes on a single choice", { step: "pick", includes: "a" }, "multiple choice"],
+    ["uses equals on a multiple choice", { step: "many", equals: "x" }, "single choice"],
+    ["names no test at all", { step: "pick" }, "equals or includes"],
+  ])("refuses a condition that %s", (_what, when, message) => {
+    const late = ask("late", { kind: "choice", options: ["a"] });
+    expect(() => build(PICK, MANY, ask("dependent", { kind: "text" }, { when }), late)).toThrow(message);
+  });
+
+  it("refuses a condition on a step that is not a choice", () => {
+    expect(() => build(ask("name", { kind: "text" }), ask("dependent", { kind: "text" }, { when: { step: "name", equals: "a" } }))).toThrow("single choice");
+  });
+
+  it("accepts a suggested workflow that depends on a choice, and refuses a condition that points nowhere", () => {
+    const flow = (when: object) => ({ workflow: "w", description: "d", mode: "agentic", instructions: "i", tools: ["memo.list"], when });
+    const solution = (when: object) => parseSolution({ id: "s", version: "1", steps: [PICK], workflows: [flow(when)] });
+    expect(solution({ step: "pick", equals: "a" }).workflows).toHaveLength(1);
+    expect(() => solution({ step: "pick", equals: "z" })).toThrow("one of its options");
+    expect(() => solution({ step: "nope", equals: "a" })).toThrow("earlier ask step");
+  });
+
+  it("accepts a default that is a valid answer, and refuses one that is not", () => {
+    expect(build(ask("pick", { kind: "choice", options: ["a", "b"] }, { default: "a" })).steps[0]?.default).toBe("a");
+    expect(() => build(ask("pick", { kind: "choice", options: ["a", "b"] }, { default: "z" }))).toThrow("default");
+    expect(build(ask("many", { kind: "multi_choice", options: ["x", "y"] }, { default: ["x"] })).steps[0]?.default).toEqual(["x"]);
+  });
+});

@@ -187,3 +187,30 @@ describe("a suggested workflow that runs in the computer's own time zone (D130)"
     expect((await loadWorkflow(at, "local-note", DEFAULT_TOOLS)).trigger).toMatchObject({ tz: "America/Toronto" });
   });
 });
+
+describe("a suggested workflow that depends on a choice (D131)", () => {
+  const NEEDS_SHEET = { ...NOTE, workflow: "needs-sheet", when: { step: "records", equals: "google-sheets" } };
+  const PICKER = { step_id: "records", phase: "MODE", type: "ask", title: "Where is your list?", why: "Needed.", blocking: true, input: { kind: "choice", options: ["google-sheets", "none"] } };
+
+  async function homeWith(choice: string): Promise<string> {
+    const at = await runnerHome();
+    await writePinnedSolution(at, JSON.stringify({ ...SOLUTION, steps: [PICKER, ...SOLUTION.steps], workflows: [NOTE, NEEDS_SHEET] }));
+    const state = await loadState(at);
+    if (state) await saveState(at, { ...state, steps: { records: { status: "done", at: AT, by: "human", value: choice } } });
+    return at;
+  }
+
+  it("is offered when the choice was made", async () => {
+    const at = await homeWith("google-sheets");
+    const listed = (await workflowCommand(at, "suggestions", undefined, undefined, () => AT)) as { suggestions: { workflow: string }[] };
+    expect(listed.suggestions.map((entry) => entry.workflow)).toEqual(["note", "needs-sheet"]);
+    expect(await workflowCommand(at, "add", "needs-sheet", undefined, () => AT)).toMatchObject({ status: "added", workflow: "needs-sheet" });
+  });
+
+  it("is not offered, and cannot be added, when the person chose something else", async () => {
+    const at = await homeWith("none");
+    const listed = (await workflowCommand(at, "suggestions", undefined, undefined, () => AT)) as { suggestions: { workflow: string }[] };
+    expect(listed.suggestions.map((entry) => entry.workflow)).toEqual(["note"]);
+    await expect(workflowCommand(at, "add", "needs-sheet", undefined, () => AT)).rejects.toThrow("No suggested workflow 'needs-sheet' (note)");
+  });
+});

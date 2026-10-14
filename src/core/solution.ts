@@ -4,8 +4,9 @@ import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
 import { parseChannelPolicy } from "./channel-policy.js";
 import { CONNECTOR_PINS, CONNECTOR_SECRETS } from "./connectors.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
-import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeQuestion } from "./mode.js";
-import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType } from "./types.js";
+import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeLiteral, acceptsModeQuestion } from "./mode.js";
+import { validateInput } from "./inputs.js";
+import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType, type StepWhen } from "./types.js";
 
 export class SolutionError extends Error {
   constructor(message: string) {
@@ -42,6 +43,17 @@ function named(value: unknown, key: "action" | "check", known: readonly string[]
   if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
   const name = oneOf(value[key], known, `${where}.${key}`);
   return { name, args: isRecord(value.args) ? value.args : {} };
+}
+
+/** A default is the answer the helper submits when the person is not sure, so it must be a valid answer. */
+function checkDefault(step: StepDef, where: string): void {
+  if (step.default === undefined) return;
+  if (step.type !== "ask") throw new SolutionError(`${where}.default only belongs on an ask step`);
+  try {
+    validateInput(step.input, step.default);
+  } catch (error) {
+    throw new SolutionError(`${where}.default is not a valid answer: ${(error as Error).message}`);
+  }
 }
 
 function checkTypeRules(step: StepDef, where: string): void {
@@ -104,6 +116,43 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">>;
 }
 
+/** `when`: shown only when an earlier question was answered this way (D131); the question itself is checked in checkWhenReferences. */
+function parseWhen(value: unknown, where: string): StepWhen {
+  if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
+  const step = text(value.step, `${where}.step`);
+  const hasEquals = value.equals !== undefined;
+  const hasIncludes = value.includes !== undefined;
+  if (hasEquals === hasIncludes) throw new SolutionError(`${where} needs exactly one of equals or includes`);
+  return { step, ...(hasEquals ? { equals: text(value.equals, `${where}.equals`) } : { includes: text(value.includes, `${where}.includes`) }) };
+}
+
+/** A condition may only look back at an earlier choice that has options, and only for one of those options, so a step can never be hidden for ever by a typo. */
+function checkWhen(when: StepWhen, earlier: readonly StepDef[], label: string): void {
+  const asked = earlier.find((candidate) => candidate.type === "ask" && candidate.step_id === when.step);
+  if (!asked) throw new SolutionError(`${label}: when.step must name an earlier ask step, got ${JSON.stringify(when.step)}`);
+  const wanted = when.equals ?? when.includes ?? "";
+  const kind = when.equals !== undefined ? "choice" : "multi_choice";
+  if (asked.input?.kind !== kind) {
+    throw new SolutionError(`${label}: when.${when.equals !== undefined ? "equals" : "includes"} needs a ${kind === "choice" ? "single choice" : "multiple choice"} question, but '${asked.step_id}' is not one`);
+  }
+  if (!(asked.input.options ?? []).includes(wanted)) {
+    throw new SolutionError(`${label}: when asks for ${JSON.stringify(wanted)}, which is not one of its options (${(asked.input.options ?? []).join(", ")})`);
+  }
+}
+
+function checkWhenReferences(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    if (step.when) checkWhen(step.when, steps.slice(0, index), `Step '${step.step_id}'`);
+  });
+}
+
+/** A suggested workflow may depend on a choice too; every step comes before it. */
+function checkSuggestionWhen(steps: readonly StepDef[], workflows: readonly Readonly<Record<string, unknown>>[] | undefined): void {
+  for (const entry of workflows ?? []) {
+    if (entry.when !== undefined) checkWhen(parseWhen(entry.when, `workflow '${String(entry.workflow)}' when`), steps, `Workflow '${String(entry.workflow)}'`);
+  }
+}
+
 function parseStep(value: unknown, index: number): StepDef {
   const where = `steps[${index}]`;
   if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
@@ -116,8 +165,11 @@ function parseStep(value: unknown, index: number): StepDef {
     why: text(value.why, `${where}.why`),
     blocking: value.blocking,
     ...optionalFields(value, where),
+    ...(value.when === undefined ? {} : { when: parseWhen(value.when, `${where}.when`) }),
+    ...(value.default === undefined ? {} : { default: value.default }),
   };
   checkTypeRules(step, where);
+  checkDefault(step, where);
   return step;
 }
 
@@ -128,6 +180,7 @@ function checkModeReferences(steps: readonly StepDef[]): void {
     const earlierAsks = new Map(steps.slice(0, index).filter((earlier) => earlier.type === "ask").map((earlier) => [earlier.step_id, earlier]));
     for (const key of MODE_ARGS) {
       const ref = step.auto.args?.[key];
+      if (isRecord(ref) && "value" in ref && acceptsModeLiteral(key, ref.value)) continue;
       const asked = typeof ref === "string" ? earlierAsks.get(ref) : undefined;
       if (!asked || !acceptsModeQuestion(key, asked.input)) {
         const rule = MODE_QUESTION_RULE[key];
@@ -231,6 +284,7 @@ export function parseSolution(raw: unknown): Solution {
     return index;
   }, 0);
   checkModeReferences(steps);
+  checkWhenReferences(steps);
   checkProbeArgs(steps);
   checkSecretSteps(steps);
   checkOauthReadySteps(steps);
@@ -239,6 +293,7 @@ export function parseSolution(raw: unknown): Solution {
   checkDataSteps(steps, contract);
   const policy = parseChannelPolicy(raw.channel_policy);
   const workflows = parseSuggestions(raw.workflows);
+  checkSuggestionWhen(steps, workflows);
   return { id, version, steps, ...(contract ? { data_contract: contract } : {}), ...(policy ? { channel_policy: policy } : {}), ...(workflows ? { workflows } : {}) };
 }
 

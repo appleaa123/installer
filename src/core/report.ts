@@ -1,4 +1,5 @@
 import { MAX_VERIFY_ATTEMPTS, RESUME_HINT, currentStep, recordOf, retryCommand } from "./engine.js";
+import { visibleSteps } from "./visibility.js";
 import type { CapabilityMap, InstallState, Phase, Solution, StepDef, StepRecord } from "./types.js";
 
 export type Overall = "ready" | "ready_with_limits" | "blocked" | "in_progress";
@@ -51,7 +52,8 @@ export function runtimeLimits(runtime: CapabilityMap | undefined): readonly stri
 }
 
 export function buildReport(solution: Solution, state: InstallState): Report {
-  const rows = solution.steps.map((step) => ({ step, record: state.steps[step.step_id] }));
+  const inView = visibleSteps(solution, state);
+  const rows = inView.map((step) => ({ step, record: state.steps[step.step_id] }));
   const working = rows.filter(({ record }) => record?.status === "done").map(({ step }) => item(step, "done"));
   const limited = rows
     .filter(({ step, record }) => !step.blocking && unresolved(record))
@@ -69,7 +71,7 @@ export function buildReport(solution: Solution, state: InstallState): Report {
   const overall: Overall =
     hardBlocked.length > 0 ? "blocked" : current ? "in_progress" : limited.length > 0 || limits.length > 0 ? "ready_with_limits" : "ready";
   return {
-    overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: solution.steps.length,
+    overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
     working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined,
   };
 }

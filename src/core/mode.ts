@@ -12,6 +12,12 @@ export function acceptsModeQuestion(key: (typeof MODE_ARGS)[number], input: Step
   return input?.kind === "choice" && (input.options ?? []).every((option) => allowed.includes(option));
 }
 
+/** A fixed answer, written `{ "value": … }` where no question is asked (a person on their own, D131). The decision maker is always asked. */
+export function acceptsModeLiteral(key: (typeof MODE_ARGS)[number], value: unknown): boolean {
+  if (key === "decision_maker") return false;
+  return (key === "shared_work" ? SHARED_ANSWERS : ALWAYS_ON_ANSWERS).includes(value);
+}
+
 export const MODE_QUESTION_RULE: Readonly<Record<(typeof MODE_ARGS)[number], string>> = {
   shared_work: "a choice of no, yes or both",
   always_on: "a choice of no or yes",
@@ -28,6 +34,7 @@ export function deriveMode(sharedWork: unknown, alwaysOn: unknown): Mode {
 
 function answerOf(state: InstallState | undefined, args: Readonly<Record<string, unknown>>, key: string): unknown {
   const stepId = args[key];
+  if (typeof stepId === "object" && stepId !== null && "value" in stepId) return (stepId as { value: unknown }).value;
   if (typeof stepId !== "string") throw new InputError(`derive_mode needs args.${key}, the id of the step that asks it`);
   const record = state?.steps[stepId];
   if (record?.status !== "done") throw new InputError(`derive_mode needs step '${stepId}' to be answered first`);
