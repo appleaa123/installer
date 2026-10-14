@@ -21,7 +21,9 @@ export const OUTBOX_DIR = join("sandbox", "outbox");
 
 export type Delivery = { readonly status: "sent" } | { readonly status: "recorded"; readonly outbox_id: number; readonly reason: string };
 
-type Recorded = OutboundMessage & {
+/** A recording keeps a file's name, type and size, never its bytes (D133). */
+type Recorded = Omit<OutboundMessage, "attachments"> & {
+  readonly attachments?: readonly { readonly filename: string; readonly type: string; readonly size: number }[];
   readonly id: number;
   readonly channel: ChannelId;
   readonly at: string;
@@ -59,7 +61,10 @@ export async function deliver(home: string, channel: ChannelId, message: Outboun
   if (!(await loadChannel(home, channel))) throw new InputError(`The ${channel} channel is not set up: run 'taskfollow channel ${channel}' first`);
   const reason = sandbox ? SANDBOX_REASON : await outboundBlock(home);
   if (reason !== null) {
-    const recorded = await createRecord<Recorded>(home, OUTBOX_DIR, (id) => ({ id, channel, ...message, at: now, reason, ...(run ? { run } : {}) }));
+    // The recording keeps names and sizes of files, never their bytes.
+    const { attachments, ...rest } = message;
+    const files = attachments?.map((file) => ({ filename: file.filename, type: file.type, size: file.bytes.length }));
+    const recorded = await createRecord<Recorded>(home, OUTBOX_DIR, (id) => ({ id, channel, ...rest, ...(files ? { attachments: files } : {}), at: now, reason, ...(run ? { run } : {}) }));
     await appendAudit(home, { ts: now, actor: "engine", event: "channel.recorded", ref: channel, payload: { outbox_id: recorded.id, reason } });
     return { status: "recorded", outbox_id: recorded.id, reason };
   }

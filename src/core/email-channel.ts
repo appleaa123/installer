@@ -56,7 +56,7 @@ export function emailChannel(config: EmailConfig, password: string, env: Env = p
     send: async (message) => {
       const domain = config.address.split("@")[1] ?? "localhost";
       const subject = message.subject ?? `Message from ${config.address}`;
-      await smtpSend(config.smtp, password, { from: config.address, to: message.to, subject, text: message.text, message_id: `<${randomUUID()}@${domain}>`, date: new Date().toISOString() }, env);
+      await smtpSend(config.smtp, password, { from: config.address, to: message.to, subject, text: message.text, message_id: `<${randomUUID()}@${domain}>`, date: new Date().toISOString(), ...(message.attachments?.length ? { attachments: message.attachments } : {}) }, env);
     },
   };
 }
