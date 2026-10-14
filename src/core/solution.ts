@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { KNOWN_ACTIONS, KNOWN_CHECKS } from "./actions.js";
 import { parseChannelPolicy } from "./channel-policy.js";
 import { CONNECTOR_PINS, CONNECTOR_SECRETS } from "./connectors.js";
@@ -281,6 +282,9 @@ async function readLocal(path: string): Promise<string> {
   }
 }
 
+/** Solutions that ship inside the package, loadable by name: `taskfollow start --solution starter` (D129). */
+export const BUNDLED_SOLUTIONS = ["starter", "starter-skillswiki"] as const;
+
 /** `fetchSkillswiki` is the key-bearing fetcher the CLI builds once the key and URL are known (D46). */
 export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps, fetchSkillswiki?: FetchText): Promise<{ solution: Solution; text: string }> {
   if (ref.startsWith("skillswiki:")) {
@@ -292,7 +296,11 @@ export async function loadSolutionSource(ref: string, fetchText: FetchText = fet
     const text = await fetchText(ref);
     return { solution: parseSolutionText(text, ref), text };
   }
-  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': use file:<path> or https://…`);
+  if ((BUNDLED_SOLUTIONS as readonly string[]).includes(ref)) {
+    const text = await readLocal(fileURLToPath(new URL(`../../solutions/${ref}.json`, import.meta.url)));
+    return { solution: parseSolutionText(text, ref), text };
+  }
+  if (!ref.startsWith("file:")) throw new SolutionError(`Unsupported solution reference '${ref}': use ${BUNDLED_SOLUTIONS.join(", ")}, file:<path> or https://…`);
   const path = ref.slice("file:".length);
   const text = await readLocal(path);
   return { solution: parseSolutionText(text, path), text };

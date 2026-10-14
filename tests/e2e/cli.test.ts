@@ -368,6 +368,23 @@ describe("installer CLI", () => {
     expect(result.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.manual" } } });
   });
 
+  describe("taskfollow instructions (D129)", () => {
+    it("prints the install instructions the package carries, so one sentence to the agent is enough", async () => {
+      const result = runCli(["instructions"], {});
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe(await readFile("INSTALL.md", "utf8"));
+    });
+  });
+
+  describe("the Node version check (D129)", () => {
+    it("is a plain sentence naming the version needed, not a stack trace", async () => {
+      const { nodeTooOld } = await import("../../src/core/node-version.js");
+      expect(nodeTooOld("v20.11.0")).toContain("Node 22");
+      expect(nodeTooOld("v22.0.0")).toBeNull();
+      expect(nodeTooOld("v24.1.0")).toBeNull();
+    });
+  });
+
   describe("--value-file (answers that are awkward to quote in a shell)", () => {
     async function started(): Promise<string> {
       const home = await makeTempHome();

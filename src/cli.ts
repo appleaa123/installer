@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { alertsCommand } from "./core/alerts.js";
 import { approvalsCommand } from "./core/approval-commands.js";
@@ -39,6 +40,7 @@ import { retentionCommand } from "./core/retention.js";
 import { packsCommand } from "./core/shadow.js";
 import { supportBundle } from "./core/support-bundle.js";
 import { uninstall } from "./core/uninstall.js";
+import { nodeTooOld } from "./core/node-version.js";
 import { installerVersion } from "./core/version.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
@@ -57,7 +59,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "start, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const COMMANDS = "instructions, start, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -318,6 +320,8 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
   /** D103: reads the state itself, so a damaged state is a finding, not an exit 3. */
   doctor: (home) => doctorCommand(home, () => new Date().toISOString()),
   certify: (home, flags) => certifyCommand(home, flags),
+  /** D129: the install instructions this package carries, so one sentence to an agent starts everything: `npx taskfollow instructions`. */
+  instructions: async () => (await readFile(fileURLToPath(new URL("../INSTALL.md", import.meta.url)), "utf8")).replace(/\n$/, ""),
   /** D119: which build this is, for a support request or a certification record. */
   version: async () => ({ installer: await installerVersion(), node: process.version }),
 };
@@ -369,6 +373,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
 };
 
 async function run(argv: readonly string[]): Promise<number> {
+  const tooOld = nodeTooOld(process.version);
+  if (tooOld) throw new InputError(tooOld);
   const { flags, positionals } = parse(argv);
   const home = resolve(flags.home || process.env.INSTALLER_HOME || join(homedir(), ".installer"));
   const [command = "", arg, extra] = positionals;
