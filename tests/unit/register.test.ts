@@ -104,7 +104,7 @@ describe("register_mcp in an install", () => {
   it("fails, then blocks after three refusals by the agent (D53)", async () => {
     vi.stubEnv("FAKE_AGENT_DROP", "mcp");
     const { deps, started } = await install("k-1");
-    expect(started.result).toMatchObject({ status: "step", view: { status: "failed", attempts: 1, resume: "installer resume" } });
+    expect(started.result).toMatchObject({ status: "step", view: { status: "failed", attempts: 1, resume: "taskpilot resume" } });
     const second = await resume(deps, started.state);
     expect(second.result).toMatchObject({ status: "step", view: { status: "failed", attempts: 2 } });
     const third = await resume(deps, second.state);

@@ -55,7 +55,7 @@ export function a1Range(location: SheetLocation, cells: string): string {
 
 function failureFor(status: number, message: string, location: SheetLocation | null, secretId: string): ActionFailure {
   const id = location?.spreadsheet_id ?? "";
-  if (status === 401) return new ActionFailure(`Google Sheets refused the sign-in: run 'installer secret ${secretId}' to sign in again`);
+  if (status === 401) return new ActionFailure(`Google Sheets refused the sign-in: run 'taskpilot secret ${secretId}' to sign in again`);
   if (status === 403) return new ActionFailure(`Google Sheets denied access to spreadsheet ${id}: open it with the Google account you signed in with, or share it with that account`);
   if (status === 404) return new ActionFailure(`Google Sheets has no spreadsheet ${id}: check the link`);
   if (status === 400) return new ActionFailure(`Google Sheets refused the request: ${message}`);

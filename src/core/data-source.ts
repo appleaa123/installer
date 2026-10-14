@@ -112,7 +112,7 @@ export function mappingProblem(entity: EntityDef, columns: Readonly<Record<strin
 /** `source_present` (§9.4 step 2): the entity is connected to a spreadsheet. */
 export async function sourceCheck(home: string, entity: string): Promise<{ ok: boolean; hint?: string }> {
   if (await loadSource(home, entity)) return { ok: true };
-  return { ok: false, hint: `'${entity}' is not connected yet: run 'installer connect ${entity} --sheet <link of the Google Sheet>' (or --sheet new), then the verify again` };
+  return { ok: false, hint: `'${entity}' is not connected yet: run 'taskpilot connect ${entity} --sheet <link of the Google Sheet>' (or --sheet new), then the verify again` };
 }
 
 /** `mapping_present` (§9.4 step 4): every required field maps to a column. */
@@ -120,5 +120,5 @@ export async function mappingCheck(home: string, entity: string): Promise<{ ok: 
   const mapping = await loadMapping(home, entity);
   const problem = mapping ? mappingProblem((await contractEntity(home, entity)).entity, mapping.columns) : "no mapping is saved";
   if (problem === null) return { ok: true };
-  return { ok: false, hint: `The columns of '${entity}' are not mapped (${problem}): run 'installer map ${entity}', confirm the mapping with the person, then 'installer map ${entity} --value <json>' and the verify again` };
+  return { ok: false, hint: `The columns of '${entity}' are not mapped (${problem}): run 'taskpilot map ${entity}', confirm the mapping with the person, then 'taskpilot map ${entity} --value <json>' and the verify again` };
 }

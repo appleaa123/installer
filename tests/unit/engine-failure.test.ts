@@ -24,8 +24,8 @@ const unlock = (home: string) => chmod(join(home, "config"), 0o700);
 const cannotLock = process.platform === "win32" || process.getuid?.() === 0;
 
 describe("retryCommand", () => {
-  it("sends auto steps back through installer resume", () => {
-    expect(retryCommand(solution().steps[0]!)).toBe("installer resume");
+  it("sends auto steps back through taskpilot resume", () => {
+    expect(retryCommand(solution().steps[0]!)).toBe("taskpilot resume");
   });
 });
 
@@ -40,8 +40,8 @@ describe.skipIf(cannotLock)("an auto step whose action fails (D53)", () => {
     const home = await lockedHome();
     const { deps } = memoryDeps(home, solution());
     const first = await start(deps, null, "file:/f.json");
-    expect(first.result).toMatchObject({ status: "step", view: { status: "failed", attempts: 1, hint: "Cannot write config/a.txt (EACCES)", resume: "installer resume" } });
-    expect(buildReport(deps.solution, first.state).needs_you[0]?.detail).toContain("→ then run 'installer resume'");
+    expect(first.result).toMatchObject({ status: "step", view: { status: "failed", attempts: 1, hint: "Cannot write config/a.txt (EACCES)", resume: "taskpilot resume" } });
+    expect(buildReport(deps.solution, first.state).needs_you[0]?.detail).toContain("→ then run 'taskpilot resume'");
     const again = await advance(deps, first.state);
     expect(again.result).toEqual(first.result);
     await unlock(home);

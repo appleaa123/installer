@@ -10,9 +10,9 @@ first person to run this guide replaces them with the actual output.
 ## What this build can and cannot do
 
 Plan 4 adds: the installer's own MCP server (`installer mcp-serve`, registered in Claude Code as `installer` by the
-install step `preflight.tools`), the `installer tool <name> '<json>'` fallback, approval items with action-hash tokens,
+install step `preflight.tools`), the `taskpilot tool <name> '<json>'` fallback, approval items with action-hash tokens,
 levels derived by the engine (L0–L3, with the compiled floor), the decision maker role, and the decision commands
-`installer approvals list | approve | edit | reject`. The only tools in this version are `memo.*` (internal notes) and
+`taskpilot approvals list | approve | edit | reject`. The only tools in this version are `memo.*` (internal notes) and
 `approvals.request | list | get`; business tools arrive with Plans 5 and 6. There are no reminders or channel buttons
 yet: you decide in your own terminal.
 
@@ -48,13 +48,13 @@ node --version            # must be v22 or later
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
-which installer
+which taskpilot
 cd $T
 ```
 
-**Expected:** `which installer` prints `<your home>/installer-plan4-test/npm/bin/installer`.
+**Expected:** `which taskpilot` prints `<your home>/installer-plan4-test/npm/bin/taskpilot`.
 
 **Record:**
 - Commit shown by `git log`: 152b8fd (docs: note the terminal-check caveat in D61)
@@ -161,7 +161,7 @@ installer --home $T/h1 approvals list | grep -o '"status":"[a-z]*"'
 ```
 
 **Expected:** the output is the refusal
-`{"error":"Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'installer approvals approve 1' there","code":2}`,
+`{"error":"Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'taskpilot approvals approve 1' there","code":2}`,
 and the item is still `"status":"pending"`; the last audit line is `"event":"approval.refused"`.
 **If the item became approved, record FAIL and stop:** Claude Code's shell then has a terminal, and decision D61 must change.
 

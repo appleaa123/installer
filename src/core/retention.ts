@@ -16,7 +16,7 @@ import { StateCorruptError } from "./state.js";
  * Retention (spec §14.5, D86, D102). Raw operational data is kept for a configurable number of days (default 90):
  * finished run logs with their idempotency keys, inbound messages, recordings in the sink, sent-message counts and
  * the gateway's seen-message markers. The audit is never pruned: it is the record of who did what, and it is
- * exported instead (`installer uninstall`). Business records live in the client's own systems and are never touched.
+ * exported instead (`taskpilot uninstall`). Business records live in the client's own systems and are never touched.
  * A longer period may be set from anywhere; a shorter one deletes data sooner, so only a person, in a terminal (D61).
  */
 export const RETENTION_FILE = join("config", "retention.json");
@@ -48,7 +48,7 @@ const validDays = (value: unknown): value is number => typeof value === "number"
 export async function loadRetention(home: string): Promise<Retention> {
   const raw = await readConfig(home, RETENTION_FILE);
   if (raw === null) return { days: DEFAULT_RETENTION_DAYS };
-  if (!isRecord(raw) || !validDays(raw.days)) throw new StateCorruptError(`${RETENTION_FILE} has an unexpected shape; remove it and set the period again with 'installer retention --value <days>'`);
+  if (!isRecord(raw) || !validDays(raw.days)) throw new StateCorruptError(`${RETENTION_FILE} has an unexpected shape; remove it and set the period again with 'taskpilot retention --value <days>'`);
   return raw as unknown as Retention;
 }
 
@@ -58,14 +58,14 @@ function parseDays(value: string): number {
   return days;
 }
 
-/** `installer retention [--value <days>]`: shows the period, or sets it; shortening it needs a person's terminal. */
+/** `taskpilot retention [--value <days>]`: shows the period, or sets it; shortening it needs a person's terminal. */
 export async function retentionCommand(home: string, value: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   const current = await loadRetention(home);
-  if (value === undefined) return { retention: current, note: "Run logs, inbound messages and recordings older than this are deleted by 'installer doctor'; the audit is never deleted" };
+  if (value === undefined) return { retention: current, note: "Run logs, inbound messages and recordings older than this are deleted by 'taskpilot doctor'; the audit is never deleted" };
   const days = parseDays(value);
   if (days < current.days && !person.interactive) {
     await appendAudit(home, { ts: now(), actor: "agent", event: "retention.refused", ref: RETENTION_FILE, payload: { from: current.days, to: days } });
-    throw new InputError(`A shorter period deletes data sooner: the person runs 'installer retention --value ${days}' in their own terminal`);
+    throw new InputError(`A shorter period deletes data sooner: the person runs 'taskpilot retention --value ${days}' in their own terminal`);
   }
   const next: Retention = { days, at: now(), by: person.interactive ? person.as?.trim() || "terminal" : "agent" };
   await writeConfig(home, RETENTION_FILE, next);
@@ -117,7 +117,7 @@ async function pruneFiles(home: string, dir: string, cutoffMs: number): Promise<
   return count;
 }
 
-/** Deletes what is older than the period (run by `installer doctor`); audited when anything went. Never the audit. */
+/** Deletes what is older than the period (run by `taskpilot doctor`); audited when anything went. Never the audit. */
 export async function pruneOld(home: string, now: string): Promise<Pruned> {
   const { days } = await loadRetention(home);
   const cutoff = new Date(Date.parse(now) - days * DAY_MS).toISOString();

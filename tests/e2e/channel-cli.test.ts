@@ -20,7 +20,7 @@ async function install(secrets: Record<string, string>) {
   return { home, env };
 }
 
-describe("installer channel and disconnect from the shell (D73)", () => {
+describe("taskpilot channel and disconnect from the shell (D73)", () => {
   it("verifies the Telegram bot, lists it, and disconnects it", async () => {
     const { home, env } = await install({ telegram: BOT_TOKEN });
     const verified = runCli(["channel", "telegram"], { home, env });
@@ -35,7 +35,7 @@ describe("installer channel and disconnect from the shell (D73)", () => {
     const { home, env } = await install({});
     const missing = runCli(["channel", "telegram"], { home, env });
     expect(missing.code).toBe(2);
-    expect(missing.json).toEqual({ error: "No telegram secret is stored: run 'installer secret telegram' and enter it on the page that opens", code: 2 });
+    expect(missing.json).toEqual({ error: "No telegram secret is stored: run 'taskpilot secret telegram' and enter it on the page that opens", code: 2 });
     expect(runCli(["channel", "fax"], { home, env }).code).toBe(2);
   });
 
@@ -48,7 +48,7 @@ describe("installer channel and disconnect from the shell (D73)", () => {
   });
 });
 
-describe("installer invite and members from the shell (D77)", () => {
+describe("taskpilot invite and members from the shell (D77)", () => {
   it("refuses to invite from an agent's shell (no terminal) and lists no members", async () => {
     const { home, env } = await install({ telegram: BOT_TOKEN });
     runCli(["channel", "telegram"], { home, env });

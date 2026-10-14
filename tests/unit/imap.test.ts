@@ -53,7 +53,7 @@ describe("IMAP, read-only (D75)", () => {
     fake = await startFakeImap("ssl");
     const refused = withImap(account(fake, "ssl"), "wrong", (session) => session.examine("INBOX"), TEST_TLS_ENV);
     await expect(refused).rejects.toThrow(ActionFailure);
-    await expect(refused).rejects.toThrow("run 'installer secret email' again");
+    await expect(refused).rejects.toThrow("run 'taskpilot secret email' again");
   });
 
   it("quotes backslashes and double quotes, and refuses what a quoted string cannot carry", () => {

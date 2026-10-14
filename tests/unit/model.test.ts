@@ -49,10 +49,10 @@ describe("the direct model's settings (D85)", () => {
     expect(() => parseModelConfig(value)).toThrow(message);
   });
 
-  it("installer model saves the settings privately, audits them and asks for the key; without a value it shows them", async () => {
+  it("taskpilot model saves the settings privately, audits them and asks for the key; without a value it shows them", async () => {
     const home = await makeTempHome();
     expect(await modelCommand(home, JSON.stringify(ANTHROPIC), NOW, true)).toEqual({
-      status: "saved", model: { provider: "anthropic", model: "test-model", max_tokens: 4096 }, key_stored: false, next: "Ask the person to run 'installer secret model' and enter their API key on the page that opens",
+      status: "saved", model: { provider: "anthropic", model: "test-model", max_tokens: 4096 }, key_stored: false, next: "Ask the person to run 'taskpilot secret model' and enter their API key on the page that opens",
     });
     expect((await stat(join(home, MODEL_CONFIG))).mode & 0o777).toBe(0o600);
     expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain('"event":"model.configured"');
@@ -91,7 +91,7 @@ describe("the provider-neutral client, against a fake model server", () => {
   it("a refused key names the fix and never the key; a refusal is an error", async () => {
     const wrong = modelClient(parseModelConfig(ANTHROPIC), "sk-wrong-secret", env()).complete("x");
     await expect(wrong).rejects.toThrow(ActionFailure);
-    await expect(modelClient(parseModelConfig(ANTHROPIC), "sk-wrong-secret", env()).complete("x")).rejects.toThrow(/^(?!.*sk-wrong-secret).*run 'installer secret model'/);
+    await expect(modelClient(parseModelConfig(ANTHROPIC), "sk-wrong-secret", env()).complete("x")).rejects.toThrow(/^(?!.*sk-wrong-secret).*run 'taskpilot secret model'/);
     fake.answer("__refusal");
     await expect(modelClient(parseModelConfig(ANTHROPIC), fake.key, env()).complete("x")).rejects.toThrow("stop_reason refusal");
   });
@@ -125,8 +125,8 @@ describe("which way a judge is asked (D85)", () => {
 
   it("says what to set up when there is no way to ask a judge", async () => {
     const home = await makeTempHome();
-    await expect(judgeBackend(home, state(undefined), env())).rejects.toThrow("no direct model is set up: run 'installer model --value <json>' and 'installer secret model'");
+    await expect(judgeBackend(home, state(undefined), env())).rejects.toThrow("no direct model is set up: run 'taskpilot model --value <json>' and 'taskpilot secret model'");
     await modelCommand(home, JSON.stringify(ANTHROPIC), NOW, true);
-    await expect(judgeBackend(home, state(runtime(false)), { ...env(), INSTALLER_KEYCHAIN_DIR: await makeTempHome() })).rejects.toThrow("ask the person to run 'installer secret model'");
+    await expect(judgeBackend(home, state(runtime(false)), { ...env(), INSTALLER_KEYCHAIN_DIR: await makeTempHome() })).rejects.toThrow("ask the person to run 'taskpilot secret model'");
   });
 });

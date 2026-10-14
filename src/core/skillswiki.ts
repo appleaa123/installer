@@ -7,7 +7,7 @@ import type { Solution } from "./types.js";
 /** The one keychain item and the MCP server name this version knows (D52). */
 export const SKILLSWIKI_SECRET_ID = "skillswiki";
 export const SKILLSWIKI_MCP_NAME = "skillswiki";
-export const KEY_MISSING_HINT = "Skills Wiki key missing: run 'installer secret skillswiki' first";
+export const KEY_MISSING_HINT = "Skills Wiki key missing: run 'taskpilot secret skillswiki' first";
 export const URL_MISSING_HINT = "This install has no Skills Wiki URL: start again with --url <the MCP URL from your Skills Wiki dashboard>";
 /** Actions and checks that call Skills Wiki; a solution with any of them needs `start --url`. */
 export const SKILLSWIKI_ACTIONS: readonly string[] = ["register_mcp", "probe_mcp"];

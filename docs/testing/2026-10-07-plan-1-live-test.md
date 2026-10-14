@@ -54,21 +54,21 @@ npm --version
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
-which installer
+which taskpilot
 cd $T
 ```
 
 If you open a new terminal later, run the `export` lines again (including the `PATH` one) and `cd $T`.
 
-**Expected:** Node is v22 or later. `npm pack` prints `installer-0.1.0.tgz`. `which installer` prints `<your home>/installer-live-test/npm/bin/installer`.
+**Expected:** Node is v22 or later. `npm pack` prints `taskpilot-0.1.0.tgz`. `which taskpilot` prints `<your home>/installer-live-test/npm/bin/taskpilot`.
 
 **Record:**
 - Node version: v22.14.0
 - npm version: 11.12.1
 - Commit shown by `git log`: `e5da2e2 (HEAD -> feat/engine-core) docs(test): add Plan 1 live test guide`
-- `which installer` printed: `/Users/allenliu/installer-live-test/npm/bin/installer`
+- `which taskpilot` printed: `/Users/allenliu/installer-live-test/npm/bin/taskpilot`
 - Pass / Fail: Pass. `npm pack` produced `installer-0.1.0.tgz` (14 files, 11.6 kB).
 
 ---
@@ -102,7 +102,7 @@ ls $T/h1/state $T/h1/config $T/h1/solution
   ```
   ⏳ IN PROGRESS  (4 of 7 steps done) · fixture-basic@1.0.0
   ✅ Working    Write base config · Check base config · Is there shared work? · Morning report time
-  ⛔ Needs you 1. Register the skills server — config/agent-marker.txt not found (failed 1 of 3 tries) → then run 'installer verify brain.register'
+  ⛔ Needs you 1. Register the skills server — config/agent-marker.txt not found (failed 1 of 3 tries) → then run 'taskpilot verify brain.register'
   ```
 - The second `verify brain.register` prints `"status":"passed"`, and the last verify prints `{"status":"passed","next":{"status":"complete"}}`.
 - The final `report` starts with `✅ READY  (7 of 7 steps done) · fixture-basic@1.0.0`, and `--json` starts with `{"overall":"ready",...,"done":7,"total":7`.
@@ -155,8 +155,8 @@ installer --home $T/h2 next
 ```
 
 **Expected:**
-- `start` prints step `pre.check` with `"status":"failed","attempts":1` and `"resume":"installer resume"`.
-- The first `report` says `⛔ Needs you 1. Check the marker file — config/late-marker.txt not found (failed 1 of 3 tries) → then run 'installer resume'`.
+- `start` prints step `pre.check` with `"status":"failed","attempts":1` and `"resume":"taskpilot resume"`.
+- The first `report` says `⛔ Needs you 1. Check the marker file — config/late-marker.txt not found (failed 1 of 3 tries) → then run 'taskpilot resume'`.
 - The first `resume` tries again: `"status":"failed","attempts":2`.
 - The second `resume` reaches the limit: the output starts with `{"status":"blocked"` and shows `"attempts":3`.
 - The third `resume` resets the blocked step and tries once more: `"status":"failed","attempts":1`.
@@ -359,7 +359,7 @@ installer --home $T/h6 submit mode.shared-work --value '"yes"'
 
 ## Test 9: Audit chain verification
 
-There is no `installer doctor` yet (Plan 9), so this calls the verifier in the installed package directly:
+There is no `taskpilot doctor` yet (Plan 9), so this calls the verifier in the installed package directly:
 
 ```bash
 node --input-type=module -e "
@@ -420,7 +420,7 @@ cd $T/emptycwd
 HOME=$T/fakehome installer --home "" start --solution file:$F
 ls -A $T/emptycwd
 ls $T/fakehome/.installer
-HOME=$T/fakehome INSTALLER_HOME="" installer next
+HOME=$T/fakehome INSTALLER_HOME="" taskpilot next
 cd $T
 ```
 
@@ -444,7 +444,7 @@ ls $T/h10
 ```
 
 **Expected:**
-- `{"error":"No install found in this home; run 'installer start --solution <ref>' first","code":2}`.
+- `{"error":"No install found in this home; run 'taskpilot start --solution <ref>' first","code":2}`.
 - `{"error":"Unknown command 'bogus'. Commands: start, next, submit, verify, resume, report","code":2}`.
 - `{"error":"Unknown option '--force'. Options: --home, --solution, --value, --done, --json","code":2}` (since `ef870af`; before that, Node's own message).
 - `ls $T/h10` fails with `No such file or directory`: a failed command creates nothing.
@@ -459,7 +459,7 @@ ls $T/h10
 
 ```bash
 rm -rf ~/installer-live-test
-rm -f $REPO/installer-0.1.0.tgz
+rm -f $REPO/taskpilot-0.1.0.tgz
 ```
 
 Nothing was installed outside `~/installer-live-test`, so this removes everything.
@@ -478,7 +478,7 @@ installer --home $H report --json
 cat $H/state/install-state.json
 ls -la $H $H/state $H/audit $H/config $H/solution
 tail -5 $H/audit/audit.jsonl
-node --version; which installer
+node --version; which taskpilot
 ```
 
 Also note:

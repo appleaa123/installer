@@ -13,8 +13,8 @@ import { InputError } from "./inputs.js";
 import { installerCliPath } from "./register.js";
 
 /**
- * `installer gateway start | stop | status` (D72): the gateway is a detached process of its own,
- * `installer --home <home> gateway-serve`, recorded in `runtime/gateway/gateway.pid`. Start is idempotent: a live
+ * `taskpilot gateway start | stop | status` (D72): the gateway is a detached process of its own,
+ * `taskpilot --home <home> gateway-serve`, recorded in `runtime/gateway/gateway.pid`. Start is idempotent: a live
  * gateway is left alone, and a pid file whose process is gone (a crash, a reboot) is removed and a new gateway
  * started. Stop sends SIGTERM, which ends the long poll at once. Starting it at boot and restarting it after a
  * crash by the OS (launchd, systemd) is Plan 9's host service (D104). The pid file is claimed with an exclusive create,
@@ -46,7 +46,7 @@ const removePid = async (home: string): Promise<void> => rm(await confinedPath(h
 export async function gatewayStatus(home: string): Promise<Record<string, unknown>> {
   const record = await readPid(home);
   if (!record) return { status: "stopped" };
-  if (!isAlive(record.pid)) return { status: "stale", pid: record.pid, note: "The gateway stopped without cleaning up (a crash or a restart): run 'installer gateway start'" };
+  if (!isAlive(record.pid)) return { status: "stale", pid: record.pid, note: "The gateway stopped without cleaning up (a crash or a restart): run 'taskpilot gateway start'" };
   const rounds = Object.fromEntries(await Promise.all(LOOPS.map(async (name) => [name, ((await readConfig(home, statusFile(name))) as { last_round?: string } | null)?.last_round ?? null])));
   return { status: "running", ...record, last_round: rounds, log: await confinedPath(home, LOG_FILE) };
 }
@@ -70,7 +70,7 @@ function spawnGateway(home: string): Promise<number> {
 }
 
 export async function startGateway(home: string, now: () => string): Promise<Record<string, unknown>> {
-  if ((await listChannels(home)).length === 0) throw new InputError("No channel is set up yet: run 'installer channel telegram' or 'installer channel email' first");
+  if ((await listChannels(home)).length === 0) throw new InputError("No channel is set up yet: run 'taskpilot channel telegram' or 'taskpilot channel email' first");
   const current = await gatewayStatus(home);
   if (current.status === "running") return { ...current, note: "The gateway is already running" };
   if (current.status === "stale") await removePid(home);
@@ -122,7 +122,7 @@ export async function claimPid(home: string, startedAt: string): Promise<void> {
     if (existing && existing.pid !== process.pid && isAlive(existing.pid)) throw new ActionFailure(`Another gateway is running for this home (pid ${existing.pid})`);
     await rm(path, { force: true });
   }
-  throw new ActionFailure("Another gateway claimed this home at the same moment: run 'installer gateway status'");
+  throw new ActionFailure("Another gateway claimed this home at the same moment: run 'taskpilot gateway status'");
 }
 
 /** The detached process itself: claims the pid file, reports ready over IPC, runs until SIGTERM. */

@@ -2,7 +2,7 @@ import { saveState } from "../../src/core/state.js";
 import type { CapabilityMap, Roles } from "../../src/core/types.js";
 import { makeTempHome } from "./temp-home.js";
 
-/** What `installer probe` records for the fake agent: headless calls with schema output (C4). */
+/** What `taskpilot probe` records for the fake agent: headless calls with schema output (C4). */
 export const FAKE_RUNTIME: CapabilityMap = {
   profile: "fake-agent", agent_version: "9.9.9", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true, c6_mcp: "not_probed", support_level: 2, tier: "compatible", notes: [],
 };

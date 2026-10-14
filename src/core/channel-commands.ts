@@ -8,7 +8,7 @@ import { telegramApi } from "./telegram.js";
 import { MAIL_SECURITY, type MailSecurity } from "./wire.js";
 
 /**
- * `installer channel [telegram | email --value <json>]` (D73): checks the channel live at once (Telegram getMe;
+ * `taskpilot channel [telegram | email --value <json>]` (D73): checks the channel live at once (Telegram getMe;
  * email IMAP sign-in + EXAMINE and SMTP sign-in, nothing sent) and saves it as verified, or exits 2 with what to
  * fix. Without an id it lists the configured channels. The CHANNELS phase completes through `channel_verified`.
  * Setting up email needs a person at their own terminal, since its servers receive the app password.
@@ -80,17 +80,17 @@ export const describeChannel = (config: ChannelConfig) => ({
 /** The mailbox's servers decide where the app password goes, so like `invite` (D77) only a person at a terminal sets them. */
 async function requireTerminal(home: string, interactive: boolean, now: string): Promise<void> {
   if (interactive) return;
-  await appendAudit(home, { ts: now, actor: "agent", event: "channel.refused", ref: "email", payload: { command: "installer channel email" } });
-  throw new InputError("The mailbox's servers are set by a person in their own terminal, not by the agent: open a terminal and run 'installer channel email --value <servers>' there");
+  await appendAudit(home, { ts: now, actor: "agent", event: "channel.refused", ref: "email", payload: { command: "taskpilot channel email" } });
+  throw new InputError("The mailbox's servers are set by a person in their own terminal, not by the agent: open a terminal and run 'taskpilot channel email --value <servers>' there");
 }
 
 export async function channelCommand(home: string, id: string | undefined, value: string | undefined, now: () => string, env: Env = process.env, interactive = false): Promise<unknown> {
   if (id === undefined) return { channels: (await listChannels(home)).map(describeChannel) };
   const channel: ChannelId = requireChannelId(id);
-  if (channel === "telegram" && value !== undefined) throw new InputError("channel telegram takes no --value: it reads the bot token stored with 'installer secret telegram'");
+  if (channel === "telegram" && value !== undefined) throw new InputError("channel telegram takes no --value: it reads the bot token stored with 'taskpilot secret telegram'");
   if (channel === "email") await requireTerminal(home, interactive, now());
   const config = channel === "telegram" ? await verifyTelegram(now(), env) : await verifyEmail(home, value, now(), env);
   await saveChannel(home, config);
   await appendAudit(home, { ts: now(), actor: "agent", event: "channel.verified", ref: channel, payload: describeChannel(config) });
-  return { status: "verified", ...describeChannel(config), next: "Run 'installer invite <name>' in a terminal for each person who will approve from this channel" };
+  return { status: "verified", ...describeChannel(config), next: "Run 'taskpilot invite <name>' in a terminal for each person who will approve from this channel" };
 }

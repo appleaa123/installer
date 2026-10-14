@@ -45,7 +45,7 @@ const stateFile = (id: string): string => join(WORKFLOW_STATE_DIR, `${id}.json`)
 export async function loadSandboxMode(home: string): Promise<SandboxMode | null> {
   const raw = await readConfig(home, SANDBOX_FILE);
   if (raw === null) return null;
-  if (!isRecord(raw) || typeof raw.on !== "boolean") throw new StateCorruptError(`${SANDBOX_FILE} has an unexpected shape; remove it and run 'installer sandbox on' or 'off' again`);
+  if (!isRecord(raw) || typeof raw.on !== "boolean") throw new StateCorruptError(`${SANDBOX_FILE} has an unexpected shape; remove it and run 'taskpilot sandbox on' or 'off' again`);
   return raw as unknown as SandboxMode;
 }
 

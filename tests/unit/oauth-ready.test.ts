@@ -46,7 +46,7 @@ describe("oauthReady (live setup guides, 4.5)", () => {
   it("asks to sign in again when Sheets refuses the token", async () => {
     await fake.debug("/debug/fail", { status: 401, times: 1 });
     const result = await oauthReady("google", await env(SIGNED_IN));
-    expect(result).toEqual({ ok: false, hint: expect.stringContaining("run 'installer secret google' to sign in again") });
+    expect(result).toEqual({ ok: false, hint: expect.stringContaining("run 'taskpilot secret google' to sign in again") });
   });
 
   it("says when the Sheets permission was not ticked at sign-in", async () => {
@@ -91,7 +91,7 @@ describe("oauthReady (live setup guides, 4.5)", () => {
   });
 
   it("names the command to run when nobody signed in yet", async () => {
-    await expect(oauthReady("google", await env())).rejects.toThrow("No Google sign-in is stored yet: run 'installer secret google'");
+    await expect(oauthReady("google", await env())).rejects.toThrow("No Google sign-in is stored yet: run 'taskpilot secret google'");
   });
 
   it("reports an unreachable Google as a fixable failure", async () => {

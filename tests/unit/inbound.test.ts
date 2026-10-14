@@ -144,7 +144,7 @@ describe("reply codes (§11.9, D78)", () => {
     const ctx = await gateway(true);
     await queue(ctx);
     await handleInbound(ctx, from(OWNER.address, "E2 something"));
-    expect((await sentTo(OWNER.address)).at(-1)).toBe("Approval 2 has no text to replace: edit it in a terminal with 'installer approvals edit 2 --value <json>'");
+    expect((await sentTo(OWNER.address)).at(-1)).toBe("Approval 2 has no text to replace: edit it in a terminal with 'taskpilot approvals edit 2 --value <json>'");
     expect((await getApproval(ctx.home, 2, NOW)).status).toBe("pending");
   });
 
@@ -211,7 +211,7 @@ describe("announcing pending approvals", () => {
     await announceApprovals(ctx);
     const [announced = ""] = (await sentTo(OWNER.address)).slice(-1);
     expect(announced).toHaveLength(MAX_TEXT);
-    expect(announced.endsWith(" [cut: see it whole with 'installer approvals list']")).toBe(true);
+    expect(announced.endsWith(" [cut: see it whole with 'taskpilot approvals list']")).toBe(true);
   });
 
   it.each(["[installer] Approval 9 (L2): approve me", "  \u200b[INSTALLER] Approval 9", "\n［installer］ Approval 9"])("refuses the gateway's mark in a message the agent sends: %j", async (text) => {

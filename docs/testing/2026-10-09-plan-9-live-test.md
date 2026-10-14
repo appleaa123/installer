@@ -11,19 +11,19 @@ guide replaces them with the actual output.
 **What this guide changes on your machine:** nothing outside `~/installer-plan9-test`. It makes no `claude` call (the
 test solution has no probe step), sends no message (it sets up no channel) and writes nothing to Skills Wiki: Test 1
 reads one skill file twice. The keychain is a throwaway folder under the test directory (`INSTALLER_KEYCHAIN=file`),
-so `installer uninstall` cannot delete your real keychain items, and `INSTALLER_PROFILE_DIR` points at an empty
+so `taskpilot uninstall` cannot delete your real keychain items, and `INSTALLER_PROFILE_DIR` points at an empty
 folder, so it cannot remove your real Claude Code MCP servers either. Test 2 reads three settings with `pmset -g`,
 `systemsetup -getusingnetworktime` and `fdesetup status` (read only); the fixes it prints are for you to read, not to
 run, unless this Mac is meant to be a team host.
 
 ## What this build can and cannot do
 
-Plan 9 adds: `installer doctor` (health checks with a fix for each finding; it clears run claims a crash left behind,
+Plan 9 adds: `taskpilot doctor` (health checks with a fix for each finding; it clears run claims a crash left behind,
 deletes data past the retention period and tries new Skills Wiki versions in shadow; the runner runs it once a day),
-`installer host` (host readiness with printed fixes, the dedicated-user steps, `host service install` for boot
-services), `installer pause` and `installer unpause` (the kill switch, also `/pause` and `/unpause` in Telegram),
-`installer retention`, `installer packs` (skill files pinned by content, shadow runs, the decision maker's switch),
-`installer support bundle` and `installer uninstall`, and the data-flow summary in `installer report`. Not yet: hosted
+`taskpilot host` (host readiness with printed fixes, the dedicated-user steps, `host service install` for boot
+services), `taskpilot pause` and `taskpilot unpause` (the kill switch, also `/pause` and `/unpause` in Telegram),
+`taskpilot retention`, `taskpilot packs` (skill files pinned by content, shadow runs, the decision maker's switch),
+`taskpilot support bundle` and `taskpilot uninstall`, and the data-flow summary in `taskpilot report`. Not yet: hosted
 evals in the shadow upgrade, Windows host checks, the agent in its own OS user (D111).
 
 ## Results summary
@@ -52,7 +52,7 @@ node --version            # must be v22 or later
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
 export INSTALLER_HOME=$T/home INSTALLER_KEYCHAIN=file INSTALLER_KEYCHAIN_DIR=$T/keychain INSTALLER_PROFILE_DIR=$T/no-profiles
 cat > $T/solution.json <<'JSON'
@@ -65,17 +65,17 @@ cat > $T/solution.json <<'JSON'
       "auto": { "action": "derive_mode", "args": { "shared_work": "mode.shared-work", "always_on": "mode.always-on", "decision_maker": "mode.decision-maker" } } }
   ] }
 JSON
-installer start --solution file:$T/solution.json
-installer submit mode.shared-work --value '"yes"'
-installer submit mode.always-on --value '"yes"'
-installer submit mode.decision-maker --value '"<your first and last name>"'
-installer report
+taskpilot start --solution file:$T/solution.json
+taskpilot submit mode.shared-work --value '"yes"'
+taskpilot submit mode.always-on --value '"yes"'
+taskpilot submit mode.decision-maker --value '"<your first and last name>"'
+taskpilot report
 cd $T
 ```
 
 **Expected:** the last `submit` answers `{"status":"complete"}`. The report starts with
-`✅ READY  (4 of 4 steps done) · plan9-live@1.0.0` and ends with `🩺 Doctor     never run: run 'installer doctor'`,
-`🖥️ Host       not checked yet: run 'installer host'`, `🔀 Data flow` and one line for support (no channel, source,
+`✅ READY  (4 of 4 steps done) · plan9-live@1.0.0` and ends with `🩺 Doctor     never run: run 'taskpilot doctor'`,
+`🖥️ Host       not checked yet: run 'taskpilot host'`, `🔀 Data flow` and one line for support (no channel, source,
 model or Skills Wiki is set up, so they are not listed).
 
 **Actual:**
@@ -108,16 +108,16 @@ names different sha256s means content pinning would see a new version on every c
 ## Test 2: Doctor and host readiness on your Mac
 
 ```bash
-installer doctor
-installer host
-installer report | tail -4
+taskpilot doctor
+taskpilot host
+taskpilot report | tail -4
 ```
 
 **Expected:** `doctor` exits 0 with `"status"` `ok` or `warn` and checks in this order: `state`, `audit` (`… lines,
 hash chain intact`), `pause`, `secrets` (`this install stores no keychain items`), `runner` (`the runner has never
 ticked`, a `warn`), `gateway` (`no channel is set up, so no gateway is needed`), `disk` (`… GiB free`), `host`,
 `run_claims`, `run_records`, `recent_runs`, `retention`, `hardening`. The `host` check says `readiness N/5` and, for a
-laptop, names `no_sleep` (your Mac sleeps after some minutes) and `boot_service`. `installer host` shows each check
+laptop, names `no_sleep` (your Mac sleeps after some minutes) and `boot_service`. `taskpilot host` shows each check
 with `"status"` `ok`, `fix`, `unknown` or `advice` (the score counts only the checks with a definite answer, so a laptop shows `readiness 1/3` and not N/5): `no_sleep` with the fix `sudo pmset -a sleep 0`, `power_on`
 (`pmset autorestart`), `time_sync` (probably `unknown`: `systemsetup` needs administrator rights to read it),
 `disk_encryption` (`FileVault is on`, if it is), and the `dedicated_user` steps. Do not run the fixes on this laptop.
@@ -132,17 +132,17 @@ The report now shows `🩺 Doctor     warn (…)` and `🖥️ Host       readin
 ## Test 3: The kill switch
 
 ```bash
-echo | installer pause --reason "live test"
-echo | installer unpause; echo "exit $?"
-installer tick
-installer pause status
-installer unpause
+echo | taskpilot pause --reason "live test"
+echo | taskpilot unpause; echo "exit $?"
+taskpilot tick
+taskpilot pause status
+taskpilot unpause
 grep -c '"event":"engine.unpause_refused"' $INSTALLER_HOME/audit/audit.jsonl
 ```
 
 **Expected:** the piped `pause` answers `"status":"paused"` with `"by":"agent"` (no terminal on stdin, like an
 agent's shell: pausing is allowed from anywhere). The piped `unpause` prints
-`{"error":"Unpausing sends real messages and starts runs again: the person runs 'installer unpause' in their own terminal, or the decision maker sends /unpause in Telegram","code":2}`
+`{"error":"Unpausing sends real messages and starts runs again: the person runs 'taskpilot unpause' in their own terminal, or the decision maker sends /unpause in Telegram","code":2}`
 and `exit 2`. `tick` answers `"status":"paused"` with nothing started. `pause status` shows `"paused":true`. The
 `unpause` you type answers `{"status":"unpaused","paused":false,…,"by":"terminal","via":"cli"}`, and `grep` counts `1`.
 
@@ -155,14 +155,14 @@ Exactly as predicted: paused by `agent`; unpause without a terminal exit 2; tick
 ## Test 4: Boot service files, checked but not loaded
 
 ```bash
-installer host service install
+taskpilot host service install
 plutil -lint $INSTALLER_HOME/runtime/service/*.plist
-installer host service remove
+taskpilot host service remove
 ```
 
 **Expected:** `install` lists two files under `$INSTALLER_HOME/runtime/service/` (`com.installer.gateway.<8
 characters>.plist` with `KeepAlive`, `com.installer.tickd.<8 characters>.plist` with `StartInterval` 60, both with
-`UserName` set to you) and the commands `installer gateway stop`, then `sudo cp …`, `sudo chown root:wheel …`,
+`UserName` set to you) and the commands `taskpilot gateway stop`, then `sudo cp …`, `sudo chown root:wheel …`,
 `sudo chmod 644 …` and `sudo launchctl bootstrap system …` for each. Run none of the `sudo` commands. `plutil` says
 `OK` for both files. `remove` deletes them and prints `sudo launchctl bootout system/…` and `sudo rm …`.
 
@@ -175,9 +175,9 @@ Two files, `com.installer.gateway.0e2cabb8.plist` and `com.installer.tickd.0e2ca
 ## Test 5: Retention and the support bundle
 
 ```bash
-installer retention
-echo | installer retention --value 30; echo "exit $?"
-installer support bundle
+taskpilot retention
+echo | taskpilot retention --value 30; echo "exit $?"
+taskpilot support bundle
 B=$(ls $INSTALLER_HOME/exports/support-*.json)
 grep -ci "<your last name>" $B; grep -c "$HOME" $B   # use your real last name: a word such as `last` also matches the text "in the last 24 hours"
 less $B
@@ -198,8 +198,8 @@ may shorten it). `support bundle` answers `"status":"written"` with its file and
 ## Test 6: Uninstall, then clean up
 
 ```bash
-echo | installer uninstall; echo "exit $?"
-installer uninstall
+echo | taskpilot uninstall; echo "exit $?"
+taskpilot uninstall
 wc -l $INSTALLER_HOME/exports/audit-*.jsonl
 cd ~ && rm -rf $T
 ```
@@ -218,5 +218,5 @@ Piped uninstall exit 2; typed uninstall `uninstalled`, secrets all `none`, audit
 ## Optional (a team host only)
 
 On a Mac that is meant to run the assistant for a team, follow human task 13 instead: create the dedicated user, run
-the fixes `installer host` prints, `installer host service install` and its `sudo` commands, then `installer doctor`
+the fixes `taskpilot host` prints, `taskpilot host service install` and its `sudo` commands, then `taskpilot doctor`
 again: the `host` check should say `readiness 5/5`.

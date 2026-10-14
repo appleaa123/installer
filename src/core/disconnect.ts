@@ -62,7 +62,7 @@ async function connectorName(id: string): Promise<{ readonly name: string; reado
   }
 }
 
-/** `installer disconnect <connector>` (§14.2): delete its sign-in from the keychain first, then audit; the person removes the grant at the provider. */
+/** `taskpilot disconnect <connector>` (§14.2): delete its sign-in from the keychain first, then audit; the person removes the grant at the provider. */
 async function disconnectConnector(home: string, id: string, now: () => string): Promise<ConnectorDisconnected> {
   if (!Object.hasOwn(CONNECTOR_SECRETS, id)) throw new InputError(`'${id}' cannot be disconnected; this version can disconnect: ${[SKILLSWIKI_SECRET_ID, ...CHANNEL_IDS, ...Object.keys(CONNECTOR_SECRETS)].join(", ")}`);
   const deleted = await deleteSecret(CONNECTOR_SECRETS[id] ?? id);
@@ -78,7 +78,7 @@ const CHANNEL_NOTES: Readonly<Record<ChannelId, string>> = {
   email: "The installer deleted the app password and the channel's settings from this computer. Delete the app password at your mail provider too, so it can no longer sign in.",
 };
 
-/** `installer disconnect telegram | email` (§14.2): delete the secret and the channel's settings, and audit it. */
+/** `taskpilot disconnect telegram | email` (§14.2): delete the secret and the channel's settings, and audit it. */
 async function disconnectChannel(home: string, id: ChannelId, now: () => string): Promise<ConnectorDisconnected> {
   const deleted = await deleteSecret(id);
   const removed = await removeChannel(home, id);

@@ -142,7 +142,7 @@ describe("the replay gate and versions (§10.8)", () => {
   it("rolls back to a kept version as a new version", async () => {
     const home = await hardenable();
     await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT);
-    expect(await hardenCommand(home, "tidy", "rollback", "1", TERMINAL, () => AT)).toEqual({ status: "rolled_back", workflow: "tidy", restored: 1, version: 3, sandbox: true, next: expect.stringContaining("installer dryrun tidy") });
+    expect(await hardenCommand(home, "tidy", "rollback", "1", TERMINAL, () => AT)).toEqual({ status: "rolled_back", workflow: "tidy", restored: 1, version: 3, sandbox: true, next: expect.stringContaining("taskpilot dryrun tidy") });
     expect(await load(home)).toMatchObject({ version: 3, mode: "agentic" });
     await expect(hardenCommand(home, "tidy", "rollback", "7", TERMINAL, () => AT)).rejects.toThrow("has no kept version 7");
   });

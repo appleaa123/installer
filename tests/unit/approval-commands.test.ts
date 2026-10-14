@@ -22,7 +22,7 @@ async function queue() {
   return { ctx, run };
 }
 
-describe("installer approvals (D61)", () => {
+describe("taskpilot approvals (D61)", () => {
   it("lists every item without its token", async () => {
     const { run } = await queue();
     const listed = (await run({ sub: "list" })) as { items: { id: number; status: string }[] };
@@ -57,7 +57,7 @@ describe("installer approvals (D61)", () => {
 
   it("refuses a decision typed where no terminal is attached (an agent's shell), audits it, and leaves the item pending", async () => {
     const { ctx, run } = await queue();
-    await expect(run({ sub: "approve", id: "1", interactive: false })).rejects.toThrow("Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'installer approvals approve 1' there");
+    await expect(run({ sub: "approve", id: "1", interactive: false })).rejects.toThrow("Approvals are decided by a person in their own terminal, not by the agent: open a terminal and run 'taskpilot approvals approve 1' there");
     const last = (await readFile(join(ctx.home, AUDIT_FILE), "utf8")).trim().split("\n").at(-1) ?? "";
     expect(JSON.parse(last)).toMatchObject({ event: "approval.refused", actor: "agent", ref: "approval:1" });
     await expect(run({ sub: "list" })).resolves.toMatchObject({ items: [{ id: 1, status: "pending" }, { id: 2 }] });

@@ -23,7 +23,7 @@ async function home(): Promise<string> {
 const invite = async (dir: string, name: string) => (await inviteCommand(dir, ROLES, name, true, now)) as { id: number; code: string; role: string; join: string[] };
 const events = async (dir: string): Promise<string[]> => (await readFile(join(dir, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { event: string }).event);
 
-describe("installer invite (D77)", () => {
+describe("taskpilot invite (D77)", () => {
   it("makes a one-time code, says how to join, and stores only the code's hash", async () => {
     const dir = await home();
     const result = await invite(dir, "Ada");
@@ -44,7 +44,7 @@ describe("installer invite (D77)", () => {
 
   it("refuses an agent's shell, audits it, and creates nothing", async () => {
     const dir = await home();
-    await expect(inviteCommand(dir, ROLES, "Owner", false, now)).rejects.toThrow("run 'installer invite \"Owner\"' there");
+    await expect(inviteCommand(dir, ROLES, "Owner", false, now)).rejects.toThrow("run 'taskpilot invite \"Owner\"' there");
     expect(await events(dir)).toEqual(["member.refused"]);
     await expect(readdir(join(dir, MEMBERS_DIR))).rejects.toThrow();
   });
@@ -90,7 +90,7 @@ describe("joining with a code", () => {
   });
 });
 
-describe("installer members", () => {
+describe("taskpilot members", () => {
   it("lists members without their code hashes, and removes one from a terminal only", async () => {
     const dir = await home();
     const { code } = await invite(dir, "Ada");

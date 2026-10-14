@@ -13,5 +13,5 @@
   },
   "schema": { "flag": ["--output-schema", "{schema_file}"], "result_path": "item.text" },
   "resume": { "cmd": ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "{session_id}", "{prompt}"] },
-  "tos_review": { "status": "ok", "note": "A person read OpenAI's terms on 2026-10-12 and found running the Codex CLI from another program allowed (D121). Flags written from Codex's documentation and not yet run (O1); tier Unknown until a person runs installer certify with it." }
+  "tos_review": { "status": "ok", "note": "A person read OpenAI's terms on 2026-10-12 and found running the Codex CLI from another program allowed (D121). Flags written from Codex's documentation and not yet run (O1); tier Unknown until a person runs taskpilot certify with it." }
 }

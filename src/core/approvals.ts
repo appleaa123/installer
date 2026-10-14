@@ -13,7 +13,7 @@ export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired", "used"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 const TOKEN_PATTERN = /^([1-9]\d*)\.[0-9a-f]{64}$/;
-/** Which surface made a tool call: the agent over MCP, the shell (`installer tool`), the gateway itself (D79), or a workflow run (D81). */
+/** Which surface made a tool call: the agent over MCP, the shell (`taskpilot tool`), the gateway itself (D79), or a workflow run (D81). */
 export type Via = "mcp" | "cli" | "gateway" | "runner";
 
 export interface ProposedAction {

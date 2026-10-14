@@ -10,12 +10,12 @@ on 2026-10-08 (branch `feat/runtime-conformance`, Claude Code 2.1.294, Node 22.1
 
 ## What this build can and cannot do
 
-Plan 2 adds: `installer probe` (does your agent support headless calls, structured output and session resume),
+Plan 2 adds: `taskpilot probe` (does your agent support headless calls, structured output and session resume),
 `https:` solution links, the three MODE questions (personal, team host or hybrid, and the decision maker),
 per-agent hints, `INSTALL.md` and a starter solution. It still needs no key or password.
 It cannot yet connect Skills Wiki, enter keys, or install a `skillswiki:` solution: that is Plan 3.
 
-`installer probe` makes four very small calls to your agent (Claude Code `-p`), so it uses a little of your own plan or credit.
+`taskpilot probe` makes four very small calls to your agent (Claude Code `-p`), so it uses a little of your own plan or credit.
 
 ## Results summary
 
@@ -42,17 +42,17 @@ node --version            # must be v22 or later
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
-which installer
+which taskpilot
 cd $T
 ```
 
-**Expected:** `which installer` prints `<your home>/installer-plan2-test/npm/bin/installer`.
+**Expected:** `which taskpilot` prints `<your home>/installer-plan2-test/npm/bin/taskpilot`.
 
 **Record:**
 - Commit shown by `git log`: 4a0c818 (fix(core): refuse MODE questions derive_mode cannot use)
-- `which installer` printed: /Users/allenliu/installer-plan2-test/npm/bin/installer
+- `which taskpilot` printed: /Users/allenliu/installer-plan2-test/npm/bin/taskpilot
 - Pass / Fail: Pass (2026-10-12; Node v22.14.0)
 
 ---
@@ -60,7 +60,7 @@ cd $T
 ## Test 1: Probe your real Claude Code
 
 ```bash
-installer probe
+taskpilot probe
 echo $?
 ```
 
@@ -136,7 +136,7 @@ ls $T/h3
 ## Test 4: No known agent
 
 ```bash
-installer probe --profile $REPO/tests/fixtures/profiles/missing-agent.json
+taskpilot probe --profile $REPO/tests/fixtures/profiles/missing-agent.json
 echo $?
 ```
 

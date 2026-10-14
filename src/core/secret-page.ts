@@ -113,7 +113,7 @@ export async function startSecretPage(options: SecretPageOptions): Promise<Secre
   return { url: `${page.origin}${path}`, done, close: () => close("expired") };
 }
 
-/** Starts `installer secret-serve <id>` detached; the child reports its url over IPC and lives on after this process exits. */
+/** Starts `taskpilot secret-serve <id>` detached; the child reports its url over IPC and lives on after this process exits. */
 export function launchSecretPage(id: string): Promise<{ url: string; pid: number }> {
   return new Promise((done, fail) => {
     const child = spawn(process.execPath, [process.argv[1] ?? "", "secret-serve", id], { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });

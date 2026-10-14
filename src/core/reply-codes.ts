@@ -23,14 +23,14 @@ import { MAX_TEXT, invokeTool, prepareAction, requireTool, type ToolContext } fr
 export const ANNOUNCED_DIR = join("state", "gateway", "announced");
 /** Items recorded in sandbox/outbox while the install was not finished (R6), so they are recorded once. */
 export const RECORDED_DIR = join("state", "gateway", "announced-recorded");
-const CUT = " [cut: see it whole with 'installer approvals list']";
+const CUT = " [cut: see it whole with 'taskpilot approvals list']";
 
 const decided = (item: ApprovalItem): string => `Approval ${item.id} is ${item.status}${item.decision?.decision === "edited" ? " as edited" : ""}.`;
 
 async function edit(ctx: ToolContext, item: ApprovalItem, decider: Decider, text: string): Promise<ApprovalItem> {
   const current = item.action.args.text;
   if (typeof current !== "string") {
-    return refuseDecision(ctx.home, item, decider.name, `Approval ${item.id} has no text to replace: edit it in a terminal with 'installer approvals edit ${item.id} --value <json>'`, ctx.now());
+    return refuseDecision(ctx.home, item, decider.name, `Approval ${item.id} has no text to replace: edit it in a terminal with 'taskpilot approvals edit ${item.id} --value <json>'`, ctx.now());
   }
   if (text === "") return refuseDecision(ctx.home, item, decider.name, `E${item.id} needs the new text after the code, for example: E${item.id} Thanks, see you Tuesday`, ctx.now());
   const prepared = await prepareAction(ctx, requireTool(ctx.registry, item.action.tool), { ...item.action.args, text });

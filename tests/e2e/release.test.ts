@@ -14,7 +14,7 @@ function packed(): string[] {
 }
 
 describe("release readiness (D119)", () => {
-  it("installer version prints the installer's version and Node's", async () => {
+  it("taskpilot version prints the installer's version and Node's", async () => {
     const result = runCli(["version"], { home: await makeTempHome() });
     expect(result.code).toBe(0);
     expect(result.json).toEqual({ installer: VERSION, node: process.version });

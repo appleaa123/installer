@@ -27,7 +27,7 @@ import type { InstallState } from "./types.js";
 import { loadWorkflow, workflowIds } from "./workflow.js";
 
 /**
- * The checks of `installer doctor` (spec §16.1, D103). Each looks at one part of the install and says `ok`, `warn`
+ * The checks of `taskpilot doctor` (spec §16.1, D103). Each looks at one part of the install and says `ok`, `warn`
  * (it works, but something needs a look), `fail` (something is broken) or `fixed` (doctor repaired it itself: only
  * run claims a crash left behind, and data past the retention period). Every finding names what to do next.
  */
@@ -65,7 +65,7 @@ export interface DoctorCheckDef {
 export const CLAIM_GRACE_MS = 5 * 60 * 1000;
 export const MIN_FREE_BYTES = 1024 ** 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SCHEDULE_FIX = "Run 'installer schedule install' and ask the person to run the commands it prints (on a team host: 'installer host service install')";
+const SCHEDULE_FIX = "Run 'taskpilot schedule install' and ask the person to run the commands it prints (on a team host: 'taskpilot host service install')";
 
 const ok = (id: string, detail: string): DoctorCheck => ({ id, status: "ok", detail });
 /** A failure the person can act on, as opposed to a bug: it becomes a finding, never a crash. */
@@ -94,7 +94,7 @@ async function backupProblem(home: string): Promise<string | null> {
 }
 
 async function stateCheck(ctx: DoctorContext): Promise<DoctorCheck> {
-  if (ctx.stateError) return { id: "state", status: "fail", detail: ctx.stateError, fix: "Keep a copy of both files, copy state/install-state.json.bak over state/install-state.json, then run 'installer doctor' again" };
+  if (ctx.stateError) return { id: "state", status: "fail", detail: ctx.stateError, fix: "Keep a copy of both files, copy state/install-state.json.bak over state/install-state.json, then run 'taskpilot doctor' again" };
   const backup = await backupProblem(ctx.home);
   return backup === null ? ok("state", "the install state and its backup are readable") : { id: "state", status: "warn", detail: backup, fix: "The next change of the install writes a fresh backup" };
 }
@@ -102,13 +102,13 @@ async function stateCheck(ctx: DoctorContext): Promise<DoctorCheck> {
 async function auditCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const result = await withAuditLock(ctx.home, () => verifyAudit(ctx.home, ctx.state?.audit_head));
   if (result.ok) return ok("audit", `${result.lines} lines, hash chain intact`);
-  return { id: "audit", status: "fail", detail: `audit/audit.jsonl, line ${result.line}: ${result.reason}`, fix: "Never edit the audit; restore it from a copy, and send 'installer support bundle' to the person who set this up" };
+  return { id: "audit", status: "fail", detail: `audit/audit.jsonl, line ${result.line}: ${result.reason}`, fix: "Never edit the audit; restore it from a copy, and send 'taskpilot support bundle' to the person who set this up" };
 }
 
 async function pauseCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const pause = await loadPause(ctx.home);
   if (!pause?.paused) return ok("pause", "running (not paused)");
-  return { id: "pause", status: "warn", detail: `paused since ${pause.at} by ${pause.by}${pause.reason ? ` (${pause.reason})` : ""}: nothing is sent and no run starts`, fix: "A person runs 'installer unpause' in their own terminal, or the decision maker sends /unpause" };
+  return { id: "pause", status: "warn", detail: `paused since ${pause.at} by ${pause.by}${pause.reason ? ` (${pause.reason})` : ""}: nothing is sent and no run starts`, fix: "A person runs 'taskpilot unpause' in their own terminal, or the decision maker sends /unpause" };
 }
 
 /** The keychain items this install uses: Skills Wiki, each channel, each connected source's sign-in, the direct model. */
@@ -133,7 +133,7 @@ async function secretsCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const missing: string[] = [];
   for (const id of ids) if ((await getSecret(id, ctx.env)) === null) missing.push(id);
   if (missing.length === 0) return ok("secrets", ids.length === 0 ? "this install stores no keychain items" : `keychain items present: ${ids.join(", ")}`);
-  return { id: "secrets", status: "fail", detail: `missing from the keychain: ${missing.join(", ")}`, fix: missing.map((id) => `installer secret ${id}`).join("; ") };
+  return { id: "secrets", status: "fail", detail: `missing from the keychain: ${missing.join(", ")}`, fix: missing.map((id) => `taskpilot secret ${id}`).join("; ") };
 }
 
 async function skillswikiCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
@@ -150,7 +150,7 @@ async function channelsCheck(ctx: DoctorContext): Promise<DoctorCheck[]> {
       checks.push(ok(`channel.${config.channel}`, await checkChannel(config, ctx.env)));
     } catch (error) {
       if (!isDomainError(error)) throw error;
-      checks.push({ id: `channel.${config.channel}`, status: "fail", detail: error.message, fix: `Check the ${config.channel} secret ('installer secret ${config.channel}') and the provider, then 'installer channel ${config.channel}'` });
+      checks.push({ id: `channel.${config.channel}`, status: "fail", detail: error.message, fix: `Check the ${config.channel} secret ('taskpilot secret ${config.channel}') and the provider, then 'taskpilot channel ${config.channel}'` });
     }
   }
   return checks;
@@ -169,15 +169,15 @@ async function gatewayCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const status = await gatewayStatus(ctx.home);
   if (status.status === "running") return ok("gateway", `running (pid ${String(status.pid)})`);
   const channels = (await listChannels(ctx.home)).length;
-  if (status.status === "stale") return { id: "gateway", status: "fail", detail: String(status.note), fix: "installer gateway start (on a team host: 'installer host service install' starts it at boot)" };
-  return channels === 0 ? ok("gateway", "no channel is set up, so no gateway is needed") : { id: "gateway", status: "warn", detail: "stopped: messages are not received and approvals are not announced", fix: "installer gateway start" };
+  if (status.status === "stale") return { id: "gateway", status: "fail", detail: String(status.note), fix: "taskpilot gateway start (on a team host: 'taskpilot host service install' starts it at boot)" };
+  return channels === 0 ? ok("gateway", "no channel is set up, so no gateway is needed") : { id: "gateway", status: "warn", detail: "stopped: messages are not received and approvals are not announced", fix: "taskpilot gateway start" };
 }
 
 async function diskCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const free = await ctx.freeBytes(ctx.home);
   const gib = (free / 1024 ** 3).toFixed(1);
   if (free >= MIN_FREE_BYTES) return ok("disk", `${gib} GiB free`);
-  return { id: "disk", status: "warn", detail: `only ${gib} GiB free on the engine's disk`, fix: "Free some space, or shorten the retention period in a person's terminal ('installer retention --value <days>')" };
+  return { id: "disk", status: "warn", detail: `only ${gib} GiB free on the engine's disk`, fix: "Free some space, or shorten the retention period in a person's terminal ('taskpilot retention --value <days>')" };
 }
 
 /** D103: a key claimed by a process that died before writing its run.json blocks that key for ever; doctor clears it. */
@@ -200,7 +200,7 @@ async function runsCheck(ctx: DoctorContext): Promise<DoctorCheck[]> {
   ];
   return [
     damaged.length === 0 ? ok("run_records", `${runs.length} run records readable`) : { id: "run_records", status: "warn", detail: `damaged, skipped by the tick: ${damaged.join(", ")}`, fix: "Restore each file from a copy, or remove that run's folder (the run is then forgotten)" },
-    problems.length === 0 ? ok("recent_runs", `${recent.length} runs in the last 24 hours, none failed or missed`) : { id: "recent_runs", status: "warn", detail: `in the last 24 hours: ${problems.join("; ")}`, fix: "See 'installer schedule list' and the run folders; 'installer run <workflow>' runs one again" },
+    problems.length === 0 ? ok("recent_runs", `${recent.length} runs in the last 24 hours, none failed or missed`) : { id: "recent_runs", status: "warn", detail: `in the last 24 hours: ${problems.join("; ")}`, fix: "See 'taskpilot schedule list' and the run folders; 'taskpilot run <workflow>' runs one again" },
   ];
 }
 
@@ -220,10 +220,10 @@ async function hardeningCheck(ctx: DoctorContext): Promise<DoctorCheck> {
       if (!(error instanceof InputError)) throw error;
     }
   }
-  return ok("hardening", ready.length === 0 ? "no hardening proposal is ready" : `hardening proposals ready: ${ready.join(", ")} ('installer harden <workflow>' shows each)`);
+  return ok("hardening", ready.length === 0 ? "no hardening proposal is ready" : `hardening proposals ready: ${ready.join(", ")} ('taskpilot harden <workflow>' shows each)`);
 }
 
-/** Layer 1 (D42, D104): re-checked daily; the score goes into the report, the fixes are printed by 'installer host'. */
+/** Layer 1 (D42, D104): re-checked daily; the score goes into the report, the fixes are printed by 'taskpilot host'. */
 async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   if (!ctx.host) return ok("host", `host readiness not checked here (${HOST_CHECKS_ENV}=none)`);
   const readiness = await hostReadiness(ctx.home, ctx.state, ctx.host, ctx.now);
@@ -233,7 +233,7 @@ async function hostCheck(ctx: DoctorContext): Promise<DoctorCheck> {
   const notRead = unread.length === 0 ? "" : `; not read: ${unread.join(", ")}`;
   if (!readiness.applies) return ok("host", `readiness ${readiness.score} (Personal mode: for information only)${notRead}`);
   if (open.length === 0) return ok("host", `readiness ${readiness.score}${notRead}`);
-  return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}${notRead}`, fix: "'installer host' prints each fix; a person with administrator rights runs them in their own terminal" };
+  return { id: "host", status: "warn", detail: `readiness ${readiness.score}; not right yet: ${open.join(", ")}${notRead}`, fix: "'taskpilot host' prints each fix; a person with administrator rights runs them in their own terminal" };
 }
 
 /** §14.3, D107, D108: a new version of a pinned pack is found, tried in shadow, and left for the decision maker. */
@@ -244,7 +244,7 @@ async function packsCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
   const waiting = Object.entries(await loadPacks(ctx.home)).filter(([, pin]) => pin.candidate !== undefined);
   if (waiting.length === 0) return ok("packs", "every pinned pack is what Skills Wiki serves");
   const states = waiting.map(([pack, pin]) => `${pack}: a new version, shadow ${pin.candidate?.shadow ? (pin.candidate.shadow.passed ? "passed" : "did not pass") : "not run"}`);
-  return { id: "packs", status: "warn", detail: states.join("; "), fix: "'installer packs shadow <pack>' tries a version not run yet; the decision maker reads 'installer packs list' and switches with 'installer packs switch <pack> --as <name>' in their own terminal" };
+  return { id: "packs", status: "warn", detail: states.join("; "), fix: "'taskpilot packs shadow <pack>' tries a version not run yet; the decision maker reads 'taskpilot packs list' and switches with 'taskpilot packs switch <pack> --as <name>' in their own terminal" };
 }
 
 export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [

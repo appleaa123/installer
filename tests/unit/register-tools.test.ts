@@ -40,7 +40,7 @@ describe("register_tools_mcp (D56)", () => {
 
   it("needs a probed agent, and says how to work without one", async () => {
     await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" })).rejects.toThrow(ActionFailure);
-    await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" })).rejects.toThrow("or use 'installer tool' instead");
+    await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" })).rejects.toThrow("or use 'taskpilot tool' instead");
   });
 
   it("is refused in a solution before the probe step", () => {

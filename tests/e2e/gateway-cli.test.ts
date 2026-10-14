@@ -27,7 +27,7 @@ async function install() {
   return { home, env };
 }
 
-/** `installer gateway start` without waiting for it, so two can race; resolves with its JSON line. */
+/** `taskpilot gateway start` without waiting for it, so two can race; resolves with its JSON line. */
 const startAsync = (home: string, env: Record<string, string>): Promise<{ pid: number }> =>
   new Promise((done, fail) => {
     execFile(process.execPath, [resolve("dist/cli.js"), "--home", home, "gateway", "start"], { env: { ...process.env, ...env } }, (error, stdout) => (error ? fail(error) : done(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as { pid: number })));
@@ -41,7 +41,7 @@ async function until(check: () => Promise<boolean>, timeoutMs = 10_000): Promise
   }
 }
 
-describe("installer gateway start | stop | status (D72)", () => {
+describe("taskpilot gateway start | stop | status (D72)", () => {
   it("starts a detached gateway that serves the channel, reports it, and stops it", async () => {
     const { home, env } = await install();
     const started = runCli(["gateway", "start"], { home, env });

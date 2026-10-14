@@ -46,7 +46,7 @@ describe("SMTP over SSL and STARTTLS (D75)", () => {
     fake = await startFakeSmtp("ssl");
     const refused = smtpVerify(account(fake, "ssl"), "wrong-secret-9", TEST_TLS_ENV);
     await expect(refused).rejects.toThrow(ActionFailure);
-    await expect(refused).rejects.toThrow("run 'installer secret email' again");
+    await expect(refused).rejects.toThrow("run 'taskpilot secret email' again");
     await expect(refused).rejects.not.toThrow("wrong-secret-9");
   });
 

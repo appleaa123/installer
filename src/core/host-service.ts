@@ -14,7 +14,7 @@ import { loadWorkflow, workflowIds } from "./workflow.js";
 
 /**
  * The host side of Layer 1 (spec §5.1, D42, D43, D104): boot services, the quiet window and the dedicated OS user.
- * `installer host service install` writes a LaunchDaemon (macOS: the gateway with KeepAlive, and the tick every
+ * `taskpilot host service install` writes a LaunchDaemon (macOS: the gateway with KeepAlive, and the tick every
  * minute) or a systemd unit (Linux: the gateway with Restart=always; the tick stays the engine user's crontab, which
  * cron runs from boot) under `runtime/service/`, and prints the `sudo` commands a person runs in their own terminal.
  * The installer never runs them and never changes the OS itself; it never creates users either.
@@ -71,7 +71,7 @@ function unitArg(text: string): string {
 
 function gatewayUnit(argv: readonly string[], user: string, home: string): string {
   return [
-    "[Unit]", `Description=installer gateway for ${resolve(home).replace(/[%\n\r]/g, "")}`, "After=network-online.target", "Wants=network-online.target", "",
+    "[Unit]", `Description=taskpilot gateway for ${resolve(home).replace(/[%\n\r]/g, "")}`, "After=network-online.target", "Wants=network-online.target", "",
     "[Service]", `User=${user}`, `ExecStart=${argv.map(unitArg).join(" ")}`, "Restart=always", "RestartSec=5", "",
     "[Install]", "WantedBy=multi-user.target", "",
   ].join("\n");
@@ -113,7 +113,7 @@ export function servicePlan(home: string, options: ServiceOptions = {}): Service
 export const serviceTargets = (home: string, platform: NodeJS.Platform): readonly string[] =>
   platform === "darwin" || platform === "linux" ? servicePlan(home, { platform, node: "node", cli: "cli", user: ENGINE_USER }).files.map((file) => file.system_path) : [];
 
-/** `installer host service install | remove`: writes or deletes the files under the home and prints the commands. */
+/** `taskpilot host service install | remove`: writes or deletes the files under the home and prints the commands. */
 export async function serviceCommand(home: string, sub: string | undefined, options: ServiceOptions, now: () => string): Promise<Record<string, unknown>> {
   if (sub !== "install" && sub !== "remove") throw new InputError("host service takes: install, remove");
   const plan = servicePlan(home, options);
@@ -128,7 +128,7 @@ export async function serviceCommand(home: string, sub: string | undefined, opti
     paths.push(path);
   }
   await appendAudit(home, { ts: now(), actor: "agent", event: `host.service_${sub}_printed`, ref: SERVICE_DIR, payload: { files: plan.files.map((file) => file.name) } });
-  const before = sub === "install" ? ["installer gateway stop", "installer schedule remove (and the commands it prints), if the per-user schedule was loaded"] : [];
+  const before = sub === "install" ? ["taskpilot gateway stop", "taskpilot schedule remove (and the commands it prints), if the per-user schedule was loaded"] : [];
   return { ...(sub === "install" ? { files: paths } : {}), commands: [...before, ...(sub === "install" ? plan.install : plan.remove)], note: "A person with administrator rights runs these in their own terminal; the installer never runs sudo and never changes the OS itself (D42, D104)." };
 }
 
@@ -140,7 +140,7 @@ export function dedicatedUserSteps(platform: NodeJS.Platform): string[] {
   return [
     create,
     `Sign in as ${ENGINE_USER} (${platform === "darwin" ? "fast user switching" : `sudo -iu ${ENGINE_USER}`}) and install Node 22, your agent and the installer there, so the engine home, its keychain items and the agent's MCP servers belong to that user, not to your own account (D50).`,
-    `As ${ENGINE_USER}, run the install in its own folder (installer start …), then 'installer host service install' and run the printed sudo commands from your own administrator account.`,
+    `As ${ENGINE_USER}, run the install in its own folder (taskpilot start …), then 'taskpilot host service install' and run the printed sudo commands from your own administrator account.`,
     "Decide approvals from Telegram, where the sender is proven (D78). The agent also runs as this user, so the terminal-only checks are no boundary against it (D61); keep this account for the assistant alone and never give it administrator rights.",
   ];
 }

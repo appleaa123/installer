@@ -53,7 +53,7 @@
         "look": "In the Google Cloud console open 'APIs & Services' and check that the Google Sheets API shows as enabled for this project.",
         "search": "enable Google Sheets API Google Cloud project" },
       { "match": "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "means": "Access to Google Sheets was not allowed when signing in",
-        "fix": "Sign in again with 'installer secret google' and leave the Google Sheets box ticked on Google's page.",
+        "fix": "Sign in again with 'taskpilot secret google' and leave the Google Sheets box ticked on Google's page.",
         "look": "On Google's sign-in page, check that the permission about Google Sheets spreadsheets is ticked before pressing Continue.",
         "search": "Google OAuth ACCESS_TOKEN_SCOPE_INSUFFICIENT sheets scope" }
     ]

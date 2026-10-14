@@ -24,20 +24,20 @@ export PREFIX=$T/npm
 mkdir -p $T $PREFIX
 cd $REPO && git switch feat/live-setup-guides && git log --oneline -1
 npm ci && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/installer-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
-which installer
+which taskpilot
 export INSTALLER_HOME=$T/home
 cd $T
 ```
 
-Expected: `which installer` prints `<your home>/installer-plan11-test/npm/bin/installer`. Paste the `git log` line and the `which` line.
+Expected: `which taskpilot` prints `<your home>/installer-plan11-test/npm/bin/taskpilot`. Paste the `git log` line and the `which` line.
 
 Then:
 
 ```bash
-installer guide google-sheets
-installer guide nope; echo "exit $?"
+taskpilot guide google-sheets
+taskpilot guide nope; echo "exit $?"
 ```
 
 Expected: the first prints one JSON line (title, outcome, three google.com sources, six symptoms, a note). The second exits `2` and names `google-sheets`. Paste both outputs.
@@ -45,15 +45,15 @@ Expected: the first prints one JSON line (title, outcome, three google.com sourc
 ## Part C: Sign in and run the readiness check (Terminal and browser, 10 minutes)
 
 ```bash
-installer start --solution file:$REPO/docs/testing/plan-11-solution-ready.json
-installer secret google
+taskpilot start --solution file:$REPO/docs/testing/plan-11-solution-ready.json
+taskpilot secret google
 ```
 
 Open the page it prints, enter your Desktop app client ID and secret there (never in the chat), and allow access. Google shows "Google hasn't verified this app": choose **Advanced**, then **Go to (app name) (unsafe)**. Then:
 
 ```bash
-installer verify data.google
-installer verify data.google-ready
+taskpilot verify data.google
+taskpilot verify data.google-ready
 ```
 
 Expected: the last one prints `{"status":"passed","next":{"status":"complete"}}`. Paste the output of both.
@@ -82,19 +82,19 @@ cd $REPO && ( set -a; . ~/.config/installer-dev/.env; node docs/testing/google-t
 
 ```bash
 cd $T
-installer secret google
+taskpilot secret google
 ```
 
 On the page type the right client ID and a wrong secret (for example `wrong`), continue to Google and allow access.
 
-Afterwards `installer verify data.google-ready` is not possible (the install is already complete and has no pending step); the Part D probe is the check instead.
+Afterwards `taskpilot verify data.google-ready` is not possible (the install is already complete and has no pending step); the Part D probe is the check instead.
 
-Expected: the page says `Google refused the sign-in (invalid_client)` followed by `The client ID or secret is wrong...` and a `Look at:` and `Search for:` line. Paste what the page says (copy the text; no secrets are shown). Close the page, then run `installer secret google` once more with the right secret.
+Expected: the page says `Google refused the sign-in (invalid_client)` followed by `The client ID or secret is wrong...` and a `Look at:` and `Search for:` line. Paste what the page says (copy the text; no secrets are shown). Close the page, then run `taskpilot secret google` once more with the right secret.
 
 ## Part F: Clean up (Terminal, 2 minutes)
 
 ```bash
-installer disconnect google-sheets
+taskpilot disconnect google-sheets
 cd ~ && rm -rf $T
 claude mcp list | grep -c installer
 ```

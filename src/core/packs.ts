@@ -14,7 +14,7 @@ import { StateCorruptError } from "./state.js";
  * says which version that is (`skill_pack_meta.commit_sha` is not served). So the engine pins by content: the first
  * time a judge needs a file of a pack, the engine fetches it, keeps the text under `packs/<pack>/<sha256>` and records
  * the sha256 in `config/packs.json`; from then on judges read the pinned copy, whatever Skills Wiki serves. A pack's
- * version is the sha256 of its files' sha256s. `checkPacks` (run by `installer packs check` and the daily doctor)
+ * version is the sha256 of its files' sha256s. `checkPacks` (run by `taskpilot packs check` and the daily doctor)
  * fetches every pinned file again: different text is a candidate version, kept beside the pinned one and read only
  * by shadow runs (D108) until the decision maker switches. A pinned copy that changed on disk is never used.
  */
