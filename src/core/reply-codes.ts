@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { approveItem, editItem, getApproval, listApprovals, previewOf, refuseDecision, rejectItem, type ApprovalItem, type Decider } from "./approvals.js";
 import { canonicalJson } from "./audit.js";
+import { isOptedOut } from "./channel-policy.js";
 import { GATEWAY_MARK } from "./channel-tools.js";
 import { CHANNEL_FACTS, requireChannelId } from "./channels.js";
 import type { ReplyCode } from "./envelope.js";
@@ -90,13 +91,16 @@ export async function tellEach(ctx: ToolContext, item: ApprovalItem, targets: It
 }
 
 /**
- * Sends each pending item to the joined members whose role may decide it; returns the ids announced. An item counts
+ * Sends each pending item to the joined members whose role may decide it, except those who opted out (they are
+ * skipped, not tried, so a refusal is not retried and audited every round); returns the ids announced. An item counts
  * as announced only once a member really received it, so a failed send is tried again next round; while the install
  * is not finished (R6) it is recorded once, and sent for real once the install is finished. The first failure is
  * thrown after every item was tried, so the gateway logs it.
  */
 export async function announceApprovals(ctx: ToolContext): Promise<number[]> {
-  const members = (await listMembers(ctx.home, ctx.now())).filter((member) => member.status === "joined" && canDecideThere(member));
+  const joined = (await listMembers(ctx.home, ctx.now())).filter((member) => member.status === "joined" && canDecideThere(member));
+  const optedOut = await Promise.all(joined.map((member) => (member.identity ? isOptedOut(ctx.home, member.identity) : true)));
+  const members = joined.filter((_, index) => !optedOut[index]);
   const recordOnly = (await outboundBlock(ctx.home)) !== null;
   const announced: number[] = [];
   let failure: unknown = null;
