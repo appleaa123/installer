@@ -87,6 +87,16 @@ export async function startGateway(home: string, now: () => string): Promise<Rec
   return { status: "started", pid, log: await confinedPath(home, LOG_FILE), ...(current.status === "stale" ? { note: `Replaced a gateway that had stopped without cleaning up (pid ${String(current.pid)})` } : {}) };
 }
 
+/** Restarts the gateway so it reads a channel that was added after it started: it reads its channels only at start (D134). */
+export async function restartGateway(
+  home: string,
+  now: () => string,
+  deps: { status: (home: string) => Promise<Record<string, unknown>>; stop: StartGateway; start: StartGateway } = { status: gatewayStatus, stop: stopGateway, start: startGateway },
+): Promise<Record<string, unknown>> {
+  if ((await deps.status(home)).status === "running") await deps.stop(home, now);
+  return deps.start(home, now);
+}
+
 /** `none` leaves the gateway alone (the test suite sets it, so no test starts a real process). */
 export const GATEWAY_AUTOSTART_ENV = "INSTALLER_GATEWAY_AUTOSTART";
 type StartGateway = (home: string, now: () => string) => Promise<Record<string, unknown>>;

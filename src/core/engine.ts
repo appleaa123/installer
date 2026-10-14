@@ -243,6 +243,21 @@ export async function verifyStep(deps: EngineDeps, state: InstallState, stepId: 
   return { state: final, result: verified.result, next };
 }
 
+/**
+ * Changes the answer of a question that was already answered (`taskfollow add`, D134), audited as `step.revised`, then
+ * continues: steps that the new answer brings into view become the current step even if the install had finished.
+ */
+export async function revise(deps: EngineDeps, state: InstallState, stepId: string, value: unknown, actor: Actor): Promise<Advanced> {
+  const step = requireKnown(deps, stepId);
+  const record = recordOf(state, stepId);
+  if (step.type !== "ask" || record?.status !== "done") throw new EngineError(`Step '${stepId}' is not a question that was answered`);
+  const valid = validateInput(step.input, value);
+  const head = await deps.audit({ actor, event: "step.revised", ref: stepId, payload: { from: record.value ?? null, to: valid as never } });
+  const next: InstallState = { ...state, steps: { ...state.steps, [stepId]: { ...record, at: deps.now(), value: valid } }, audit_head: head };
+  await deps.save(next);
+  return advance(deps, next);
+}
+
 /** Reopens blocked steps with fresh attempts and failed steps with their attempts kept, then continues. */
 export async function resume(deps: EngineDeps, state: InstallState): Promise<Advanced> {
   let current = state;
