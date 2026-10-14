@@ -110,10 +110,14 @@ export function replyCodeIn(text: string): ReplyCode | null {
 }
 
 const SWITCH = /^\/(pause|unpause)(?:@[A-Za-z0-9_]+)?$/i;
+const BARE_SWITCH = /^\/?(pause|unpause)(?:@[A-Za-z0-9_]+)?$/i;
 
-/** `/pause` or `/unpause` as the whole first line (Telegram may add `@<bot name>`): the kill switch (§14.4, D36). */
-export function killSwitchIn(text: string): "pause" | "unpause" | null {
-  const match = SWITCH.exec(commandLine(text));
+/**
+ * `/pause` or `/unpause` as the whole first line (Telegram may add `@<bot name>`): the kill switch (§14.4, D36). On a
+ * chat app that keeps `/` for its own commands (Slack, D135) the bare word `pause` or `unpause` is the whole line too.
+ */
+export function killSwitchIn(text: string, bare = false): "pause" | "unpause" | null {
+  const match = (bare ? BARE_SWITCH : SWITCH).exec(commandLine(text));
   return match?.[1] ? (match[1].toLowerCase() as "pause" | "unpause") : null;
 }
 

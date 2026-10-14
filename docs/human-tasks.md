@@ -117,6 +117,18 @@ Each task says why it is needed and what to do, step by step.
 
 **Why:** this is the only thing that can show whether the install works unaided. Two reviewers found real problems that no automated test had; fixing them is not the same as proving it. About half a day per person, plus a short check the next day. Follow `docs/testing/2026-10-14-real-life-install-test.md`: publish the package to npm first, use someone who has never used a terminal, do not help them, log every stall, and send Claude the sheet. Claude turns every intervention into a fix, and you repeat the test with a new person until one finishes with none.
 
+### 24. Try Slack on a real workspace (before Slack is promised to a client)
+
+**Why:** Slack (D135) was built against a fake Slack. About 30 minutes with a Slack workspace you own (a free one is fine). Tell Claude the result of each item, with the exact wording of anything that surprises you.
+
+1. Run `taskfollow secret slack` and follow the page: create the app from the manifest (does Slack accept the pasted text? are the buttons named as the page says?), install it, copy the two tokens. On a workspace where only owners may install apps, see what Slack says and whether the page's "Request to Install" sentence fits.
+2. Press Test and save: expect Connected. Try a wrong bot token and a wrong app token: each should name the right token.
+3. Run `taskfollow channel slack`, then `taskfollow invite "<your name>"`, open the TaskFollow app in Slack (under Apps) and send `JOIN <code>`. Tell Claude whether the Messages tab accepts your messages, and whether Slack ever refuses a message that starts with a word like `JOIN`.
+4. After you joined, send `pause`, then `unpause`. Tell Claude whether either was swallowed by Slack.
+5. Make the assistant send you a note (a workflow with `channel.notify`) containing `@here`, `<!channel>` and a link: they must arrive as plain text.
+6. Leave the gateway running overnight, close the laptop for an hour, open it again, and send a message: it must arrive once, and once only.
+7. Remove the app from Slack (Apps, Manage) and watch `taskfollow doctor`: it should say the Slack app was removed in plain words.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

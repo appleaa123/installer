@@ -25,7 +25,7 @@ const READY_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 10_000;
 export const POLL_SECONDS = 25;
 export const PAUSE_MS = 60_000;
-const LOOPS = ["telegram", "email", "approvals"];
+const LOOPS = ["telegram", "email", "slack", "approvals"];
 
 interface PidRecord {
   readonly pid: number;

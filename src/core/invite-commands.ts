@@ -24,8 +24,16 @@ async function requireTerminal(home: string, interactive: boolean, command: stri
 }
 
 function howToJoin(channel: ChannelConfig, code: string): string {
-  if (channel.channel === "telegram") return `Telegram: open https://t.me/${channel.bot.username}?start=${code.replace("-", "")} and press Start, or send '/join ${code}' to @${channel.bot.username}`;
-  return `Email: send an email to ${channel.address} whose first line is 'JOIN ${code}'`;
+  switch (channel.channel) {
+    case "telegram":
+      return `Telegram: open https://t.me/${channel.bot.username}?start=${code.replace("-", "")} and press Start, or send '/join ${code}' to @${channel.bot.username}`;
+    case "email":
+      return `Email: send an email to ${channel.address} whose first line is 'JOIN ${code}'`;
+    case "slack":
+      return `Slack: open the TaskFollow app (under Apps in the sidebar) and send it a message: JOIN ${code}`;
+    default:
+      return channel satisfies never;
+  }
 }
 
 /** What a list shows: never the code's hash. */

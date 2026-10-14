@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_INBOUND_TEXT, commandLine, isOptOut, joinCodeIn, normalizeInbound, replyCodeIn, scanInjection } from "../../src/core/envelope.js";
+import { MAX_INBOUND_TEXT, commandLine, isOptOut, joinCodeIn, killSwitchIn, normalizeInbound, replyCodeIn, scanInjection } from "../../src/core/envelope.js";
 
 const RAW = { channel: "telegram", from: "  1001 ", thread: " 1001 ", text: "Hello there", message_id: "77" };
 
@@ -79,5 +79,23 @@ describe("commands a member types", () => {
     expect(isOptOut("Arrêt", ["arrêt"])).toBe(true);
     expect(isOptOut("Please do not stop the service")).toBe(false);
     expect(isOptOut("stopping by later")).toBe(false);
+  });
+});
+
+describe("the kill switch on a chat app that keeps / for its own commands (D135)", () => {
+  it("is only the slash form unless the channel asks for the bare word", () => {
+    expect(killSwitchIn("pause")).toBeNull();
+    expect(killSwitchIn("/pause")).toBe("pause");
+  });
+
+  it("accepts the bare word as the whole first line when asked", () => {
+    expect(killSwitchIn("pause", true)).toBe("pause");
+    expect(killSwitchIn("  Unpause  \nthanks", true)).toBe("unpause");
+    expect(killSwitchIn("/pause", true)).toBe("pause");
+  });
+
+  it("does not read a sentence as the kill switch", () => {
+    expect(killSwitchIn("please pause the report", true)).toBeNull();
+    expect(killSwitchIn("paused", true)).toBeNull();
   });
 });

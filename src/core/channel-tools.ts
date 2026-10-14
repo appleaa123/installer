@@ -1,6 +1,6 @@
 import { DEFAULT_POLICY, inQuietHours, isOptedOut, rateLimited, recordSent, type ChannelPolicy } from "./channel-policy.js";
 import { describeChannel, requireEmailAddress } from "./channel-commands.js";
-import { CHANNEL_IDS, listChannels, requireChannelId, type ChannelId } from "./channels.js";
+import { CHANNEL_IDS, isInternalOnly, listChannels, requireChannelId, type ChannelId } from "./channels.js";
 import { ATTACHMENT_REF, loadAttachment, readAttachment } from "./attachments.js";
 import { hasWrittenFirst, listInbox } from "./inbox.js";
 import { InputError } from "./inputs.js";
@@ -57,6 +57,7 @@ function attachmentsArg(args: ToolArgs, channel: ChannelId): ToolArgs {
 function parseSend(args: ToolArgs): ToolArgs {
   onlyKeys(args, ["channel", "to", "text", "subject", "attachments"], "channel.send");
   const channel = channelArg(args, "channel.send");
+  if (isInternalOnly(channel)) throw new InputError(`channel.send: ${channel} reaches your own team only; use channel.notify to message a member`);
   const raw = textArg(args, "to", "channel.send");
   if (channel === "telegram" && !TELEGRAM_CHAT.test(raw)) throw new InputError("channel.send: for telegram, 'to' is the chat id, a number (see channel.inbox, field 'thread')");
   const to = channel === "email" ? requireEmailAddress(raw, "channel.send: 'to'") : raw;
