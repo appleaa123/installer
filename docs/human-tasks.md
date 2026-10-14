@@ -58,11 +58,11 @@ Each task says why it is needed and what to do, step by step.
 
 ### 16. Certify on Windows (only before a client runs on Windows)
 
-**Why:** on Windows the engine runs an npm shim's script with `node` instead of `claude.cmd`, never through a shell (D115). That was tested only against sample shim files, not on a Windows machine, so Windows stays Unknown. Scheduling, host readiness and the OS keychain are not supported on Windows yet (D120), and some offline tests check POSIX file modes, so expect the offline suite to report failures there; the list is what Claude needs.
+**Why:** on Windows the engine runs an npm shim's script with `node` instead of `claude.cmd`, never through a shell (D115). That was tested only against sample shim files, not on a Windows machine, so Windows stays Unknown. Scheduling and the OS keychain were added for Windows in D128 (task 22 tries them); host readiness is not supported on Windows yet (D120), and some offline tests check POSIX file modes, so expect the offline suite to report failures there; the list is what Claude needs.
 
 1. On a Windows 11 machine or VM with Node 22 and Git, install Claude Code (`npm install -g @anthropic-ai/claude-code`), sign in, clone the repository, then `npm ci` and `npm run build`.
 2. In PowerShell, in the repository: `node dist/cli.js probe --profile claude-code`. Expected: C4, C4 schema and C5 pass (the engine found `claude.cmd`, read it and ran its script with `node`), and the tier is `unknown` with the note "Windows is not certified yet".
-3. Set a file keychain (Windows has no keychain backend yet, D51): `$env:INSTALLER_KEYCHAIN="file"; $env:INSTALLER_KEYCHAIN_DIR="$HOME\installer-keys"`, set the live keys in the same window, then `npm run certify -- --profile claude-code --home $HOME\installer-certification`.
+3. Windows now has its own protected-storage backend (D128; task 22 tries it), so a file keychain is only needed if that fails: if you must, set one: `$env:INSTALLER_KEYCHAIN="file"; $env:INSTALLER_KEYCHAIN_DIR="$HOME\installer-keys"`, set the live keys in the same window, then `npm run certify -- --profile claude-code --home $HOME\installer-certification`.
 4. Paste the probe's output, the record and any error to Claude. When everything passes, Claude lifts the Windows cap in the probe.
 
 ### 17. Review the vendors' terms (O2)
@@ -96,6 +96,22 @@ Each task says why it is needed and what to do, step by step.
 6. A wrong server under **Advanced**: expect the "could not reach the mail server" message within about 30 seconds.
 7. After "Connected", run `taskfollow channel email` and then `taskfollow gateway start`; send the mailbox one message and check that the assistant sees it.
 8. Leave the page open for 15 minutes before pasting the password: it should still work (the limit is 30 minutes).
+
+### 22. Try TaskFollow on a real Windows 11 PC (before Windows is promised to a client)
+
+**Why:** Windows support (D128) was built and tested on a Mac with a fake PowerShell and fake Task Scheduler. Nothing in it has run on Windows. About an hour. Use a **fresh standard (non-administrator) Windows user**, Node 22 LTS from https://nodejs.org and Claude Code installed as Anthropic documents. Use **Command Prompt** (Windows key, type `cmd`, Enter) for every command you run yourself. Tell Claude the result of each numbered item, with the exact output of anything that fails.
+
+1. In Claude Code, ask it to run `node -p process.platform` (expect `win32`) and to run `echo $SHELL`. Tell Claude which shell Claude Code's tool uses (Git Bash or PowerShell).
+2. Install the package (the tarball from `npm pack`, `npm install -g .\taskfollow-0.1.0.tgz`), then `taskfollow secret google`: the sign-in page should open by itself in your browser and **no black console window should stay behind**. After the page says Done, check that the file `%LOCALAPPDATA%\taskfollow\keys\google.dpapi` exists and does not contain your secret in readable form.
+3. Choose a test secret with an accent and a double quote in it (for example `café"x`) on a `taskfollow secret` page and read it back through a live check: it must round-trip exactly.
+4. Let Claude Code run the whole install from INSTALL.md (the default solution, no Skills Wiki). Tell Claude where it stalls. Repeat once with a Windows user name that contains a space.
+5. In Command Prompt, as the person: `taskfollow approvals approve <id>` for a pending approval must be accepted (not refused as "the agent"). Try the same in PowerShell and in Git Bash and tell Claude what each says.
+6. `taskfollow gateway start`: no console window may appear; `taskfollow gateway status` shows it running; `taskfollow gateway stop` works.
+7. `taskfollow schedule install`, then run the printed `schtasks /Create ...` line in Command Prompt **without** "Run as administrator". It must succeed. Wait five minutes: `taskfollow schedule list` shows a recent `last_tick`, and no window flashes on screen. If no tick is recorded, tell Claude: the hidden-console setting (`conhost.exe --headless`) may need to change.
+8. Unplug a laptop's charger: ticks must continue on battery.
+9. Sign out and back in: ticks resume. Put the computer to sleep over a scheduled run: it must be recorded as `missed`.
+10. `taskfollow uninstall` in Command Prompt: the stored keys are gone and the printed `schtasks /Delete ...` line removes the task.
+11. Run task 16's certification and paste the results. When items 1 to 10 pass, Claude removes the word Preview.
 
 ## Optional
 
