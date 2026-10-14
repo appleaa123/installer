@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { loadConnector, type ConnectorDef } from "../../src/core/connectors.js";
 import { startOAuthPage } from "../../src/core/oauth-page.js";
 import type { SecretPage } from "../../src/core/secret-page.js";
@@ -42,6 +42,22 @@ async function consentUrl(url: string, body = CLIENT): Promise<URL> {
 const callback = (consent: URL, query: string): Promise<{ status: number; text: string }> => request(`${consent.searchParams.get("redirect_uri") ?? ""}?${query}&state=${consent.searchParams.get("state") ?? ""}`);
 
 describe("the OAuth sign-in page (D66)", () => {
+  it("stays open for 30 minutes, since making the client in Google's console takes longer than 10 (D130)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const started = await page();
+      let settled = false;
+      void started.done.then(() => (settled = true));
+      vi.advanceTimersByTime(11 * 60_000);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      vi.advanceTimersByTime(20 * 60_000);
+      await expect(started.done).resolves.toBe("expired");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("asks for the person's own OAuth client on its one-time path", async () => {
     const { url } = await page();
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/s\/[0-9a-f]{64}$/);

@@ -4,7 +4,7 @@ import type { ConnectorDef } from "./connectors.js";
 import { authorizeUrl, exchangeCode, pkcePair, symptomHelp, type OAuthClient } from "./google-auth.js";
 import { InputError } from "./inputs.js";
 import { requireSecretValue } from "./keychain.js";
-import { DONE_PAGE, SECRET_PAGE_TTL_MS, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
+import { DONE_PAGE, LONG_PAGE_TTL_MS, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
 
 /**
  * `taskfollow secret <id>` for an OAuth connector (D66): the same detached loopback page as D47, in two halves.
@@ -132,6 +132,6 @@ export async function startOAuthPage(options: OAuthPageOptions): Promise<SecretP
   server.on("request", (req, res) => {
     handle(req, res, page, options, () => close("stored")).catch((error: Error) => send(res, 400, formPage(options.def, path, error instanceof InputError ? error.message : "The sign-in failed"), options.def));
   });
-  setTimeout(() => close("expired"), options.ttlMs ?? SECRET_PAGE_TTL_MS).unref();
+  setTimeout(() => close("expired"), options.ttlMs ?? LONG_PAGE_TTL_MS).unref();
   return { url: `${page.origin}${path}`, done, close: () => close("expired") };
 }

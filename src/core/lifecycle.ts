@@ -31,12 +31,19 @@ async function suggestions(home: string): Promise<readonly Raw[]> {
   return (await loadPinnedSolution(home)).solution.workflows ?? [];
 }
 
+/** A suggestion may say `"tz": "local"`: it runs in this computer's own time zone, which only the computer knows (D130). */
+function withLocalZone(raw: Raw): Raw {
+  const trigger = raw.trigger;
+  if (!isRecord(trigger) || trigger.tz !== "local") return raw;
+  return { ...raw, trigger: { ...trigger, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } };
+}
+
 /** A suggestion by id, or the person's description turned into an agentic v1 (§10.8: describe → v1 agentic). */
 function newWorkflow(id: string, value: string | undefined, suggested: readonly Raw[]): Raw {
   if (value === undefined) {
     const found = suggested.find((entry) => entry.workflow === id);
     if (!found) throw new InputError(`No suggested workflow '${id}' (${suggested.map((entry) => String(entry.workflow)).join(", ") || "the recipe suggests none"}); describe a new one with ${PLAIN_WORDS}`);
-    return { ...found, version: 1 };
+    return { ...withLocalZone(found), version: 1 };
   }
   let words: unknown;
   try {

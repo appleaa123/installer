@@ -2,7 +2,7 @@ import { access, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { InputError } from "../../src/core/inputs.js";
-import { CRONTAB, LAUNCHD, SCHEDULE_DIR, SCHTASKS, backendFor, crontabLine, plistText, scheduleCommand, taskXml, tickEntry } from "../../src/core/scheduler.js";
+import { CRONTAB, LAUNCHD, SCHEDULE_DIR, SCHTASKS, backendFor, crontabLine, plistText, schedulePath, scheduleCommand, taskXml, tickEntry } from "../../src/core/scheduler.js";
 import { tick } from "../../src/core/tick.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { writeWorkflow } from "../helpers/workflow-home.js";
@@ -56,6 +56,35 @@ describe("the OS scheduler entry (D82)", () => {
   });
 });
 
+describe("the PATH the scheduler runs with (D130)", () => {
+  it("keeps the directories the person's shell had, node's own folder first, then the system folders", () => {
+    expect(schedulePath("/Users/a/.local/bin:/usr/local/bin:", "/opt/node/bin/node")).toBe("/opt/node/bin:/Users/a/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+  });
+
+  it("drops relative and empty entries and repeats, which a scheduler cannot resolve", () => {
+    expect(schedulePath("bin:./x::/usr/bin:/usr/bin", "/usr/bin/node")).toBe("/usr/bin:/bin:/usr/sbin:/sbin");
+  });
+
+  it("launchd: the plist carries it, so a scheduled run finds claude where the shell did", () => {
+    const text = plistText({ ...ENTRY, path: "/Users/a/.local/bin:/usr/bin" });
+    expect(text).toContain("  <key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>/Users/a/.local/bin:/usr/bin</string>\n  </dict>");
+  });
+
+  it("launchd: unchanged when no path is given", () => {
+    expect(plistText(ENTRY)).not.toContain("EnvironmentVariables");
+  });
+
+  it("crontab: the line sets it for the command", () => {
+    expect(crontabLine({ ...ENTRY, path: "/Users/a/.local/bin:/usr/bin" })).toMatch(/^\* \* \* \* \* PATH='\/Users\/a\/\.local\/bin:\/usr\/bin' '\/usr\/local\/bin\/node'/);
+  });
+
+  it("schedule install writes the shell's PATH into the file", async () => {
+    const home = await makeTempHome();
+    const result = await scheduleCommand(home, "install", undefined, NOW, { platform: "darwin", node: "/opt/node/bin/node", cli: "/c/cli.js", envPath: "/Users/a/.local/bin:/usr/local/bin" });
+    expect(await readFile(String(result.file), "utf8")).toContain("<string>/opt/node/bin:/Users/a/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>");
+  });
+});
+
 describe("Windows Task Scheduler entry (D128, Preview)", () => {
   const WIN = {
     label: "com.installer.tick.abcd1234",
@@ -103,10 +132,10 @@ describe("Windows Task Scheduler entry (D128, Preview)", () => {
 describe("taskfollow schedule (D82)", () => {
   it("install writes the entry under the home only and returns the commands; remove deletes it", async () => {
     const home = await makeTempHome();
-    const installed = await scheduleCommand(home, "install", undefined, NOW, { ...OPTIONS, platform: "linux" });
+    const installed = await scheduleCommand(home, "install", undefined, NOW, { ...OPTIONS, platform: "linux", envPath: "/home/a/.local/bin" });
     const file = join(home, SCHEDULE_DIR, `${String(installed.label)}.crontab`);
     expect(installed).toMatchObject({ backend: "crontab", file, commands: [expect.stringContaining("| crontab -")], note: expect.stringContaining("Ask the person to run these commands") });
-    expect(await readFile(file, "utf8")).toBe(crontabLine(tickEntry(home, OPTIONS.node, OPTIONS.cli)));
+    expect(await readFile(file, "utf8")).toBe(crontabLine(tickEntry(home, OPTIONS.node, OPTIONS.cli, schedulePath("/home/a/.local/bin", OPTIONS.node))));
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     const removed = await scheduleCommand(home, "remove", undefined, NOW, { ...OPTIONS, platform: "linux" });
     expect(removed).toMatchObject({ backend: "crontab", commands: [expect.stringContaining("grep -v")] });

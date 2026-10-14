@@ -17,7 +17,7 @@ import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { MEMO_DIGEST, writeWorkflow } from "../helpers/workflow-home.js";
 import { loadState, saveState } from "../../src/core/state.js";
-import { workflowIds } from "../../src/core/workflow.js";
+import { loadWorkflow, workflowIds } from "../../src/core/workflow.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
 const NOTE = { workflow: "note", description: "Adds a memo each weekday morning", trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, steps: [{ id: "add", tool: "memo.add", args: { text: "Good morning" } }] };
@@ -166,5 +166,24 @@ describe("a suggested workflow whose judge names a Skills Wiki skill (D126)", ()
   it("is added when the install has Skills Wiki", async () => {
     const at = await skilledHome("https://wiki.test/mcp");
     expect(await workflowCommand(at, "add", "skilled", undefined, () => AT)).toMatchObject({ status: "added", workflow: "skilled" });
+  });
+});
+
+describe("a suggested workflow that runs in the computer's own time zone (D130)", () => {
+  const LOCAL = { ...NOTE, workflow: "local-note", trigger: { cron: "0 9 * * 1", tz: "local" } };
+
+  it("is added with this computer's real time zone, because a laptop that is asleep at 4 a.m. would miss a run set in UTC", async () => {
+    const at = await runnerHome();
+    await writePinnedSolution(at, JSON.stringify({ ...SOLUTION, workflows: [LOCAL] }));
+    await workflowCommand(at, "add", "local-note", undefined, () => AT);
+    const { trigger } = await loadWorkflow(at, "local-note", DEFAULT_TOOLS);
+    expect(trigger).toMatchObject({ kind: "cron", cron: "0 9 * * 1", tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  });
+
+  it("leaves a workflow with a named zone alone", async () => {
+    const at = await runnerHome();
+    await writePinnedSolution(at, JSON.stringify({ ...SOLUTION, workflows: [{ ...LOCAL, trigger: { cron: "0 9 * * 1", tz: "America/Toronto" } }] }));
+    await workflowCommand(at, "add", "local-note", undefined, () => AT);
+    expect((await loadWorkflow(at, "local-note", DEFAULT_TOOLS)).trigger).toMatchObject({ tz: "America/Toronto" });
   });
 });

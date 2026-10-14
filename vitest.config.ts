@@ -24,6 +24,8 @@ export default defineConfig({
       INSTALLER_HOST_CHECKS: "none",
       // `installer certify` never runs the suite inside the suite (D116); the real run is a person's task.
       INSTALLER_CERTIFY_SUITES: "none",
+      // The tick never restarts a gateway during a test run (D130); the tests that cover it inject a fake.
+      INSTALLER_GATEWAY_AUTOSTART: "none",
       // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
       INSTALLER_CLI: resolve("dist/cli.js"),
     },

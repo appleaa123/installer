@@ -43,6 +43,26 @@ export async function inviteCommand(home: string, roles: Roles | undefined, name
   };
 }
 
+/**
+ * In a person's own terminal the invite reads as sentences, not JSON: the person must not be tempted to paste the
+ * code into the chat with the agent (D130). Anything that is not an invite comes back unchanged.
+ */
+export function renderInvite(result: unknown): unknown {
+  const invite = result as { name?: unknown; code?: unknown; expires_at?: unknown; join?: unknown } | null;
+  if (typeof invite?.code !== "string" || typeof invite.name !== "string" || !Array.isArray(invite.join)) return result;
+  return [
+    `Invitation for ${invite.name}`,
+    "",
+    `  Code: ${invite.code}`,
+    `  It only works once${typeof invite.expires_at === "string" ? ` and expires at ${invite.expires_at}` : ""}.`,
+    "",
+    "How they join:",
+    ...invite.join.map((line) => `  - ${String(line)}`),
+    "",
+    `Give ${invite.name} the code yourself, in private. Do not paste it into the chat with your assistant.`,
+  ].join("\n");
+}
+
 export async function membersCommand(home: string, command: MemberCommand, now: () => string): Promise<unknown> {
   if (command.sub === undefined) return { members: (await listMembers(home, now())).map(shown) };
   if (command.sub !== "remove" || !command.id || !/^[1-9]\d*$/.test(command.id)) throw new InputError(MEMBERS_USAGE);

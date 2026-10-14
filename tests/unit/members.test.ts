@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { saveChannel } from "../../src/core/channels.js";
 import { InputError } from "../../src/core/inputs.js";
-import { inviteCommand, membersCommand } from "../../src/core/invite-commands.js";
+import { inviteCommand, membersCommand, renderInvite } from "../../src/core/invite-commands.js";
 import { INVITE_TTL_MS, MEMBERS_DIR, joinWithCode, listMembers, memberFor, newJoinCode } from "../../src/core/members.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -100,5 +100,24 @@ describe("taskfollow members", () => {
     expect(await membersCommand(dir, { sub: "remove", id: "1", interactive: true }, now)).toMatchObject({ id: 1, status: "removed" });
     expect(await memberFor(dir, ADA, NOW)).toBeNull();
     await expect(membersCommand(dir, { sub: "remove", id: "x", interactive: true }, now)).rejects.toThrow("members needs nothing (list) or: remove <id>");
+  });
+});
+
+describe("renderInvite: what a person sees in their own terminal (D130)", () => {
+  const invited = { id: 3, name: "Ada", role: "member", code: "ABCD-1234", expires_at: "2026-10-15T12:00:00.000Z", join: ["Telegram: open https://t.me/desk_bot?start=ABCD1234 and press Start"], next: "Give Ada the code privately." };
+
+  it("is plain sentences with the code and how to join, no JSON", () => {
+    const text = renderInvite(invited);
+    expect(text).toContain("Ada");
+    expect(text).toContain("ABCD-1234");
+    expect(text).toContain("https://t.me/desk_bot?start=ABCD1234");
+    expect(text).toMatch(/only works once|works once/);
+    expect(text).not.toContain("{");
+    expect(text).toContain("Do not paste");
+  });
+
+  it("returns anything that is not an invite untouched", () => {
+    const other = { members: [] };
+    expect(renderInvite(other)).toBe(other);
   });
 });
