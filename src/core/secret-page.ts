@@ -116,7 +116,7 @@ export async function startSecretPage(options: SecretPageOptions): Promise<Secre
 /** Starts `taskfollow secret-serve <id>` detached; the child reports its url over IPC and lives on after this process exits. */
 export function launchSecretPage(id: string): Promise<{ url: string; pid: number }> {
   return new Promise((done, fail) => {
-    const child = spawn(process.execPath, [process.argv[1] ?? "", "secret-serve", id], { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    const child = spawn(process.execPath, [process.argv[1] ?? "", "secret-serve", id], { detached: true, windowsHide: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
     child.once("message", (message) => {
       const { url } = message as { url?: unknown };
       if (typeof url !== "string" || !child.pid) return fail(new Error("The secret page did not report its url"));
@@ -139,11 +139,13 @@ export function headlessHint(url: string, env: Env = process.env): string | unde
 }
 
 /** Best effort: a missing opener is not an error, the url is printed anyway. */
-export function openBrowser(url: string, env: Env = process.env): boolean {
-  const fallback = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : "none";
+export function openBrowser(url: string, env: Env = process.env, platform: string = process.platform, launch: typeof spawn = spawn): boolean {
+  const fallback = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : platform === "win32" ? "rundll32" : "none";
   const opener = env[BROWSER_ENV] || fallback;
   if (opener === "none") return false;
-  spawn(opener, [url], { detached: true, stdio: "ignore" })
+  // rundll32 takes the address as one argument and needs no shell, so an & in it cannot split a command (Windows, Preview).
+  const args = opener === "rundll32" ? ["url.dll,FileProtocolHandler", url] : [url];
+  launch(opener, args, { detached: true, stdio: "ignore", windowsHide: true })
     .on("error", () => undefined)
     .unref();
   return true;

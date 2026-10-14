@@ -54,7 +54,7 @@ export async function gatewayStatus(home: string): Promise<Record<string, unknow
 /** Spawns `gateway-serve` detached and waits until it says it is ready (or fails to start). */
 function spawnGateway(home: string): Promise<number> {
   return new Promise((done, fail) => {
-    const child = spawn(process.execPath, [installerCliPath(), "--home", home, "gateway-serve"], { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    const child = spawn(process.execPath, [installerCliPath(), "--home", home, "gateway-serve"], { detached: true, windowsHide: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
     const timer = setTimeout(() => fail(new ActionFailure(`The gateway did not start within ${READY_TIMEOUT_MS / 1000} s; see ${LOG_FILE} in the home`)), READY_TIMEOUT_MS);
     child.once("message", () => {
       clearTimeout(timer);
