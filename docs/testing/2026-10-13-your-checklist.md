@@ -9,13 +9,13 @@ Details behind each part: task 20 in `docs/human-tasks.md`, and `docs/testing/20
 1. Open https://console.cloud.google.com/ and select your test project.
 2. Go to **APIs & Services > OAuth consent screen** (called **Audience** in newer consoles).
 3. Change the publishing status from **Testing** to **In production** and confirm.
-4. Tell Claude what the page shows. If Google asks for verification, paste the exact wording.
+4. Tell Claude what the page shows. If Google asks for verification, paste the exact wording. (2026-10-14: it showed "Your app requires verification. When you have finished configuring your information, please submit your app for review." You do not need to submit; the app works In production, and the sign-in shows a "Google hasn't verified this app" screen where you choose **Advanced**, then **Go to (app name) (unsafe)**.)
 
 Do this before any sign-in below, otherwise the new sign-in is still a Testing one.
 
 ## Part B: Install the build and read the guide (Terminal, 10 minutes)
 
-Run each line on its own.
+Run each line on its own. If `feat/live-setup-guides` is checked out in another git worktree, `git switch` fails: set `REPO` to that worktree's path and leave out the `git switch`.
 
 ```bash
 export T=~/installer-plan11-test
@@ -49,7 +49,7 @@ installer start --solution file:$REPO/docs/testing/plan-11-solution-ready.json
 installer secret google
 ```
 
-Open the page it prints, enter your Desktop app client ID and secret there (never in the chat), and allow access. Then:
+Open the page it prints, enter your Desktop app client ID and secret there (never in the chat), and allow access. Google shows "Google hasn't verified this app": choose **Advanced**, then **Go to (app name) (unsafe)**. Then:
 
 ```bash
 installer verify data.google
@@ -68,7 +68,7 @@ This uses the sign-in you just made in Part C.
 security find-generic-password -s installer -a google -w | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).refresh_token))' | pbcopy
 ```
 
-2. Open `~/.config/installer-dev/.env` in your editor and paste the clipboard as the value of `GOOGLE_REFRESH_TOKEN`. Save. (Never paste it in the chat.)
+2. Open `~/.config/installer-dev/.env` in your editor and paste the clipboard as the value of `GOOGLE_REFRESH_TOKEN`. Save. (Never paste it in the chat.) If the probe then answers `400` with `invalid_grant`, the old token is probably still in the file: check the file's save time with `ls -l`.
 3. Run the probe in a subshell so the keys do not stay in your terminal:
 
 ```bash
@@ -86,6 +86,8 @@ installer secret google
 ```
 
 On the page type the right client ID and a wrong secret (for example `wrong`), continue to Google and allow access.
+
+Afterwards `installer verify data.google-ready` is not possible (the install is already complete and has no pending step); the Part D probe is the check instead.
 
 Expected: the page says `Google refused the sign-in (invalid_client)` followed by `The client ID or secret is wrong...` and a `Look at:` and `Search for:` line. Paste what the page says (copy the text; no secrets are shown). Close the page, then run `installer secret google` once more with the right secret.
 

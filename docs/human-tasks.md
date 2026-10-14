@@ -82,6 +82,8 @@ Each task says why it is needed and what to do, step by step.
 3. In a terminal, from the repository folder, in a subshell so the keys do not stay in your terminal: `( set -a; . ~/.config/installer-dev/.env; node docs/testing/google-token-probe.mjs )`. Tell Claude whether the first line still lists `refresh_token_expires_in`. If it no longer does, the sign-in is not marked to expire; if it still does, the guide's wording must change.
 4. After 8 days or more, run the same command again (token endpoint 200 means the sign-in survived). Tell Claude, and Claude records the date in D123.
 
+**Result of steps 1 to 3, 2026-10-14:** the app was set to In production (the console then shows "Your app requires verification", which needs no action) and the sign-in shows "Google hasn't verified this app" (Advanced, then Go to the app). The token response lists `access_token,expires_in,scope,token_type`: `refresh_token_expires_in` is gone, so the sign-in is not marked to expire. A first probe returned `invalid_grant` only because the old Testing token was still in `.env`. **Step 4 is still open: repeat the probe on or after 2026-10-22.** The token in `~/.config/installer-dev/.env` stays valid for it; do not remove the app's access at Google before then.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
