@@ -5,6 +5,7 @@ import { appendAudit } from "./audit.js";
 import { SENT_DIR } from "./channel-policy.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { SEEN_DIR } from "./inbound.js";
+import { removeAttachments } from "./attachments.js";
 import { INBOX_DIR, rememberContact } from "./inbox.js";
 import { InputError } from "./inputs.js";
 import { listRecords, removeRecord } from "./numbered.js";
@@ -121,7 +122,10 @@ async function pruneFiles(home: string, dir: string, cutoffMs: number): Promise<
 export async function pruneOld(home: string, now: string): Promise<Pruned> {
   const { days } = await loadRetention(home);
   const cutoff = new Date(Date.parse(now) - days * DAY_MS).toISOString();
-  const remember = (item: Numbered): Promise<void> => rememberContact(home, { channel: String(item.channel), address: String(item.from) });
+  const remember = async (item: Numbered): Promise<void> => {
+    await removeAttachments(home, Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is string => typeof entry === "string") : []);
+    await rememberContact(home, { channel: String(item.channel), address: String(item.from) });
+  };
   const pruned: Pruned = {
     runs: await pruneRuns(home, cutoff),
     inbox: await pruneNumbered(home, INBOX_DIR, "received_at", cutoff, remember),

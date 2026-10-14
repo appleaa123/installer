@@ -28,8 +28,10 @@ async function readOne(session: ImapSession, config: EmailConfig, uid: number): 
   const tooLarge = size > MAX_MESSAGE_BYTES;
   const mail = parseMail(tooLarge ? await session.headers(uid) : await session.fetch(uid));
   if (mail.from === "" || mail.from === config.address.toLowerCase()) return null;
-  const text = tooLarge ? `(Not read: this email is ${size} bytes, over the limit of ${MAX_MESSAGE_BYTES} bytes; open it in the mailbox)` : mail.text || mail.subject;
-  return { channel: "email", from: mail.from, thread: mail.in_reply_to || mail.message_id || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}` };
+  const body = tooLarge ? `(Not read: this email is ${size} bytes, over the limit of ${MAX_MESSAGE_BYTES} bytes; open it in the mailbox)` : mail.text || mail.subject;
+  const text = mail.skipped.length > 0 ? `${body}\n(Not kept: ${mail.skipped.join("; ")})` : body;
+  const files = mail.attachments.map((attachment) => ({ name: attachment.filename, type: attachment.type, bytes: attachment.bytes }));
+  return { channel: "email", from: mail.from, thread: mail.thread_root || `uid:${uid}`, text, message_id: mail.message_id || `uid:${uid}`, files };
 }
 
 async function newMessages(session: ImapSession, config: EmailConfig, last: number): Promise<{ messages: RawInbound[]; last: number }> {

@@ -12,6 +12,14 @@ export interface RawInbound {
   /** The channel's own id of the message (Telegram update id, email Message-ID). */
   readonly message_id: string;
   readonly attachments?: readonly string[];
+  /** Files that came with the message, in memory only; the gateway saves them (D132). */
+  readonly files?: readonly InboundFile[];
+}
+
+export interface InboundFile {
+  readonly name: string;
+  readonly type: string;
+  readonly bytes: Buffer;
 }
 
 export interface InboundEnvelope {
@@ -57,7 +65,7 @@ export function scanInjection(rawText: string): readonly string[] {
   return [...hidden, ...INJECTION_PATTERNS.filter(([, pattern]) => pattern.test(visible)).map(([name]) => name)];
 }
 
-function cleanText(text: string): string {
+export function cleanText(text: string): string {
   const clean = text.normalize("NFC").replace(/\r\n?/g, "\n").replace(HIDDEN, "").replace(CONTROL, "").trim();
   return clean.length > MAX_INBOUND_TEXT ? clean.slice(0, MAX_INBOUND_TEXT) : clean;
 }

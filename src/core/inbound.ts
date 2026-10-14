@@ -1,3 +1,4 @@
+import { saveAttachments } from "./attachments.js";
 import { createHash } from "node:crypto";
 import { access, mkdir, open } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -108,8 +109,10 @@ async function killSwitch(ctx: ToolContext, envelope: InboundEnvelope, member: M
 
 /** Drops a message handled before; otherwise routes it and only then marks it seen (storing is idempotent). */
 export async function handleInbound(ctx: ToolContext, raw: RawInbound): Promise<Outcome> {
-  const envelope = normalizeInbound(raw, ctx.now());
-  if (await seenBefore(ctx.home, envelope)) return "duplicate";
+  const base = normalizeInbound(raw, ctx.now());
+  if (await seenBefore(ctx.home, base)) return "duplicate";
+  const kept = raw.files?.length ? await saveAttachments(ctx.home, base, raw.files) : [];
+  const envelope = kept.length > 0 ? { ...base, attachments: [...base.attachments, ...kept] } : base;
   const outcome = await routeInbound(ctx, envelope);
   await markSeen(ctx.home, envelope);
   return outcome;
