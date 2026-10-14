@@ -28,7 +28,7 @@ import { dryrunCommand, sandboxCommand, workflowCommand } from "./core/lifecycle
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
 import { InputError } from "./core/inputs.js";
-import { inviteCommand, membersCommand } from "./core/invite-commands.js";
+import { inviteCommand, membersCommand, renderInvite } from "./core/invite-commands.js";
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
@@ -346,7 +346,10 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   connect: async ({ deps }, flags, arg) => connectEntity(deps.home, requireEntityArg(arg, "connect"), flags.sheet, deps.now),
   map: async ({ deps }, flags, arg) => mapEntity(deps.home, requireEntityArg(arg, "map"), flags.value, deps.now, process.env, process.stdin.isTTY === true),
   channel: async ({ deps }, flags, arg) => channelCommand(deps.home, arg, flags.value, deps.now, process.env, process.stdin.isTTY === true),
-  invite: async ({ state, deps }, _flags, arg) => inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now),
+  invite: async ({ state, deps }, _flags, arg) => {
+    const invited = await inviteCommand(deps.home, state.roles, arg, process.stdin.isTTY === true, deps.now);
+    return process.stdin.isTTY === true && process.stdout.isTTY === true ? renderInvite(invited) : invited;
+  },
   members: async ({ deps }, _flags, arg, extra) => membersCommand(deps.home, { sub: arg, id: extra, interactive: process.stdin.isTTY === true }, deps.now),
   gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),
   run: async ({ deps }, flags, arg) => runCommand(deps.home, arg, flags.sandbox === true, deps.now),

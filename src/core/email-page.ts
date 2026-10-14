@@ -7,7 +7,7 @@ import { explainMailFailure, normalizePassword, presetFor, setupFromPreset, type
 import { withImap } from "./imap.js";
 import { InputError } from "./inputs.js";
 import { requireSecretValue } from "./keychain.js";
-import { DONE_PAGE, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
+import { DONE_PAGE, LONG_PAGE_TTL_MS, escapeHtml, listen, readBody, type SecretPage } from "./secret-page.js";
 import { smtpVerify } from "./smtp.js";
 
 /**
@@ -29,8 +29,6 @@ export interface EmailPageOptions {
   readonly env?: Env;
 }
 
-/** Making an app password takes a while, so this page stays open longer than the others (D47 uses ten minutes). */
-export const EMAIL_PAGE_TTL_MS = 1_800_000;
 const HOST = "127.0.0.1";
 const FIELDS = ["imap_host", "imap_port", "imap_security", "imap_user", "smtp_host", "smtp_port", "smtp_security", "smtp_user"] as const;
 type FieldName = (typeof FIELDS)[number];
@@ -170,6 +168,6 @@ export async function startEmailPage(options: EmailPageOptions): Promise<SecretP
   server.on("request", (req, res) => {
     handle(req, res, page, options, () => close("stored")).catch(() => send(res, 500, addressPage(path, "Something went wrong. Please try again.")));
   });
-  setTimeout(() => close("expired"), options.ttlMs ?? EMAIL_PAGE_TTL_MS).unref();
+  setTimeout(() => close("expired"), options.ttlMs ?? LONG_PAGE_TTL_MS).unref();
   return { url: `${page.origin}${path}`, done, close: () => close("expired") };
 }

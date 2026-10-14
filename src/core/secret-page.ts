@@ -6,6 +6,8 @@ import { InputError } from "./inputs.js";
 
 /** The page closes itself after ten minutes with nothing entered (D47). */
 export const SECRET_PAGE_TTL_MS = 600_000;
+/** Pages whose setup happens elsewhere first (making an app password, a Google client) stay open for half an hour (D130). */
+export const LONG_PAGE_TTL_MS = 1_800_000;
 /** Names the command that opens the browser; `none` opens nothing (tests, servers). */
 export const BROWSER_ENV = "INSTALLER_BROWSER";
 const MAX_BODY_BYTES = 65_536;
