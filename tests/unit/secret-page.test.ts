@@ -95,6 +95,36 @@ describe("browser and headless host", () => {
     expect(openBrowser("http://127.0.0.1:1/s/x", { INSTALLER_BROWSER: "none" })).toBe(false);
   });
 
+  describe("on Windows (D128, Preview)", () => {
+    const url = "http://127.0.0.1:4321/s/abc?x=1&y=2";
+    const launcher = () => {
+      const launched: { command: string; args: readonly string[] }[] = [];
+      const child = { on: () => child, unref: () => undefined };
+      const launch = ((command: string, args: readonly string[]) => (launched.push({ command, args }), child)) as unknown as typeof import("node:child_process").spawn;
+      return { launched, launch };
+    };
+
+    it("opens the default browser with rundll32, without a shell, so an & in the address is safe", () => {
+      const { launched, launch } = launcher();
+      expect(openBrowser(url, {}, "win32", launch)).toBe(true);
+      expect(launched).toEqual([{ command: "rundll32", args: ["url.dll,FileProtocolHandler", url] }]);
+    });
+
+    it("still lets INSTALLER_BROWSER choose the opener or turn it off", () => {
+      const { launched, launch } = launcher();
+      expect(openBrowser(url, { INSTALLER_BROWSER: "none" }, "win32", launch)).toBe(false);
+      expect(openBrowser(url, { INSTALLER_BROWSER: "my-browser" }, "win32", launch)).toBe(true);
+      expect(launched).toEqual([{ command: "my-browser", args: [url] }]);
+    });
+
+    it("leaves macOS and Linux as they were", () => {
+      const { launched, launch } = launcher();
+      openBrowser(url, {}, "darwin", launch);
+      openBrowser(url, {}, "linux", launch);
+      expect(launched.map((entry) => entry.command)).toEqual(["open", "xdg-open"]);
+    });
+  });
+
   it("survives an opener that does not exist", () => {
     expect(openBrowser("http://127.0.0.1:1/s/x", { INSTALLER_BROWSER: "installer-test-no-such-browser" })).toBe(true);
   });

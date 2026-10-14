@@ -7,7 +7,7 @@ import { nextCronTime } from "./cron.js";
 import { readConfig } from "./data-source.js";
 import { saveReportConfig } from "./daily-report.js";
 import { InputError } from "./inputs.js";
-import { installerCliPath, shellQuote } from "./register.js";
+import { installerCliPath, shellQuote, winQuote } from "./register.js";
 import { listRuns } from "./runs.js";
 import { HEARTBEAT_FILE } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -15,8 +15,8 @@ import { loadWorkflow, workflowIds } from "./workflow.js";
 
 /**
  * The OS scheduler entry (D12, D82): one per engine home, running `taskfollow --home <home> tick` every minute.
- * Two backends behind one interface: macOS launchd (a LaunchAgent plist with StartInterval 60) and a crontab line
- * (Linux and other Unix). The installer only writes the file, under `runtime/schedule/` in the home, and prints
+ * Three backends behind one interface: macOS launchd (a LaunchAgent plist with StartInterval 60), a crontab line
+ * (Linux and other Unix) and Windows Task Scheduler (a task XML repeating every minute; Preview, D128). The installer only writes the file, under `runtime/schedule/` in the home, and prints
  * the exact commands; the person runs them in their own terminal (or Plan 9's service setup does). It never runs
  * launchctl or crontab itself, so nothing outside the home changes without the person.
  */
@@ -30,7 +30,9 @@ export interface ScheduleEntry {
 }
 
 export interface SchedulerBackend {
-  readonly id: "launchd" | "crontab";
+  readonly id: "launchd" | "crontab" | "schtasks";
+  /** The file must be written as UTF-16LE with a byte order mark (Task Scheduler's XML). */
+  readonly utf16?: boolean;
   readonly file: (entry: ScheduleEntry) => string;
   readonly render: (entry: ScheduleEntry) => string;
   readonly install: (path: string, entry: ScheduleEntry) => readonly string[];
@@ -72,6 +74,40 @@ export function crontabLine(entry: ScheduleEntry): string {
   return `* * * * * ${entry.argv.map(shellQuote).join(" ")} >> ${shellQuote(entry.log)} 2>&1 # ${entry.label}\n`;
 }
 
+/**
+ * A Task Scheduler task (Windows, Preview): every minute, in the person's own session so their key store opens, on
+ * battery too, one at a time. The tick runs through a hidden console so no window opens each minute. Task Scheduler
+ * cannot redirect output, so there is no tick.log on Windows; the heartbeat and the audit record each tick.
+ */
+export function taskXml(entry: ScheduleEntry): string {
+  const args = `--headless ${entry.argv.map(winQuote).join(" ")}`;
+  return [
+    '<?xml version="1.0" encoding="UTF-16"?>',
+    '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
+    `  <RegistrationInfo><Description>${xml(entry.label)}</Description></RegistrationInfo>`,
+    "  <Triggers>",
+    "    <TimeTrigger>",
+    "      <Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>",
+    "      <StartBoundary>2000-01-01T00:00:00</StartBoundary>",
+    "      <Enabled>true</Enabled>",
+    "    </TimeTrigger>",
+    "  </Triggers>",
+    '  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>',
+    "  <Settings>",
+    "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
+    "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
+    "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
+    "    <StartWhenAvailable>false</StartWhenAvailable>",
+    "    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>",
+    "    <Hidden>true</Hidden>",
+    "    <Enabled>true</Enabled>",
+    "  </Settings>",
+    `  <Actions Context="Author"><Exec><Command>conhost.exe</Command><Arguments>${xml(args)}</Arguments></Exec></Actions>`,
+    "</Task>",
+    "",
+  ].join("\r\n");
+}
+
 const LAUNCH_AGENTS = "~/Library/LaunchAgents";
 
 export const LAUNCHD: SchedulerBackend = {
@@ -90,8 +126,17 @@ export const CRONTAB: SchedulerBackend = {
   remove: (_path, entry) => [`crontab -l 2>/dev/null | grep -v ${shellQuote(`# ${entry.label}`)} | crontab -`],
 };
 
+export const SCHTASKS: SchedulerBackend = {
+  id: "schtasks",
+  utf16: true,
+  file: (entry) => `${entry.label}.xml`,
+  render: taskXml,
+  install: (path, entry) => [`schtasks /Create /TN "taskfollow\\${entry.label}" /XML "${path}" /F`],
+  remove: (_path, entry) => [`schtasks /Delete /TN "taskfollow\\${entry.label}" /F`],
+};
+
 export function backendFor(platform: NodeJS.Platform): SchedulerBackend {
-  if (platform === "win32") throw new InputError("Scheduling on Windows is not supported yet");
+  if (platform === "win32") return SCHTASKS;
   return platform === "darwin" ? LAUNCHD : CRONTAB;
 }
 
@@ -103,7 +148,9 @@ async function entryFile(home: string, backend: SchedulerBackend, entry: Schedul
     return path;
   }
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await writeFile(path, backend.render(entry), { encoding: "utf8", mode: 0o600 });
+  const text = backend.render(entry);
+  if (backend.utf16) await writeFile(path, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]), { mode: 0o600 });
+  else await writeFile(path, text, { encoding: "utf8", mode: 0o600 });
   return path;
 }
 

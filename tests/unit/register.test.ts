@@ -29,6 +29,22 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+describe("headers helper command on Windows (D128, Preview)", () => {
+  it("double-quotes each path, which cmd, PowerShell and Git Bash all read the same way", () => {
+    expect(headersHelperCommand("skillswiki", "C:\\Program Files\\nodejs\\node.exe", "C:\\Users\\Jo Lee\\AppData\\taskfollow\\dist\\cli.js", "win32")).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\Jo Lee\\AppData\\taskfollow\\dist\\cli.js" mcp-headers skillswiki',
+    );
+  });
+
+  it.each(['C:\\50%\\node.exe', 'C:\\a"b\\node.exe', "C:\\a$b\\node.exe", "C:\\a`b\\node.exe", "C:\\a\nb\\node.exe"])("refuses the path %j, where quoting cannot be trusted", (path) => {
+    expect(() => headersHelperCommand("skillswiki", path, "C:\\cli.js", "win32")).toThrow("cannot be used");
+  });
+
+  it("is unchanged on macOS", () => {
+    expect(headersHelperCommand("skillswiki", "/usr/local/bin/node", "/x/cli.js", "darwin")).toBe("'/usr/local/bin/node' '/x/cli.js' mcp-headers skillswiki");
+  });
+});
+
 describe("headers helper command", () => {
   it("quotes both paths for the agent's shell, even with spaces and quotes (D52)", () => {
     expect(headersHelperCommand("skillswiki", "/opt/my node/bin/node", "/Users/o'brien/dist/cli.js")).toBe(

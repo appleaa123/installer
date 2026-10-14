@@ -2,12 +2,22 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ActionFailure } from "./failure.js";
 import { fillTemplate, runProcess, type ProcessResult } from "./headless.js";
+import { InputError } from "./inputs.js";
 import type { RuntimeProfile } from "./profile.js";
 
 /** `claude mcp add-json` health-checks nothing, but a slow agent start is still possible. */
 export const MCP_COMMAND_TIMEOUT_MS = 60_000;
 /** Single quotes for a POSIX shell. */
 export const shellQuote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Double quotes for Windows (Preview, D128): cmd, PowerShell and Git Bash read a double-quoted path the same way.
+ * A path with a character any of them would still expand or break on is refused instead of guessed at.
+ */
+export function winQuote(text: string): string {
+  if (/["%$`\r\n]/.test(text)) throw new InputError(`The path ${JSON.stringify(text)} cannot be used on Windows: it contains a quote, percent sign, dollar sign, backtick or line break. Install TaskFollow in a folder whose path has none of these`);
+  return `"${text}"`;
+}
 
 /** The test suite runs from src/, so it points this at the built CLI; the package needs no override. */
 export const CLI_PATH_ENV = "INSTALLER_CLI";
@@ -18,8 +28,9 @@ export function installerCliPath(): string {
 }
 
 /** The command the agent runs for every request's headers; absolute paths, quoted for the agent's shell (D52). */
-export function headersHelperCommand(secretId: string, execPath: string, cliPath: string): string {
-  return `${shellQuote(execPath)} ${shellQuote(cliPath)} mcp-headers ${secretId}`;
+export function headersHelperCommand(secretId: string, execPath: string, cliPath: string, platform: string = process.platform): string {
+  const quote = platform === "win32" ? winQuote : shellQuote;
+  return `${quote(execPath)} ${quote(cliPath)} mcp-headers ${secretId}`;
 }
 
 /** The `claude mcp add-json` payload: an http server whose Authorization header comes from the helper, never from a file. */

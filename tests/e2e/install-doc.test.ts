@@ -49,6 +49,17 @@ describe("INSTALL.md", () => {
     expect(channels).toContain("Telegram");
   });
 
+  it("handles Windows as a Preview: detects the system without uname, uses Command Prompt, and says what is missing (D128)", () => {
+    expect(DOC).not.toContain("`uname`");
+    expect(DOC).toContain("node -p process.platform");
+    expect(DOC).toContain("win32");
+    expect(DOC).toMatch(/Windows.{0,40}Preview/);
+    expect(DOC).toContain("Command Prompt");
+    expect(DOC).toMatch(/Windows key/);
+    expect(DOC).not.toMatch(/On Windows, stop/);
+    expect(DOC).toMatch(/team host.{0,80}Windows|Windows.{0,80}team host/s);
+  });
+
   it("never asks for Skills Wiki before the optional section", () => {
     const base = DOC.slice(0, DOC.indexOf("## 11."));
     expect(base).not.toMatch(/skills ?wiki/i);

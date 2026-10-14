@@ -8,10 +8,11 @@ Hermes, Pi, …), then runs their workflows under enforced human approval.
 Status: Plans 1–11 implemented; see the [roadmap](docs/superpowers/plans/README.md).
 The package is not published (`"private": true`).
 
-Who can use it today: a person on a **Mac** with **Node 22 or newer**, an AI
-agent such as Claude Code that follows [`INSTALL.md`](INSTALL.md), and their
-own Google account. A Skills Wiki account is optional (INSTALL.md, section 11). Windows is not supported (no
-scheduler and no password-safe backend yet); Linux is untested.
+Who can use it today: a person on a **Mac** or on **Windows 11 (Preview)**, with
+**Node 22 or newer**, an AI agent such as Claude Code that follows
+[`INSTALL.md`](INSTALL.md), and their own Google account. A Skills Wiki account
+is optional (INSTALL.md, section 11). Windows has not yet been tried on a real PC
+(human task 22) and has no always-on team host; Linux is untested.
 
 ## What is certified
 
