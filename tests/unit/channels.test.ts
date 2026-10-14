@@ -167,7 +167,7 @@ describe("the channel connectors (§12.2)", () => {
     imap.deliver(MAIL("Ada <ada@example.com>", "A3", "a1"));
     imap.deliver(MAIL(MAIL_USER, "my own copy", "m1"));
     const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
-    expect(read).toEqual({ messages: [{ channel: "email", from: "ada@example.com", thread: "<a1@example.com>", text: "A3", message_id: "<a1@example.com>", files: [] }], cursor: { uidvalidity: 7, last_uid: 103 } });
+    expect(read).toEqual({ messages: [{ channel: "email", from: "ada@example.com", thread: "<a1@example.com>", text: "A3", message_id: "<a1@example.com>", files: [], subject: "s" }], cursor: { uidvalidity: 7, last_uid: 103 } });
     await channel.send({ to: "ada@example.com", text: "Thanks", subject: "Re: s" });
     expect(smtp.received[0]).toMatchObject({ from: MAIL_USER, to: "ada@example.com" });
   });
@@ -200,8 +200,8 @@ describe("the channel connectors (§12.2)", () => {
     imap.deliver(MAIL("grace@example.com", "after", "g1"));
     const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
     expect(read.messages).toEqual([
-      { channel: "email", from: "ada@example.com", thread: "<huge@example.com>", message_id: "<huge@example.com>", text: expect.stringMatching(/^\(Not read: this email is \d+ bytes, over the limit of 10000000 bytes; open it in the mailbox\)$/), files: [] },
-      { channel: "email", from: "grace@example.com", thread: "<g1@example.com>", text: "after", message_id: "<g1@example.com>", files: [] },
+      { channel: "email", from: "ada@example.com", thread: "<huge@example.com>", message_id: "<huge@example.com>", text: expect.stringMatching(/^\(Not read: this email is \d+ bytes, over the limit of 10000000 bytes; open it in the mailbox\)$/), files: [], subject: "s" },
+      { channel: "email", from: "grace@example.com", thread: "<g1@example.com>", text: "after", message_id: "<g1@example.com>", files: [], subject: "s" },
     ]);
     expect(read.cursor).toEqual({ uidvalidity: 7, last_uid: 103 });
     expect(imap.commands).not.toContain("UID FETCH 102 (BODY.PEEK[])");

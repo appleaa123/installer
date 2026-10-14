@@ -114,10 +114,11 @@ describe("receiving over the live connection (D135)", () => {
 
   it("finds what an earlier run saved but did not finish (a crash before the cursor)", async () => {
     const first = await socket();
-    const waiting = first.socket.receive(0, 3, SIGNAL);
+    // A long wait: receive returns as soon as the event is saved, and a busy machine must not end it first.
+    const waiting = first.socket.receive(0, 30, SIGNAL);
     await until(async () => (await fake.stats()).live >= 1, "the connection");
     await fake.event({ text: "unfinished" });
-    await waiting;
+    expect((await waiting).length).toBe(1);
     await first.socket.close();
     const second = new SlackSocket({ api: slackApi({ bot: BOT_TOKEN, app: APP_TOKEN }, fake.env), spoolDir: first.spoolDir, env: fake.env, backoff: { initialMs: 20, maxMs: 200 } });
     open.push(second);
