@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { openWire, type Endpoint, type Wire } from "./wire.js";
@@ -20,6 +21,14 @@ export interface MailMessage {
   readonly message_id: string;
   readonly date: string;
   readonly in_reply_to?: string;
+  /** Files to attach; the message is then multipart/mixed (D133). */
+  readonly attachments?: readonly MailFile[];
+}
+
+export interface MailFile {
+  readonly filename: string;
+  readonly type: string;
+  readonly bytes: Buffer;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -93,17 +102,36 @@ function oneLine(value: string, what: string): string {
   return value;
 }
 
-/** The message as sent: plain-text UTF-8, base64 body in 76-character lines. */
+const wrap = (bytes: Buffer): string => bytes.toString("base64").replace(/.{76}/g, "$&\r\n");
+
+/** `filename="x"`, plus the RFC 2231 form when the name has characters outside ASCII. */
+function dispositionName(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  return ascii === filename ? `filename="${ascii}"` : `filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+/** One attached file as a MIME part: base64 only, so no line starts with a dot and nothing needs dot-stuffing. */
+function filePart(boundary: string, file: MailFile): string {
+  const type = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(file.type) ? file.type : "application/octet-stream";
+  return `--${boundary}\r\nContent-Type: ${type}\r\nContent-Disposition: attachment; ${dispositionName(oneLine(file.filename, "file name"))}\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(file.bytes)}\r\n`;
+}
+
+/** The message as sent: plain-text UTF-8, base64 body in 76-character lines; multipart/mixed when it carries files. */
 export function buildMessage(message: MailMessage): string {
   const [from, to, subject] = [oneLine(message.from, "sender"), oneLine(message.to, "recipient"), oneLine(message.subject, "subject")];
-  const body = Buffer.from(message.text.replace(/\r?\n/g, "\r\n"), "utf8").toString("base64").replace(/.{76}/g, "$&\r\n");
+  const text = wrap(Buffer.from(message.text.replace(/\r?\n/g, "\r\n"), "utf8"));
+  const files = message.attachments ?? [];
+  const boundary = `tf-${randomBytes(18).toString("hex")}`;
   const headers = [
     `From: ${from}`, `To: ${to}`, `Subject: ${encodeWord(subject)}`, `Date: ${new Date(message.date).toUTCString()}`,
     `Message-ID: ${oneLine(message.message_id, "message id")}`,
     ...(message.in_reply_to ? [`In-Reply-To: ${oneLine(message.in_reply_to, "reply id")}`, `References: ${message.in_reply_to}`] : []),
-    "MIME-Version: 1.0", "Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64",
+    "MIME-Version: 1.0",
+    ...(files.length > 0 ? [`Content-Type: multipart/mixed; boundary="${boundary}"`] : ["Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64"]),
   ];
-  return `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
+  if (files.length === 0) return `${headers.join("\r\n")}\r\n\r\n${text}\r\n`;
+  const first = `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${text}\r\n`;
+  return `${headers.join("\r\n")}\r\n\r\n${first}${files.map((file) => filePart(boundary, file)).join("")}--${boundary}--\r\n`;
 }
 
 export function smtpSend(account: MailAccount, password: string, message: MailMessage, env: Env = process.env): Promise<void> {
