@@ -60,10 +60,18 @@ export type ChannelConfig = TelegramConfig | EmailConfig;
 /** Telegram: `{offset}`; email: `{uidvalidity, last_uid}`. */
 export type Cursor = Readonly<Record<string, number>>;
 
+export interface OutboundFile {
+  readonly filename: string;
+  readonly type: string;
+  readonly bytes: Buffer;
+}
+
 export interface OutboundMessage {
   readonly to: string;
   readonly text: string;
   readonly subject?: string;
+  /** Email only (D133): saved files from received messages; each was approved by its content hash. */
+  readonly attachments?: readonly OutboundFile[];
 }
 
 export interface ChannelConnector {

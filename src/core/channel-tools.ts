@@ -1,7 +1,7 @@
 import { DEFAULT_POLICY, inQuietHours, isOptedOut, rateLimited, recordSent, type ChannelPolicy } from "./channel-policy.js";
 import { describeChannel, requireEmailAddress } from "./channel-commands.js";
 import { CHANNEL_IDS, listChannels, requireChannelId, type ChannelId } from "./channels.js";
-import { readAttachment } from "./attachments.js";
+import { ATTACHMENT_REF, loadAttachment, readAttachment } from "./attachments.js";
 import { hasWrittenFirst, listInbox } from "./inbox.js";
 import { InputError } from "./inputs.js";
 import { listMembers } from "./members.js";
@@ -21,6 +21,7 @@ const TEXT = { type: "string", minLength: 1, maxLength: MAX_TEXT };
 const TELEGRAM_CHAT = /^-?\d{1,20}$/;
 const MAX_SUBJECT = 200;
 const MAX_INBOX = 50;
+const MAX_SEND_FILES = 5;
 const DEFAULT_INBOX = 20;
 /** Starts every approval announcement and urgent alert the engine sends; an agent's channel.notify may not start with it (§11.9). */
 export const GATEWAY_MARK = "[installer]";
@@ -43,13 +44,23 @@ function subjectArg(args: ToolArgs, channel: ChannelId): ToolArgs {
   return { subject };
 }
 
+function attachmentsArg(args: ToolArgs, channel: ChannelId): ToolArgs {
+  if (args.attachments === undefined) return {};
+  if (channel !== "email") throw new InputError("channel.send: only email messages can carry attachments");
+  const refs = args.attachments;
+  if (!Array.isArray(refs) || refs.length === 0 || !refs.every((ref): ref is string => typeof ref === "string")) throw new InputError("channel.send: 'attachments' must list saved attachments (see channel.inbox, field 'attachments')");
+  if (refs.length > MAX_SEND_FILES) throw new InputError(`channel.send: at most ${MAX_SEND_FILES} attachments`);
+  if (!refs.every((ref) => ATTACHMENT_REF.test(ref))) throw new InputError("channel.send: attachments must be files saved from received messages (see channel.inbox, field 'attachments')");
+  return { attachments: [...refs] };
+}
+
 function parseSend(args: ToolArgs): ToolArgs {
-  onlyKeys(args, ["channel", "to", "text", "subject"], "channel.send");
+  onlyKeys(args, ["channel", "to", "text", "subject", "attachments"], "channel.send");
   const channel = channelArg(args, "channel.send");
   const raw = textArg(args, "to", "channel.send");
   if (channel === "telegram" && !TELEGRAM_CHAT.test(raw)) throw new InputError("channel.send: for telegram, 'to' is the chat id, a number (see channel.inbox, field 'thread')");
   const to = channel === "email" ? requireEmailAddress(raw, "channel.send: 'to'") : raw;
-  return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel) };
+  return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel), ...attachmentsArg(args, channel) };
 }
 
 /** Opt-out and consent (§12.5): a refusal here happens before any approval is asked, or any token spent. */
@@ -60,7 +71,11 @@ async function sendExpected(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs>
   if (policy.consent === "inbound_first" && !(await hasWrittenFirst(ctx.home, identity))) {
     throw new InputError(`The consent policy says a contact must write first; ${identity.address} has not written on ${identity.channel}`);
   }
-  return {};
+  // The files' content hashes join the approved action, so a file changed after approval cannot go out under it (D133).
+  const refs = (args.attachments as string[] | undefined) ?? [];
+  if (refs.length === 0) return {};
+  const files = await Promise.all(refs.map((ref) => loadAttachment(ctx.home, ref)));
+  return { attachments: files.map((file) => ({ ref: file.ref, sha256: file.sha256, size: file.bytes.length })) };
 }
 
 async function sendReady(ctx: ToolContext, args: ToolArgs): Promise<string | null> {
@@ -148,10 +163,15 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "channel.send", description: "Send a message to an outside contact. A person approves the exact message first (L2); opt-outs, consent and quiet hours are enforced.",
-    fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT } }, required: ["channel", "to", "text"],
+    fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT }, attachments: { type: "array", items: { type: "string" }, maxItems: MAX_SEND_FILES } }, required: ["channel", "to", "text"],
     parse: parseSend, expected: sendExpected, ready: sendReady, outbound: true,
     run: async (ctx, args) => {
-      const message = { to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}) };
+      const refs = (args.attachments as string[] | undefined) ?? [];
+      const files = await Promise.all(refs.map((ref) => loadAttachment(ctx.home, ref)));
+      const message = {
+        to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}),
+        ...(files.length > 0 ? { attachments: files.map((file) => ({ filename: file.filename, type: file.type, bytes: file.bytes })) } : {}),
+      };
       const delivery = await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox, ctx.run);
       if (delivery.status === "sent") await recordSent(ctx.home, { channel: args.channel as string, address: args.to as string }, ctx.now());
       return { channel: args.channel, to: args.to, ...delivery };

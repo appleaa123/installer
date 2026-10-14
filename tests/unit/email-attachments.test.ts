@@ -5,6 +5,7 @@ import type { EmailConfig } from "../../src/core/channels.js";
 import { emailChannel } from "../../src/core/email-channel.js";
 import { handleInbound } from "../../src/core/inbound.js";
 import { listInbox } from "../../src/core/inbox.js";
+import { parseMail } from "../../src/core/mime.js";
 import { pruneOld } from "../../src/core/retention.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
@@ -144,5 +145,24 @@ describe("retention removes the files with the message (D132)", () => {
     await pruneOld(ctx.home, NOW);
     await expect(access(path)).rejects.toThrow();
     expect(await readdir(join(ctx.home, "data", "inbox-files")).catch(() => [])).toEqual([]);
+  });
+});
+
+describe("sending a file by email (D133)", () => {
+  it("delivers the attachment's exact bytes through the mail server", async () => {
+    const imap = await startFakeImap("ssl", []);
+    const smtp = await startFakeSmtp("starttls");
+    servers.push(imap, smtp);
+    const config: EmailConfig = {
+      channel: "email", address: MAIL_USER, verified_at: NOW,
+      imap: { host: "127.0.0.1", port: imap.port, security: "ssl", user: MAIL_USER }, smtp: { host: "127.0.0.1", port: smtp.port, security: "starttls", user: MAIL_USER },
+    };
+    const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0, 255, 13, 10, 46, 13, 10]);
+    await emailChannel(config, MAIL_PASSWORD, TEST_TLS_ENV).send({ to: "ada@example.com", text: "Here is the quote.", subject: "Quote", attachments: [{ filename: "quote.pdf", type: "application/pdf", bytes }] });
+    expect(smtp.received).toHaveLength(1);
+    const parsed = parseMail(Buffer.from(smtp.received[0]?.data ?? "", "latin1"));
+    expect(parsed.text).toBe("Here is the quote.");
+    expect(parsed.attachments[0]?.filename).toBe("quote.pdf");
+    expect(parsed.attachments[0]?.bytes.equals(bytes)).toBe(true);
   });
 });

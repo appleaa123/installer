@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { cleanText, scanInjection, type InboundEnvelope, type InboundFile } from "./envelope.js";
@@ -13,6 +13,9 @@ import { safeFileName } from "./mime.js";
  */
 export const ATTACHMENTS_DIR = "data/inbox-files";
 export const MAX_READ_CHARS = 20_000;
+/** A saved attachment as the tools name it: exactly what saveAttachments returns. */
+export const ATTACHMENT_REF = /^data\/inbox-files\/[0-9a-f]{16}\/[^/\\]+$/;
+const TYPES: Readonly<Record<string, string>> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", txt: "text/plain", csv: "text/csv", json: "application/json", md: "text/markdown", zip: "application/zip", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 const TEXT_FILE = /\.(txt|csv|tsv|md|json|log|ics|xml)$/i;
 
 const folderOf = (envelope: Pick<InboundEnvelope, "channel" | "message_id">): string =>
@@ -65,4 +68,25 @@ export async function readAttachment(home: string, references: readonly string[]
   } finally {
     await handle.close();
   }
+}
+
+export interface LoadedAttachment {
+  readonly ref: string;
+  readonly filename: string;
+  readonly type: string;
+  readonly bytes: Buffer;
+  readonly sha256: string;
+}
+
+/** A saved attachment for sending: only a reference of exactly the saved form, never an arbitrary path. */
+export async function loadAttachment(home: string, ref: string): Promise<LoadedAttachment> {
+  if (!ATTACHMENT_REF.test(ref)) throw new InputError("Attachments must be files saved from received messages (see channel.inbox, field 'attachments')");
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(await absolute(home, ref));
+  } catch {
+    throw new InputError(`No saved attachment '${ref}': it may have been removed by retention`);
+  }
+  const filename = ref.split("/").at(-1) ?? "attachment";
+  return { ref, filename, type: TYPES[filename.split(".").at(-1)?.toLowerCase() ?? ""] ?? "application/octet-stream", bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
