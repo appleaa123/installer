@@ -3,7 +3,7 @@ import { confinedPath } from "./actions.js";
 import { REASON_TOOL, summarize } from "./agent-hook.js";
 import { listApprovals, type ApprovalItem } from "./approvals.js";
 import { InputError } from "./inputs.js";
-import { listRuns, listSteps, type RunRecord, type StepLog } from "./runs.js";
+import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
 
 /**
@@ -104,13 +104,13 @@ async function explainRun(home: string, record: RunRecord, now: string): Promise
 
 export async function whyCommand(home: string, arg: string | undefined, now: () => string): Promise<Raw> {
   if (arg !== undefined && RUN_ID.test(arg)) {
-    const record = (await listRuns(home)).find((run) => run.run_id === arg);
+    const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === arg);
     if (!record) throw new InputError(`No run '${arg}': 'taskfollow why' lists the recent runs`);
     return { run: { workflow: record.workflow, run_id: record.run_id, status: record.status, sandbox: record.sandbox }, timeline: await explainRun(home, record, now()) };
   }
   if (arg !== undefined && !DATE.test(arg)) throw new InputError("why takes a run id (for example 2026-10-14-1a2b3c4d), or a date to list the runs since (for example 2026-10-13)");
   const since = arg ?? new Date(Date.parse(now()) - DAY_MS).toISOString();
-  const runs = (await listRuns(home)).filter((run) => run.started_at >= since).sort((a, b) => a.started_at.localeCompare(b.started_at));
+  const runs = (await listRuns(home, undefined, skipDamaged)).filter((run) => run.started_at >= since).sort((a, b) => a.started_at.localeCompare(b.started_at));
   return {
     since,
     runs: runs.map((run) => ({ run_id: run.run_id, workflow: run.workflow, started_at: run.started_at, status: run.status, ...(run.reason ? { reason: run.reason } : {}) })),

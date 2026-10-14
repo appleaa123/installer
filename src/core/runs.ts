@@ -159,7 +159,8 @@ export async function listSteps(home: string, record: RunRecord): Promise<StepLo
 
 /** D144: the outputs of the steps of this workflow's last finished run before this one (same sandbox mode), or null. */
 export async function previousOutputs(home: string, record: RunRecord): Promise<Readonly<Record<string, unknown>> | null> {
-  const earlier = (await listRuns(home, record.workflow))
+  // A damaged run record is skipped here: the tick reports it, and it must not stop every later run (D144).
+  const earlier = (await listRuns(home, record.workflow, skipDamaged))
     .filter((run) => run.run_id !== record.run_id && run.sandbox === record.sandbox && (run.status === "completed" || run.status === "partial") && run.started_at < record.started_at)
     .sort((a, b) => a.started_at.localeCompare(b.started_at))
     .at(-1);
@@ -220,6 +221,9 @@ export async function clearClaim(home: string, claim: OrphanClaim, now: string):
 
 /** Called with a damaged run record's error instead of throwing it, so one damaged file does not stop the rest. */
 export type OnDamaged = (error: StateCorruptError, workflow: string, runId: string) => Promise<void>;
+
+/** Leaves a damaged run record out without a word: for readers whose caller reports damage elsewhere (the tick). */
+export const skipDamaged: OnDamaged = async () => undefined;
 
 async function loadRunOrSkip(home: string, workflow: string, runId: string, damaged?: OnDamaged): Promise<RunRecord | null> {
   try {

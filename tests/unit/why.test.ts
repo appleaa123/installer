@@ -72,6 +72,15 @@ describe("taskfollow why (D138)", () => {
     expect(await whyCommand(home, undefined, () => "2026-10-20T00:00:00.000Z")).toMatchObject({ runs: [] });
   });
 
+  it("still lists the other runs when one run record is damaged", async () => {
+    const { home, run } = await finishedRun();
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    await mkdir(join(home, "runs", "order-status", "damaged"), { recursive: true });
+    await writeFile(join(home, "runs", "order-status", "damaged", "run.json"), "{}");
+    expect(await whyCommand(home, undefined, () => LATER)).toMatchObject({ runs: [{ run_id: run.run_id }] });
+  });
+
   it("refuses a run it does not know, in plain words", async () => {
     const home = await runnerHome();
     await expect(whyCommand(home, "2026-10-14-deadbeef", () => LATER)).rejects.toThrow("No run '2026-10-14-deadbeef'");
