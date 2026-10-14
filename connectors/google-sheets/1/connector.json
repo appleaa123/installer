@@ -23,7 +23,8 @@
       "The scope https://www.googleapis.com/auth/spreadsheets is requested",
       "The person's own Google address is allowed to sign in: while the app is in Testing it must be listed as a test user; once the app is In production, or the person uses Workspace 'Internal', no test-user list is needed",
       "The app's publishing status is 'In production' (or the person uses Workspace 'Internal'), set BEFORE the person signs in. Never leave it in 'Testing': a Testing app's sign-in expires after 7 days, which would stop an unattended assistant every week",
-      "The console's 'AI-powered agent' option is left unchecked"
+      "The console's 'AI-powered agent' option is left unchecked",
+      "The person is told in advance what an own app that is In production but not verified shows: the console says 'Your app requires verification' and the person does not need to submit the app for review; the sign-in page says 'Google hasn't verified this app', where the person chooses 'Advanced' and then 'Go to <app name> (unsafe)'. That is expected for their own app, not an error"
     ],
     "sources": [
       "https://console.cloud.google.com/",

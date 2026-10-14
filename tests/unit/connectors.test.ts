@@ -113,6 +113,14 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
     expect(def.setup?.symptoms.every((symptom) => symptom.fix && symptom.look && symptom.search && symptom.means)).toBe(true);
   });
 
+  it("prepares the person for Google's unverified-app screens and says not to submit for verification", async () => {
+    const outcome = (await withSetup(valid())).setup?.outcome.join(" ") ?? "";
+    expect(outcome).toContain("Your app requires verification");
+    expect(outcome).toContain("Google hasn't verified this app");
+    expect(outcome).toContain("Advanced");
+    expect(outcome).toMatch(/not (need to )?submit/i);
+  });
+
   it("loads a connector that has no setup block, as before", async () => {
     const text = edited(({ setup: _setup, ...rest }) => rest);
     const def = await loadConnector("google-sheets", "1", await rootWith(text), { "google-sheets": { "1": sha256(text) } });

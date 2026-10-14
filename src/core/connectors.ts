@@ -15,7 +15,7 @@ export const CONNECTORS_DIR = fileURLToPath(new URL("../../connectors/", import.
 /** The curated catalog (§8.2): id → version → sha256 of the definition file. */
 export type ConnectorPins = Readonly<Record<string, Readonly<Record<string, string>>>>;
 export const CONNECTOR_PINS: ConnectorPins = {
-  "google-sheets": { "1": "e1854eb33f95c12870ab84482f94ea7211144c5793d9555a4bd8768304ed8923" },
+  "google-sheets": { "1": "e86004ba45f8a61f0bca96655559b7c3a3cc2346f239ae45aee20b3b2b851101" },
 };
 
 /** Built-in adapters a definition may name; a connector is data, the code that speaks its API is the engine's. */
