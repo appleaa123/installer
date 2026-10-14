@@ -49,11 +49,11 @@ describe("taskfollow channel and disconnect from the shell (D73)", () => {
 });
 
 describe("taskfollow secret email (D127)", () => {
-  it("cannot be used to fill the page's hand-off item directly", async () => {
+  it.each(["email-settings", "slack-settings"])("cannot be used to fill the page's hand-off item %s directly", async (item) => {
     const { home, env } = await install({});
-    const refused = runCli(["secret", "email-settings"], { home, env });
+    const refused = runCli(["secret", item], { home, env });
     expect(refused.code).toBe(2);
-    expect(refused.json).toMatchObject({ error: expect.stringContaining("email-settings") });
+    expect(refused.json).toMatchObject({ error: expect.stringContaining(item) });
   });
 
   it("finishes the mailbox from the agent's shell with no --value, once the page has stored the servers", async () => {

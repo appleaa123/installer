@@ -16,6 +16,7 @@ import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
+import { APP_TOKEN, BOT_TOKEN as SLACK_BOT_TOKEN, SLACK_IDS, startFakeSlack, type FakeSlack } from "../helpers/fake-slack.js";
 import { MAIL_PASSWORD, MAIL_USER, TEST_TLS_ENV, startFakeImap, startFakeSmtp, type FakeServer } from "../helpers/fake-mail.js";
 import { BOT_TOKEN } from "../helpers/fake-telegram.js";
 import { startFakeMcp, type FakeMcp } from "../helpers/fake-mcp.js";
@@ -174,7 +175,7 @@ const stopGateway = (home: string, env: Record<string, string>): Promise<void> =
   });
 
 describe("starter install, operated the way INSTALL.md says", () => {
-  const servers: (FakeMcp | FakeGoogle)[] = [];
+  const servers: (FakeMcp | FakeGoogle | FakeSlack)[] = [];
   const installs: { home: string; env: Record<string, string> }[] = [];
 
   const mailFakes: FakeServer[] = [];
@@ -249,7 +250,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none" },
+      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -287,7 +288,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -329,7 +330,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email", "services.slack": "none" },
       perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
     };
     const home = await makeTempHome();
@@ -349,7 +350,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
@@ -365,6 +366,50 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(second.final.status).toBe("complete");
     expect(await loadChannel(home, "email")).toMatchObject({ channel: "email" });
     expect(runCli(["report"], { home, env }).stdout).not.toContain("taskfollow add email");
+  });
+
+  it("Slack added after the install is connected, and the gateway then holds a live connection to it (D135)", async () => {
+    const slack = await startFakeSlack();
+    servers.push(slack);
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const env = { ...keychain, ...slack.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS };
+    const solutionRef = `file:${await pinnedStarter()}`;
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const first = await operate({
+      home, solutionRef, startArgs: [], env,
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+    });
+    expect(first.final.status).toBe("complete");
+    expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add slack");
+
+    const added = runCli(["add", "slack"], { home, env });
+    expect(added.json).toMatchObject({ status: "step", view: { step: { step_id: "channels.slack-key" } } });
+
+    const settings = JSON.stringify({ team_id: SLACK_IDS.team_id, team: SLACK_IDS.team, bot_user_id: SLACK_IDS.bot_user_id, app_id: SLACK_IDS.app_id });
+    const second = await operate({
+      home, solutionRef, startArgs: [], env,
+      script: {
+        answers: {},
+        perform: {
+          "channels.slack-key": async (): Promise<void> => {
+            await setSecret("slack", JSON.stringify({ bot: SLACK_BOT_TOKEN, app: APP_TOKEN }), keychain);
+            await setSecret("slack-settings", settings, keychain);
+          },
+          "channels.slack": async (home2: string): Promise<void> => {
+            const result = runCli(["channel", "slack"], { home: home2, env });
+            if (result.code !== 0) throw new Error(`taskfollow channel slack failed: ${result.stderr}`);
+          },
+        },
+      },
+    });
+    expect(second.final.status).toBe("complete");
+    expect(await loadChannel(home, "slack")).toMatchObject({ channel: "slack", team_id: SLACK_IDS.team_id, app_id: SLACK_IDS.app_id });
+    expect(await getSecret("slack-settings", keychain)).toBeNull();
+    const end = Date.now() + 15_000;
+    while ((await slack.stats()).live < 1 && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await slack.stats()).live).toBeGreaterThanOrEqual(1);
+    expect(runCli(["report"], { home, env }).stdout).not.toContain("taskfollow add slack");
   });
 
   it("ends READY at level 3 with Skills Wiki registered in the agent; disconnect then removes it all", async () => {
