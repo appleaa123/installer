@@ -4,9 +4,13 @@ A generic, agent-operated installer and runtime that deploys Skills Wiki
 solutions onto a client's own AI agent (Claude Code, Codex, OpenClaw,
 Hermes, Pi, …), then runs their workflows under enforced human approval.
 
-Status: Plans 1–10 implemented (Plan 10 on branch `feat/certification`); see
-the [roadmap](docs/superpowers/plans/README.md). The package is not
-published (`"private": true`).
+Status: Plans 1–11 implemented; see the [roadmap](docs/superpowers/plans/README.md).
+The package is not published (`"private": true`).
+
+Who can use it today: a person on a **Mac** with **Node 22 or newer**, an AI
+agent such as Claude Code that follows [`INSTALL.md`](INSTALL.md), a Skills
+Wiki account and their own Google account. Windows is not supported (no
+scheduler and no password-safe backend yet); Linux is untested.
 
 ## What is certified
 
