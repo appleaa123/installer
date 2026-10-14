@@ -39,7 +39,7 @@ describe("https: solution refs", () => {
   });
 
   it.each(["http://example.test/s.json", "ftp://example.test/s.json"])("refuses the unsupported ref %s", async (ref) => {
-    await expect(loadSolutionSource(ref)).rejects.toThrow(/use file:<path> or https:/);
+    await expect(loadSolutionSource(ref)).rejects.toThrow(/use starter, starter-skillswiki, file:<path> or https:/);
   });
 
   it("explains what a skillswiki: ref needs when no key-bearing fetcher is given", async () => {
@@ -50,5 +50,22 @@ describe("https: solution refs", () => {
     const loaded = await loadSolutionSource("skillswiki:pack/skill/recipe.json", fetchHttps, async () => FIXTURE_TEXT);
     expect(loaded.solution.id).toBe("fixture-basic");
     expect(loaded.text).toBe(FIXTURE_TEXT);
+  });
+});
+
+describe("bundled solution names (D129)", () => {
+  it("loads the default starter by its short name, with no Skills Wiki steps", async () => {
+    const loaded = await loadSolutionSource("starter");
+    expect(loaded.solution.id).toBe("starter");
+    expect(loaded.solution.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
+    expect(loaded.text).toBe(readFileSync("solutions/starter.json", "utf8"));
+  });
+
+  it("loads the Skills Wiki starter by its short name", async () => {
+    expect((await loadSolutionSource("starter-skillswiki")).solution.id).toBe("starter-skillswiki");
+  });
+
+  it("names the choices when the name is not one of them", async () => {
+    await expect(loadSolutionSource("nope")).rejects.toThrow("starter, starter-skillswiki");
   });
 });

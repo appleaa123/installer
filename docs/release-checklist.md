@@ -44,6 +44,11 @@ Semantic versioning, judged by what an existing install sees:
       then `taskfollow version` and `taskfollow probe`.
 - [ ] Keep the tarball next to the certification records; never commit it.
 
+## 4b. Before anyone is handed START-HERE.md
+
+- [ ] The package is published to npm under the name `taskfollow` (the name was free on 2026-10-14; search it for trademarks first). Until then `npx --yes taskfollow instructions` and `npm install -g taskfollow` fail, so START-HERE.md cannot work.
+- [ ] On a fresh Mac user and a fresh Windows user, follow START-HERE.md exactly, start to finish, with someone watching (`docs/testing/` has the observer sheet).
+
 ## 5. Not part of a release
 
 - Publishing to npm: it needs `"private": true` removed, a package name that
