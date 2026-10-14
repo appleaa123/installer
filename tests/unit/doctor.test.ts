@@ -41,7 +41,7 @@ async function healthyHome(): Promise<string> {
   return home;
 }
 
-describe("taskpilot doctor (§16.1, D103)", () => {
+describe("taskfollow doctor (§16.1, D103)", () => {
   it("says ok for a healthy home, keeps the findings and audits the run", async () => {
     const home = await healthyHome();
     const report = await doctor(home);
@@ -101,9 +101,9 @@ describe("taskpilot doctor (§16.1, D103)", () => {
     expect(find(await doctor(home), "channel.telegram")).toMatchObject({ status: "ok", detail: "@desk_test_bot answers" });
     await deleteSecret("telegram");
     const report = await doctor(home);
-    expect(find(report, "secrets")).toMatchObject({ status: "fail", detail: "missing from the keychain: skillswiki, telegram", fix: "taskpilot secret skillswiki; taskpilot secret telegram" });
-    expect(find(report, "skillswiki")).toMatchObject({ status: "fail", detail: expect.stringContaining("taskpilot secret skillswiki") });
-    expect(find(report, "channel.telegram")).toMatchObject({ status: "fail", detail: expect.stringContaining("taskpilot secret telegram") });
+    expect(find(report, "secrets")).toMatchObject({ status: "fail", detail: "missing from the keychain: skillswiki, telegram", fix: "taskfollow secret skillswiki; taskfollow secret telegram" });
+    expect(find(report, "skillswiki")).toMatchObject({ status: "fail", detail: expect.stringContaining("taskfollow secret skillswiki") });
+    expect(find(report, "channel.telegram")).toMatchObject({ status: "fail", detail: expect.stringContaining("taskfollow secret telegram") });
     await setSecret("telegram", BOT_TOKEN);
   });
 
@@ -113,7 +113,7 @@ describe("taskpilot doctor (§16.1, D103)", () => {
     await mkdir(join(home, "runtime", "gateway"), { recursive: true });
     await writeFile(join(home, PID_FILE), JSON.stringify({ pid: deadPid(), started_at: OLD }));
     const report = await doctor(home, async () => 100 * 1024 ** 2);
-    expect(find(report, "gateway")).toMatchObject({ status: "fail", fix: expect.stringContaining("taskpilot gateway start") });
+    expect(find(report, "gateway")).toMatchObject({ status: "fail", fix: expect.stringContaining("taskfollow gateway start") });
     expect(find(report, "runner")).toMatchObject({ status: "warn", detail: "no tick for 60 minutes (last 2026-10-08T11:00:00.000Z)" });
     expect(find(report, "disk")).toMatchObject({ status: "warn", detail: "only 0.1 GiB free on the engine's disk" });
   });

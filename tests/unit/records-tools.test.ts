@@ -84,13 +84,13 @@ describe("records.find and records.get (L0, §9.5)", () => {
   it("says to map again when a mapped column was removed from the sheet", async () => {
     const { ctx, id } = await setup();
     await fake.debug(`/debug/sheets/${id}`, { title: id, tabs: { People: [["Full name", "Mail"], ["Ada", "ada@example.com"]] } });
-    await expect(invokeTool(ctx, "records.find", { entity: "contact" })).rejects.toThrow("Column 'E-mail' (contact.email) is no longer in row 1 of the sheet: run 'taskpilot map contact' again");
+    await expect(invokeTool(ctx, "records.find", { entity: "contact" })).rejects.toThrow("Column 'E-mail' (contact.email) is no longer in row 1 of the sheet: run 'taskfollow map contact' again");
   });
 
   it("says what to run when the entity is not mapped yet", async () => {
     const { ctx } = await setup();
     await removeMapping(ctx.home, "contact");
-    await expect(invokeTool(ctx, "records.find", { entity: "contact" })).rejects.toThrow("The columns of 'contact' are not mapped yet: run 'taskpilot map contact' first");
+    await expect(invokeTool(ctx, "records.find", { entity: "contact" })).rejects.toThrow("The columns of 'contact' are not mapped yet: run 'taskfollow map contact' first");
   });
 });
 
@@ -146,6 +146,6 @@ describe("records.create and records.update (L2, tags, §9.6)", () => {
   it("refuses a write of a field the mapping leaves out", async () => {
     const { ctx } = await setup();
     await saveMapping(ctx.home, { entity: "contact", columns: { name: "Full name", email: "E-mail" } });
-    await expect(invokeTool(ctx, "records.update", { entity: "contact", key: "ada@example.com", values: { notes: "x" } })).rejects.toThrow("contact.notes has no column in the sheet: map it with 'taskpilot map contact' first");
+    await expect(invokeTool(ctx, "records.update", { entity: "contact", key: "ada@example.com", values: { notes: "x" } })).rejects.toThrow("contact.notes has no column in the sheet: map it with 'taskfollow map contact' first");
   });
 });

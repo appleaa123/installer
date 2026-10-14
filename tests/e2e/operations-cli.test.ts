@@ -16,7 +16,7 @@ async function install(): Promise<string> {
 
 const audited = async (home: string, event: string): Promise<boolean> => (await readFile(join(home, AUDIT_FILE), "utf8")).includes(`"event":"${event}"`);
 
-describe("taskpilot doctor, pause, host, packs, retention, support and uninstall (§6.6, D101–D110)", () => {
+describe("taskfollow doctor, pause, host, packs, retention, support and uninstall (§6.6, D101–D110)", () => {
   it("pauses from the agent's shell, and leaves unpausing to a person's terminal", async () => {
     const home = await install();
     expect(runCli(["pause", "--reason", "checking"], { home }).json).toMatchObject({ status: "paused", by: "agent", reason: "checking" });

@@ -39,9 +39,9 @@ Semantic versioning, judged by what an existing install sees:
       `connectors/`, `solutions/`, `INSTALL.md`, `README.md` and
       `package.json`, and nothing from `tests/`, `src/` or `docs/` (the
       offline suite checks the same in `tests/e2e/release.test.ts`).
-- [ ] `npm pack` writes `taskpilot-<version>.tgz`. On a clean machine or a
-      new user account with Node 22: `npm install -g ./taskpilot-<version>.tgz`,
-      then `taskpilot version` and `taskpilot probe`.
+- [ ] `npm pack` writes `taskfollow-<version>.tgz`. On a clean machine or a
+      new user account with Node 22: `npm install -g ./taskfollow-<version>.tgz`,
+      then `taskfollow version` and `taskfollow probe`.
 - [ ] Keep the tarball next to the certification records; never commit it.
 
 ## 5. Not part of a release

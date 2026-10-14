@@ -74,7 +74,7 @@ describe("the Sheets API v4 client (D67)", () => {
 
   it("says to sign in again when Google refuses the access token", async () => {
     const stale = sheetsClient(def, { accessToken: async () => "not-issued" }, fake.env);
-    await expect(stale.readRows({ spreadsheet_id: "s-read" })).rejects.toThrow("Google Sheets refused the sign-in: run 'taskpilot secret google' to sign in again");
+    await expect(stale.readRows({ spreadsheet_id: "s-read" })).rejects.toThrow("Google Sheets refused the sign-in: run 'taskfollow secret google' to sign in again");
   });
 
   it("asks to try again later when Google is unavailable", async () => {

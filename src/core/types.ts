@@ -61,7 +61,7 @@ export interface StepDef {
   readonly auto?: Action;
   readonly verify?: Check;
   readonly hints?: Readonly<Record<string, readonly string[]>>;
-  /** The id of a pinned connector whose `taskpilot guide` the agent follows for this step (live setup guides). */
+  /** The id of a pinned connector whose `taskfollow guide` the agent follows for this step (live setup guides). */
   readonly guide?: string;
 }
 
@@ -102,7 +102,7 @@ export interface Roles {
   readonly decision_maker: string;
 }
 
-/** Result of `taskpilot probe` (spec §7.3); C6 is filled in by the BRAIN phase's probe_mcp step (D54). */
+/** Result of `taskfollow probe` (spec §7.3); C6 is filled in by the BRAIN phase's probe_mcp step (D54). */
 export interface CapabilityMap {
   readonly profile: string | null;
   readonly agent_version: string | null;
@@ -127,7 +127,7 @@ export interface InstallState {
   readonly runtime?: CapabilityMap;
   /** The per-client Skills Wiki MCP URL from `start --url`; not a secret, the key lives in the keychain (D51). */
   readonly skillswiki?: { readonly url: string };
-  /** Where the agent ran `taskpilot start`: the folder its MCP trust applies to (D54). */
+  /** Where the agent ran `taskfollow start`: the folder its MCP trust applies to (D54). */
   readonly work_dir?: string;
 }
 

@@ -60,7 +60,7 @@ async function personalHome(): Promise<string> {
   return home;
 }
 
-describe("taskpilot support bundle (§16.5, D110)", () => {
+describe("taskfollow support bundle (§16.5, D110)", () => {
   it("names the installer's version next to Node's, so a person can say which build they run (D119)", async () => {
     const result = await supportBundle(await personalHome(), () => AT);
     const bundle = JSON.parse(await readFile(result.file as string, "utf8"));

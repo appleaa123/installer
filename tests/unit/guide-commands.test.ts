@@ -7,7 +7,7 @@ import { InputError } from "../../src/core/inputs.js";
 import { runCli } from "../helpers/cli.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
-describe("taskpilot guide", () => {
+describe("taskfollow guide", () => {
   it("prints the connector's setup block and the rule for reading it", async () => {
     const guide = (await guideCommand("google-sheets")) as Record<string, unknown>;
     expect(guide).toMatchObject({ connector: "google-sheets", version: "1", title: "Your own Google app for Sheets" });

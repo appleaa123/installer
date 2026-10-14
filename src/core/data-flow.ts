@@ -83,7 +83,7 @@ export async function dataFlow(home: string, state: InstallState): Promise<FlowR
     ...(await sourceRows(home, contract)),
     ...channels,
     ...(state.skillswiki ? [{ party: "Skills Wiki", via: "the engine's MCP client", receives: "skill and combo requests; learnings from people's corrections with personal and protected_ground values, email addresses and long numbers removed", never: "business records, secrets, inbound messages, the audit" }] : []),
-    { party: "Support (only when you send it)", via: "'taskpilot support bundle', a file you send yourself", receives: "the install's state, report, errors and settings, redacted", never: "secrets, names, addresses, message text, personal and protected_ground values" },
+    { party: "Support (only when you send it)", via: "'taskfollow support bundle', a file you send yourself", receives: "the install's state, report, errors and settings, redacted", never: "secrets, names, addresses, message text, personal and protected_ground values" },
   ];
 }
 
@@ -100,10 +100,10 @@ export async function operationsView(home: string, state: InstallState): Promise
 
 /** The lines the text report adds after Plan 2's (`renderReport`). */
 export function renderOperations(view: OperationsView): string[] {
-  const host = view.readiness ? `readiness ${view.readiness.score}${view.readiness.applies ? "" : " (Personal mode: for information only)"}` : "not checked yet: run 'taskpilot host'";
+  const host = view.readiness ? `readiness ${view.readiness.score}${view.readiness.applies ? "" : " (Personal mode: for information only)"}` : "not checked yet: run 'taskfollow host'";
   return [
-    ...(view.paused?.paused ? [`⏸️ Paused     since ${view.paused.at} by ${view.paused.by}: nothing is sent, no run starts ('taskpilot unpause' in a person's terminal)`] : []),
-    `🩺 Doctor     ${view.doctor ? `${view.doctor.status} (${view.doctor.checked_at})` : "never run: run 'taskpilot doctor'"}`,
+    ...(view.paused?.paused ? [`⏸️ Paused     since ${view.paused.at} by ${view.paused.by}: nothing is sent, no run starts ('taskfollow unpause' in a person's terminal)`] : []),
+    `🩺 Doctor     ${view.doctor ? `${view.doctor.status} (${view.doctor.checked_at})` : "never run: run 'taskfollow doctor'"}`,
     `🖥️ Host       ${host}`,
     "🔀 Data flow",
     ...view.data_flow.map((row) => `   ${row.party} — ${row.via}: ${row.receives}${row.never ? `. Never: ${row.never}` : ""}`),

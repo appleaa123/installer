@@ -63,7 +63,7 @@ function parseHints(value: unknown, where: string): Readonly<Record<string, read
   );
 }
 
-/** A step's guide names a connector of the catalog; whether it has a setup block is `taskpilot guide`'s check. */
+/** A step's guide names a connector of the catalog; whether it has a setup block is `taskfollow guide`'s check. */
 function parseGuide(value: unknown, where: string): string {
   if (typeof value !== "string" || !Object.hasOwn(CONNECTOR_PINS, value)) {
     throw new SolutionError(`${where} must name a connector in this installer's catalog (${Object.keys(CONNECTOR_PINS).join(", ")}), got ${JSON.stringify(value)}`);
@@ -159,13 +159,13 @@ function checkBrainOrder(steps: readonly StepDef[]): void {
 }
 const SECRET_ID = /^[a-z0-9-]+$/;
 
-/** A secret or oauth step names its id in input.provider and is confirmed by secret_present for that id, so `taskpilot secret <provider>` always fits (§8.3). */
+/** A secret or oauth step names its id in input.provider and is confirmed by secret_present for that id, so `taskfollow secret <provider>` always fits (§8.3). */
 function checkSecretSteps(steps: readonly StepDef[]): void {
   for (const step of steps) {
     const kind = step.input?.kind;
     if (step.type !== "human_action" || (kind !== "secret" && kind !== "oauth")) continue;
     const provider = step.input?.provider;
-    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a ${kind} step needs input.provider, the secret id entered with 'taskpilot secret <provider>'`);
+    if (!provider || !SECRET_ID.test(provider)) throw new SolutionError(`Step '${step.step_id}': a ${kind} step needs input.provider, the secret id entered with 'taskfollow secret <provider>'`);
     if (step.verify?.check !== "secret_present" || step.verify.args?.id !== provider) {
       throw new SolutionError(`Step '${step.step_id}': a ${kind} step must verify with { "check": "secret_present", "args": { "id": "${provider}" } }`);
     }
@@ -193,7 +193,7 @@ function checkDataSteps(steps: readonly StepDef[], contract: DataContract | unde
     }
   }
 }
-/** Recipe suggestions (§6.2 WORKFLOWS): ids are checked here, the rest when `taskpilot workflow add` writes one. */
+/** Recipe suggestions (§6.2 WORKFLOWS): ids are checked here, the rest when `taskfollow workflow add` writes one. */
 function parseSuggestions(value: unknown): readonly Readonly<Record<string, unknown>>[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || !value.every(isRecord)) throw new SolutionError("workflows must be a list of workflow objects");
@@ -284,7 +284,7 @@ async function readLocal(path: string): Promise<string> {
 /** `fetchSkillswiki` is the key-bearing fetcher the CLI builds once the key and URL are known (D46). */
 export async function loadSolutionSource(ref: string, fetchText: FetchText = fetchHttps, fetchSkillswiki?: FetchText): Promise<{ solution: Solution; text: string }> {
   if (ref.startsWith("skillswiki:")) {
-    if (!fetchSkillswiki) throw new SolutionError("'skillswiki:' references need the Skills Wiki key and URL: run 'taskpilot secret skillswiki', then start with --url <MCP URL>");
+    if (!fetchSkillswiki) throw new SolutionError("'skillswiki:' references need the Skills Wiki key and URL: run 'taskfollow secret skillswiki', then start with --url <MCP URL>");
     const text = await fetchSkillswiki(ref);
     return { solution: parseSolutionText(text, ref), text };
   }

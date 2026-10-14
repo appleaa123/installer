@@ -15,7 +15,7 @@ export const CONNECTORS_DIR = fileURLToPath(new URL("../../connectors/", import.
 /** The curated catalog (§8.2): id → version → sha256 of the definition file. */
 export type ConnectorPins = Readonly<Record<string, Readonly<Record<string, string>>>>;
 export const CONNECTOR_PINS: ConnectorPins = {
-  "google-sheets": { "1": "1a9dbbc86c199a08d5906f040b1d9908868daff0d4b94df1a0a677f4c90dbf89" },
+  "google-sheets": { "1": "1a444eba44a221a24b52517b3fba563b3f3e2e273332164bb85d8b3f925341ce" },
 };
 
 /** Built-in adapters a definition may name; a connector is data, the code that speaks its API is the engine's. */
@@ -25,7 +25,7 @@ export type Adapter = (typeof ADAPTERS)[number];
 export interface ConnectorAuth {
   readonly kind: "oauth2";
   readonly provider: string;
-  /** The keychain item that holds this connector's sign-in (`taskpilot secret <secret_id>`). */
+  /** The keychain item that holds this connector's sign-in (`taskfollow secret <secret_id>`). */
   readonly secret_id: string;
   readonly scopes: readonly string[];
   readonly authorize_url: string;
@@ -60,7 +60,7 @@ export interface ConnectorDef {
   readonly api: { readonly base_url: string };
   readonly auth: ConnectorAuth;
   readonly risk: { readonly reads_personal_data: boolean; readonly outbound_external: boolean; readonly official_api: boolean };
-  /** The step-by-step help the agent reads at install time (`taskpilot guide`); a connector may have none. */
+  /** The step-by-step help the agent reads at install time (`taskfollow guide`); a connector may have none. */
   readonly setup?: ConnectorSetup;
   /** The checksum the file matched when it was loaded. */
   readonly sha256: string;

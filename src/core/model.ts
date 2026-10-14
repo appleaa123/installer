@@ -14,7 +14,7 @@ import type { InstallState } from "./types.js";
 /**
  * The direct-model fallback (spec §7.4, D85): when the agent cannot be called headless (C4), or its terms forbid it,
  * a judge goes straight to a model API with the client's own key (keychain item `model`, entered on the D47 page
- * with `taskpilot secret model`). Provider-neutral: one `ModelClient.complete(prompt) → text` interface, two wire
+ * with `taskfollow secret model`). Provider-neutral: one `ModelClient.complete(prompt) → text` interface, two wire
  * formats over `fetch` (Anthropic Messages, and OpenAI-compatible chat completions, which covers OpenRouter and
  * most hosted models); Gemini is deferred. The model id is the person's choice, never a default in the engine.
  * The answer is text; the runner reads the JSON in it and validates it like any judge answer (D16).
@@ -67,11 +67,11 @@ export async function loadModelConfig(home: string): Promise<ModelConfig | null>
 /** The settings decide where the model key is sent, so like the mail servers (D61, D73) only a person at a terminal sets them. */
 async function requireTerminal(home: string, interactive: boolean, now: string): Promise<void> {
   if (interactive) return;
-  await appendAudit(home, { ts: now, actor: "agent", event: "model.refused", ref: MODEL_CONFIG, payload: { command: "taskpilot model --value" } });
-  throw new InputError("The direct model is set by a person in their own terminal, not by the agent: ask them to open a terminal and run 'taskpilot model --value <json>' there");
+  await appendAudit(home, { ts: now, actor: "agent", event: "model.refused", ref: MODEL_CONFIG, payload: { command: "taskfollow model --value" } });
+  throw new InputError("The direct model is set by a person in their own terminal, not by the agent: ask them to open a terminal and run 'taskfollow model --value <json>' there");
 }
 
-/** `taskpilot model [--value <json>]`: shows the direct model, or saves it (no call is made, nothing is spent). */
+/** `taskfollow model [--value <json>]`: shows the direct model, or saves it (no call is made, nothing is spent). */
 export async function modelCommand(home: string, value: string | undefined, now: () => string, interactive = false): Promise<Record<string, unknown>> {
   if (value === undefined) {
     return { model: await loadModelConfig(home), key_stored: (await getSecret(MODEL_SECRET_ID)) !== null, note: "Judges use the agent's headless command when the probe found one; this model only when it did not (D85)" };
@@ -87,7 +87,7 @@ export async function modelCommand(home: string, value: string | undefined, now:
   await writeConfig(home, MODEL_CONFIG, config);
   await appendAudit(home, { ts: now(), actor: "agent", event: "model.configured", ref: MODEL_CONFIG, payload: config });
   const key = (await getSecret(MODEL_SECRET_ID)) !== null;
-  return { status: "saved", model: config, key_stored: key, ...(key ? {} : { next: "Ask the person to run 'taskpilot secret model' and enter their API key on the page that opens" }) };
+  return { status: "saved", model: config, key_stored: key, ...(key ? {} : { next: "Ask the person to run 'taskfollow secret model' and enter their API key on the page that opens" }) };
 }
 
 async function post(url: string, headers: Readonly<Record<string, string>>, body: unknown): Promise<Raw> {
@@ -98,7 +98,7 @@ async function post(url: string, headers: Readonly<Record<string, string>>, body
     throw new ActionFailure(`The model API could not be reached (${(error as Error).message})`);
   }
   const json = (await response.json().catch(() => ({}))) as unknown;
-  if (response.status === 401 || response.status === 403) throw new ActionFailure(`The model provider refused the key (HTTP ${response.status}): run 'taskpilot secret model' with a valid key`);
+  if (response.status === 401 || response.status === 403) throw new ActionFailure(`The model provider refused the key (HTTP ${response.status}): run 'taskfollow secret model' with a valid key`);
   if (!response.ok) {
     const message = isRecord(json) && isRecord(json.error) && typeof json.error.message === "string" ? json.error.message.slice(0, 200) : "no details";
     throw new ActionFailure(`The model API answered HTTP ${response.status}: ${message}`);
@@ -163,8 +163,8 @@ export async function judgeBackend(home: string, state: InstallState | undefined
     if (profile.tos_review.status === "ok") return profileBackend(profile, await judgeDir(home));
   }
   const config = await loadModelConfig(home);
-  if (!config) throw new ActionFailure("No way to ask a judge: the agent cannot be called headless here (C4), and no direct model is set up: run 'taskpilot model --value <json>' and 'taskpilot secret model'");
+  if (!config) throw new ActionFailure("No way to ask a judge: the agent cannot be called headless here (C4), and no direct model is set up: run 'taskfollow model --value <json>' and 'taskfollow secret model'");
   const key = await getSecret(MODEL_SECRET_ID, env);
-  if (key === null) throw new ActionFailure("The direct model has no key yet: ask the person to run 'taskpilot secret model'");
+  if (key === null) throw new ActionFailure("The direct model has no key yet: ask the person to run 'taskfollow secret model'");
   return modelBackend(modelClient(config, key, env));
 }

@@ -51,7 +51,7 @@ describe("submit", () => {
 
   it("refuses to submit an agent_action and points to verify", async () => {
     const { deps, state } = await atBrainStep();
-    await expect(submit(deps, state, "brain.register", { kind: "done" })).rejects.toThrow(/taskpilot verify brain.register/);
+    await expect(submit(deps, state, "brain.register", { kind: "done" })).rejects.toThrow(/taskfollow verify brain.register/);
   });
 
   it("never completes a secret step through submit (R4)", async () => {
@@ -89,7 +89,7 @@ describe("verifyStep and resume", () => {
     expect(b.result).toEqual(a.result);
     expect(a.result).toMatchObject({ status: "blocked" });
     expect(ctx.saved).toHaveLength(count);
-    await expect(verifyStep(ctx.deps, state, "brain.register")).rejects.toThrow(/run 'taskpilot resume' first/);
+    await expect(verifyStep(ctx.deps, state, "brain.register")).rejects.toThrow(/run 'taskfollow resume' first/);
   });
 
   it("resume resets blocked steps so a fixed problem can pass", async () => {
@@ -163,14 +163,14 @@ describe("unknown step ids", () => {
 });
 
 describe("retry command in step views", () => {
-  it("names taskpilot verify for a failed agent_action step", async () => {
+  it("names taskfollow verify for a failed agent_action step", async () => {
     const { deps, state } = await atBrainStep();
     const failed = await verifyStep(deps, state, "brain.register");
     const { result } = await advance(deps, failed.state);
-    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "taskpilot verify brain.register" } });
+    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "taskfollow verify brain.register" } });
   });
 
-  it("keeps taskpilot resume for a failed verify-type step", async () => {
+  it("keeps taskfollow resume for a failed verify-type step", async () => {
     const home = await makeTempHome();
     const solution = parseSolution({
       id: "retry",
@@ -179,7 +179,7 @@ describe("retry command in step views", () => {
     });
     const { deps } = memoryDeps(home, solution);
     const { result } = await start(deps, null, "file:/r.json");
-    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "taskpilot resume" } });
+    expect(result).toMatchObject({ status: "step", view: { status: "failed", resume: "taskfollow resume" } });
   });
 });
 

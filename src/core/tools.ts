@@ -10,7 +10,7 @@ import { NO_TAGS, deriveLevel, loadClientRules, needsApproval, type ClientRules,
 export type ToolArgs = Readonly<Record<string, unknown>>;
 export type ToolResult = Readonly<Record<string, unknown>>;
 
-/** Everything a tool call needs; the same for the MCP server and `taskpilot tool` (§7.4). */
+/** Everything a tool call needs; the same for the MCP server and `taskfollow tool` (§7.4). */
 export interface ToolContext {
   readonly home: string;
   readonly now: () => string;

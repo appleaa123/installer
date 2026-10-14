@@ -17,10 +17,10 @@ learnings with `learning_list`.
 ## What this build can and cannot do
 
 Plan 8 adds: agentic workflows (the model chooses each call among the tools the workflow names; the installer makes
-it through the same approvals), `taskpilot workflow list | suggestions | add`, dry runs (`taskpilot dryrun`, confirmed
-by a person with `taskpilot dryrun confirm`), sandbox mode (`taskpilot sandbox`), hardening with a replay check
-(`taskpilot harden`), earned autonomy (`taskpilot autonomy`), urgent alerts (`taskpilot alerts`, `K<id>` in
-Telegram), approval reminders, outbound rate limits, redacted learnings for Skills Wiki (`taskpilot learnings`), and
+it through the same approvals), `taskfollow workflow list | suggestions | add`, dry runs (`taskfollow dryrun`, confirmed
+by a person with `taskfollow dryrun confirm`), sandbox mode (`taskfollow sandbox`), hardening with a replay check
+(`taskfollow harden`), earned autonomy (`taskfollow autonomy`), urgent alerts (`taskfollow alerts`, `K<id>` in
+Telegram), approval reminders, outbound rate limits, redacted learnings for Skills Wiki (`taskfollow learnings`), and
 the starter's CHANNELS, WORKFLOWS, DRY RUN and ACTIVATE steps. Not covered here: earned autonomy needs 25 approvals
 in a row (the automated tests cover it), and sending a learning would write to your real Skills Wiki, so only the
 read is tested. Not yet: conversations with the agent from a channel, model-chosen context tools for judges
@@ -54,7 +54,7 @@ node --version            # must be v22 or later
 cd $REPO && git log --oneline -1
 
 npm install && npm run build && npm pack --pack-destination $T
-npm install -g --prefix $PREFIX $T/taskpilot-0.1.0.tgz
+npm install -g --prefix $PREFIX $T/taskfollow-0.1.0.tgz
 export PATH=$PREFIX/bin:$PATH
 cat > $T/solution.json <<'JSON'
 { "id": "plan8-live", "version": "1.0.0",
@@ -69,11 +69,11 @@ cat > $T/solution.json <<'JSON'
   ] }
 JSON
 export INSTALLER_HOME=$T/home
-taskpilot start --solution file:$T/solution.json
-taskpilot submit mode.shared-work --value '"yes"'
-taskpilot submit mode.always-on --value '"no"'
-taskpilot submit mode.decision-maker --value '"Owner"'
-taskpilot report --json
+taskfollow start --solution file:$T/solution.json
+taskfollow submit mode.shared-work --value '"yes"'
+taskfollow submit mode.always-on --value '"no"'
+taskfollow submit mode.decision-maker --value '"Owner"'
+taskfollow report --json
 cd $T
 ```
 
@@ -108,13 +108,13 @@ cd $T
 ## Test 2: A workflow from plain words, its dry run, and your confirmation
 
 ```bash
-taskpilot tool memo.add '{"text":"Order more paper"}'
-taskpilot workflow add count --value '{"description":"Read the memos with memo.list, then add one memo that says how many memos there are.","tools":["memo.list","memo.add"]}'
-taskpilot dryrun count
-taskpilot tool memo.list '{}'
-taskpilot dryrun confirm count --as Owner < /dev/null
-taskpilot dryrun confirm count --as Owner
-taskpilot workflow list
+taskfollow tool memo.add '{"text":"Order more paper"}'
+taskfollow workflow add count --value '{"description":"Read the memos with memo.list, then add one memo that says how many memos there are.","tools":["memo.list","memo.add"]}'
+taskfollow dryrun count
+taskfollow tool memo.list '{}'
+taskfollow dryrun confirm count --as Owner < /dev/null
+taskfollow dryrun confirm count --as Owner
+taskfollow workflow list
 ```
 
 **Expected:** `add` prints `{"status":"added","workflow":"count","version":1,"mode":"agentic","sandbox":true,…}`.
@@ -132,12 +132,12 @@ exits 2 with `A dry run is confirmed by the person who read it, in their own ter
 ## Test 3: Sandbox mode
 
 ```bash
-taskpilot sandbox on < /dev/null
-taskpilot run count
-taskpilot tool memo.list '{}'
-taskpilot sandbox off < /dev/null
-taskpilot sandbox off --as Owner
-taskpilot sandbox status
+taskfollow sandbox on < /dev/null
+taskfollow run count
+taskfollow tool memo.list '{}'
+taskfollow sandbox off < /dev/null
+taskfollow sandbox off --as Owner
+taskfollow sandbox status
 ```
 
 **Expected:** `on` prints `"mode":{"on":true,…,"by":"agent"}`; the run prints `"sandbox":true` and `memo.list` is
@@ -154,11 +154,11 @@ prints `"status":"off"`; `status` shows `"mode":{"on":false,…}`.
 Five real runs, then the proposal. Each run asks your Claude Code two or three times.
 
 ```bash
-for i in 1 2 3 4 5; do taskpilot run count | head -c 300; echo; done
-taskpilot harden count
-taskpilot harden count apply --as Owner < /dev/null
-taskpilot harden count apply --as Owner
-taskpilot run count
+for i in 1 2 3 4 5; do taskfollow run count | head -c 300; echo; done
+taskfollow harden count
+taskfollow harden count apply --as Owner < /dev/null
+taskfollow harden count apply --as Owner
+taskfollow run count
 ls $INSTALLER_HOME/workflows/count/versions
 ```
 
@@ -184,10 +184,10 @@ cat > $INSTALLER_HOME/workflows/watch/workflow.json <<'JSON'
       "input": "Water is coming through the ceiling of the meeting room.",
       "schema": { "type": "object", "properties": { "urgent": { "type": "boolean" }, "why": { "type": "string" } }, "required": ["urgent", "why"] } } } ] }
 JSON
-taskpilot run watch
-taskpilot alerts
-taskpilot alerts ack 1 --as Owner < /dev/null
-taskpilot alerts ack 1 --as Owner
+taskfollow run watch
+taskfollow alerts
+taskfollow alerts ack 1 --as Owner < /dev/null
+taskfollow alerts ack 1 --as Owner
 grep -c '"event":"alert' $INSTALLER_HOME/audit/audit.jsonl
 ```
 

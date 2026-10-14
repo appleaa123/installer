@@ -31,8 +31,8 @@ describe("INSTALL.md", () => {
 
   it("has the three placeholders the solution server fills in, with the key stored before start (D46)", () => {
     expect(DOC).toContain("{{INSTALL_COMMAND}}");
-    expect(DOC).toContain("taskpilot start --solution {{SOLUTION_REF}} --url {{SKILLSWIKI_URL}}");
-    expect(DOC.indexOf("taskpilot secret skillswiki")).toBeLessThan(DOC.indexOf("taskpilot start --solution"));
+    expect(DOC).toContain("taskfollow start --solution {{SOLUTION_REF}} --url {{SKILLSWIKI_URL}}");
+    expect(DOC.indexOf("taskfollow secret skillswiki")).toBeLessThan(DOC.indexOf("taskfollow start --solution"));
   });
 
   it("only names commands the CLI has", () => {
@@ -50,7 +50,7 @@ describe("INSTALL.md", () => {
     expect(usesSkillswiki(starter)).toBe(true);
   });
 
-  it("every guide the starter names has a setup block and is printed by taskpilot guide", async () => {
+  it("every guide the starter names has a setup block and is printed by taskfollow guide", async () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
     const guides = starter.steps.flatMap((step) => (step.guide ? [step.guide] : []));
     expect(guides).toEqual(["google-sheets"]);
@@ -77,12 +77,12 @@ describe("starter install, operated the way INSTALL.md says", () => {
   /**
    * CHANNELS to ACTIVATE (D98): the person stores the bot token, the channel is checked (written directly here: the
    * one test connector server is the fake Google), the decision maker joins, a suggested workflow is added, dry-run
-   * and confirmed in the person's terminal, and the OS scheduler's first tick is simulated with 'taskpilot tick'.
+   * and confirmed in the person's terminal, and the OS scheduler's first tick is simulated with 'taskfollow tick'.
    */
   function lifecycleSteps(keychain: Record<string, string>, env: Record<string, string>) {
     const cli = (args: string[]) => async (home: string): Promise<void> => {
       const result = runCli(args, { home, env });
-      if (result.code !== 0) throw new Error(`taskpilot ${args.join(" ")} failed: ${result.stderr}`);
+      if (result.code !== 0) throw new Error(`taskfollow ${args.join(" ")} failed: ${result.stderr}`);
     };
     const now = (): string => new Date().toISOString();
     return {
@@ -109,7 +109,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
   function dataSteps(keychain: Record<string, string>, env: Record<string, string>) {
     const ok = (args: string[]) => async (home: string): Promise<void> => {
       const result = runCli(args, { home, env });
-      if (result.code !== 0) throw new Error(`taskpilot ${args.join(" ")} failed: ${result.stderr}`);
+      if (result.code !== 0) throw new Error(`taskfollow ${args.join(" ")} failed: ${result.stderr}`);
     };
     return {
       "data.google": () => setSecret("google", SIGNED_IN, keychain),
@@ -161,7 +161,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(runCli(["tool", "records.find", '{"entity":"contact"}'], { home, env }).json).toEqual({ entity: "contact", records: [], total: 0 });
     expect(runCli(["disconnect", "google-sheets"], { home, env }).json).toMatchObject({ status: "disconnected", connector: "google-sheets", secret_deleted: true });
     await expect(getSecret("google", keychain)).resolves.toBeNull();
-    expect(runCli(["tool", "records.find", '{"entity":"contact"}'], { home, env }).json).toMatchObject({ code: 2, error: expect.stringContaining("run 'taskpilot secret google'") });
+    expect(runCli(["tool", "records.find", '{"entity":"contact"}'], { home, env }).json).toMatchObject({ code: 2, error: expect.stringContaining("run 'taskfollow secret google'") });
     await expect(verifyAudit(home, (await loadState(home))?.audit_head)).resolves.toMatchObject({ ok: true });
   });
 
@@ -181,6 +181,6 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const home = await makeTempHome();
     const run = await operate({ home, solutionRef: STARTER_REF, script: { ...script, giveUp: ["brain.key"] }, startArgs: ["--url", fake.url], env });
     expect(run.final.status).toBe("blocked");
-    expect(runCli(["report", "--json"], { home, env }).json).toMatchObject({ overall: "blocked", needs_you: [{ step_id: "brain.key", detail: expect.stringContaining("run 'taskpilot secret skillswiki'") }] });
+    expect(runCli(["report", "--json"], { home, env }).json).toMatchObject({ overall: "blocked", needs_you: [{ step_id: "brain.key", detail: expect.stringContaining("run 'taskfollow secret skillswiki'") }] });
   });
 });

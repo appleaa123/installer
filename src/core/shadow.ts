@@ -95,7 +95,7 @@ async function saveShadow(home: string, pack: string, result: ShadowResult): Pro
 
 /** A passing candidate is announced to the decision maker (L1; R6 and the kill switch apply); a failed send is audited. */
 async function announce(home: string, pack: string, result: ShadowResult, now: () => string): Promise<void> {
-  const text = `Skills Wiki pack '${pack}' has a new version and its shadow runs passed (${result.comparisons.length} workflow(s); nothing was sent or changed). The pinned version stays in use until you run 'taskpilot packs switch ${pack} --as <your name>' in your own terminal.`;
+  const text = `Skills Wiki pack '${pack}' has a new version and its shadow runs passed (${result.comparisons.length} workflow(s); nothing was sent or changed). The pinned version stays in use until you run 'taskfollow packs switch ${pack} --as <your name>' in your own terminal.`;
   const name = (await loadState(home))?.roles?.decision_maker;
   let error: string | null = name ? null : "no decision maker is set (MODE phase)";
   if (name) {
@@ -112,7 +112,7 @@ async function announce(home: string, pack: string, result: ShadowResult, now: (
 /** Runs the shadow of a pack's candidate, grades it, keeps the result with the candidate and announces a pass. */
 export async function shadowPack(home: string, pack: string, now: () => string, evals: readonly ShadowEval[] = [SHADOW_RUNS_EVAL]): Promise<ShadowResult> {
   const candidate = (await loadPacks(home))[pack]?.candidate;
-  if (!candidate) throw new InputError(`Pack '${pack}' has no new version to try: run 'taskpilot packs check' first`);
+  if (!candidate) throw new InputError(`Pack '${pack}' has no new version to try: run 'taskfollow packs check' first`);
   const comparisons: ShadowComparison[] = [];
   for (const workflow of await workflowsUsing(home, pack)) {
     const key = `${workflow.id}:shadow:${pack}:${candidate.version.slice(0, 12)}`;
@@ -134,14 +134,14 @@ async function refuseSwitch(home: string, pack: string, by: string, reason: stri
 
 /** The decision maker, in their own terminal, after a passing shadow of this very candidate: the candidate becomes the pin. */
 export async function switchPack(home: string, pack: string, roles: Roles | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
-  if (!person.interactive) return refuseSwitch(home, pack, "agent", `Switching a pack version is the decision maker's call, in their own terminal: 'taskpilot packs switch ${pack} --as <their name>'`, now());
+  if (!person.interactive) return refuseSwitch(home, pack, "agent", `Switching a pack version is the decision maker's call, in their own terminal: 'taskfollow packs switch ${pack} --as <their name>'`, now());
   const decider = deciderFor(person.as, roles);
   if (decider.role !== "decision_maker") return refuseSwitch(home, pack, decider.name, "Switching a pack version is a policy change: only the decision maker switches (--as <their name>)", now());
   const packs: Packs = await loadPacks(home);
   const pin = packs[pack];
   const candidate: Candidate | undefined = pin?.candidate;
-  if (!pin || !candidate) throw new InputError(`Pack '${pack}' has no new version: 'taskpilot packs list' shows the pins`);
-  if (candidate.shadow?.version !== candidate.version || !candidate.shadow.passed) throw new InputError(`The shadow runs of '${pack}' have not passed for this version: run 'taskpilot packs shadow ${pack}' and read the comparison`);
+  if (!pin || !candidate) throw new InputError(`Pack '${pack}' has no new version: 'taskfollow packs list' shows the pins`);
+  if (candidate.shadow?.version !== candidate.version || !candidate.shadow.passed) throw new InputError(`The shadow runs of '${pack}' have not passed for this version: run 'taskfollow packs shadow ${pack}' and read the comparison`);
   const { candidate: _done, ...kept } = pin;
   await savePacks(home, { ...packs, [pack]: { ...kept, version: candidate.version, files: candidate.files, pinned_at: now() } });
   await appendAudit(home, { ts: now(), actor: "human", event: "pack.switched", ref: `pack:${pack}`, payload: { from: pin.version, to: candidate.version, by: decider.name } });
@@ -154,7 +154,7 @@ const summary = (packs: Packs) =>
     ...(pin.candidate ? { candidate: { version: pin.candidate.version, found_at: pin.candidate.found_at, shadow: pin.candidate.shadow ? { at: pin.candidate.shadow.at, passed: pin.candidate.shadow.passed, evals: pin.candidate.shadow.evals } : null } } : {}),
   }));
 
-/** `taskpilot packs [list | check | shadow <pack> | switch <pack> --as <name>]` (D107, D108). */
+/** `taskfollow packs [list | check | shadow <pack> | switch <pack> --as <name>]` (D107, D108). */
 export async function packsCommand(home: string, sub: string | undefined, pack: string | undefined, roles: Roles | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   if (sub === undefined || sub === "list") return { packs: summary(await loadPacks(home)), file: PACKS_FILE };
   if (sub === "check") return { updates: await checkPacks(home, (await loadState(home))?.skillswiki?.url, now()) };

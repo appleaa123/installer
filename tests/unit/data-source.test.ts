@@ -54,7 +54,7 @@ describe("spreadsheetIdOf", () => {
   });
 });
 
-describe("taskpilot connect (D68)", () => {
+describe("taskfollow connect (D68)", () => {
   it("connects an existing sheet after reading it, and audits it", async () => {
     const home = await dataHome();
     await expect(connect(home, "https://docs.google.com/spreadsheets/d/team-sheet/edit#gid=0")).resolves.toMatchObject({ status: "connected", spreadsheet_id: "team-sheet" });
@@ -88,11 +88,11 @@ describe("taskpilot connect (D68)", () => {
 
   it("says how to sign in when no Google sign-in is stored", async () => {
     const signedOut = { ...env, INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
-    await expect(connectEntity(await dataHome(), "contact", "new", clock(), signedOut)).rejects.toThrow("run 'taskpilot secret google'");
+    await expect(connectEntity(await dataHome(), "contact", "new", clock(), signedOut)).rejects.toThrow("run 'taskfollow secret google'");
   });
 });
 
-describe("taskpilot map (§9.4, D68)", () => {
+describe("taskfollow map (§9.4, D68)", () => {
   async function connected(): Promise<string> {
     const home = await dataHome();
     await connect(home, "team-sheet");
@@ -109,7 +109,7 @@ describe("taskpilot map (§9.4, D68)", () => {
 
   it("saves a confirmed mapping; the check then passes", async () => {
     const home = await connected();
-    await expect(runCheck(home, { check: "mapping_present", args: { entity: "contact" } })).resolves.toMatchObject({ ok: false, hint: expect.stringContaining("run 'taskpilot map contact'") });
+    await expect(runCheck(home, { check: "mapping_present", args: { entity: "contact" } })).resolves.toMatchObject({ ok: false, hint: expect.stringContaining("run 'taskfollow map contact'") });
     await expect(map(home, FULL)).resolves.toEqual({ status: "mapped", entity: "contact", columns: { name: "Full name", email: "E-mail", notes: "Notes", balance: "Balance" } });
     expect(await loadMapping(home, "contact")).toMatchObject({ columns: { email: "E-mail" } });
     await expect(runCheck(home, { check: "mapping_present", args: { entity: "contact" } })).resolves.toEqual({ ok: true });
@@ -136,7 +136,7 @@ describe("taskpilot map (§9.4, D68)", () => {
 
   it("refuses to map before the entity is connected, and forgets the mapping when it is connected again", async () => {
     const home = await dataHome();
-    await expect(map(home)).rejects.toThrow("Connect 'contact' first: taskpilot connect contact --sheet");
+    await expect(map(home)).rejects.toThrow("Connect 'contact' first: taskfollow connect contact --sheet");
     await connect(home, "team-sheet");
     await map(home, FULL);
     await connect(home, "team-sheet");

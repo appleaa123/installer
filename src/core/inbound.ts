@@ -67,7 +67,7 @@ async function joinByCode(ctx: ToolContext, envelope: InboundEnvelope, identity:
 
 /** D78: a channel whose sender can be forged (email) never decides; the member is told where to decide instead. */
 async function unverifiedReply(ctx: ToolContext, member: Member, channel: string, code: ReplyCode): Promise<Outcome> {
-  const reason = `Approvals cannot be decided by ${channel}, because the sender of a message there can be forged: answer in Telegram, or run 'taskpilot approvals approve ${code.id}' in a terminal`;
+  const reason = `Approvals cannot be decided by ${channel}, because the sender of a message there can be forged: answer in Telegram, or run 'taskfollow approvals approve ${code.id}' in a terminal`;
   await appendAudit(ctx.home, { ts: ctx.now(), actor: "human", event: "approval.refused", ref: `approval:${code.id}`, payload: { id: code.id, by: member.name, reason } });
   await tell(ctx, member, channel, reason);
   return "refused";

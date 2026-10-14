@@ -14,10 +14,10 @@ import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkf
 
 /**
  * Install phases 5–7 (spec §6.2, §10.8, §16.2, D98). WORKFLOWS: a workflow v1 comes from a recipe suggestion
- * (`taskpilot workflow add <id>`) or from the person's plain words (`--value '{"description","tools"}'`, an agentic
- * v1). Every new workflow starts in sandbox. DRY RUN: `taskpilot dryrun` runs each one in sandbox and shows what it
+ * (`taskfollow workflow add <id>`) or from the person's plain words (`--value '{"description","tools"}'`, an agentic
+ * v1). Every new workflow starts in sandbox. DRY RUN: `taskfollow dryrun` runs each one in sandbox and shows what it
  * would have done (the recorded messages and actions); the person reads it and confirms in their own terminal
- * (`taskpilot dryrun confirm <id>`), which takes that workflow out of sandbox. ACTIVATE leaves the engine's sandbox
+ * (`taskfollow dryrun confirm <id>`), which takes that workflow out of sandbox. ACTIVATE leaves the engine's sandbox
  * mode once every workflow is confirmed, starts the gateway, and asks the person to load the schedule.
  */
 export const RUNNER_ALIVE_MS = 5 * 60 * 1000;
@@ -49,13 +49,13 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
 }
 
 async function addWorkflow(home: string, id: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
-  if ((await workflowIds(home)).includes(id)) throw new InputError(`Workflow '${id}' exists already; a change to it is a new version (taskpilot harden), never an overwrite`);
+  if ((await workflowIds(home)).includes(id)) throw new InputError(`Workflow '${id}' exists already; a change to it is a new version (taskfollow harden), never an overwrite`);
   const raw = newWorkflow(id, value, await suggestions(home));
   const workflow = parseWorkflow(raw, id, DEFAULT_TOOLS);
   await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), raw);
   await saveWorkflowState(home, { workflow: id, sandbox: true });
   await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description" } });
-  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, next: `Run 'taskpilot dryrun ${id}' and show the person what it would do` };
+  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
 }
 
 async function describeAll(home: string): Promise<Record<string, unknown>[]> {
@@ -73,7 +73,7 @@ async function describeAll(home: string): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
-/** `taskpilot workflow list | suggestions | add <id> [--value <plain words>]`. */
+/** `taskfollow workflow list | suggestions | add <id> [--value <plain words>]`. */
 export async function workflowCommand(home: string, sub: string | undefined, id: string | undefined, value: string | undefined, now: () => string): Promise<Record<string, unknown>> {
   if (sub === undefined || sub === "list") return { workflows: await describeAll(home) };
   if (sub === "suggestions") return { suggestions: (await suggestions(home)).map((entry) => ({ workflow: entry.workflow, description: entry.description ?? "", mode: entry.mode ?? "typed", trigger: entry.trigger ?? { manual: true } })) };
@@ -95,7 +95,7 @@ async function sampleFor(home: string, workflow: Workflow, value: string | undef
   } catch {
     sample = undefined;
   }
-  if (!isRecord(sample)) throw new InputError(`Workflow '${workflow.id}' starts on a message and no stored message matches its trigger yet: give it a sample with 'taskpilot dryrun ${workflow.id} --value '<sample event json>'', for example '{"channel":"telegram","from":"sample","text":"<a message it should handle>"}'`);
+  if (!isRecord(sample)) throw new InputError(`Workflow '${workflow.id}' starts on a message and no stored message matches its trigger yet: give it a sample with 'taskfollow dryrun ${workflow.id} --value '<sample event json>'', for example '{"channel":"telegram","from":"sample","text":"<a message it should handle>"}'`);
   return { trigger: { kind: "manual", sample_event: { ...sample, untrusted: true, synthetic: true } }, sample: { synthetic: sample } };
 }
 
@@ -118,35 +118,35 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   const workflow = await loadWorkflow(home, id, DEFAULT_TOOLS);
   const state = await loadWorkflowState(home, id);
   const run = state?.dry_run;
-  if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskpilot dryrun ${id}' first`);
-  if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskpilot dryrun ${id}' again`);
+  if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskfollow dryrun ${id}' first`);
+  if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskfollow dryrun ${id}' again`);
   await saveWorkflowState(home, { workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.dry_run_confirmed", ref: `workflow:${id}`, payload: { by, version: run.version, run_id: run.run_id } });
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };
 }
 
 /**
- * `taskpilot dryrun [<id> [--value <sample event json>]] | confirm <id>`: confirming is the person's own reading of the
+ * `taskfollow dryrun [<id> [--value <sample event json>]] | confirm <id>`: confirming is the person's own reading of the
  * output, in their terminal.
  */
 export async function dryrunCommand(home: string, sub: string | undefined, id: string | undefined, person: { interactive: boolean; as?: string }, now: () => string, value?: string): Promise<Record<string, unknown>> {
   if (sub === "confirm") {
-    if (!person.interactive) throw new InputError("A dry run is confirmed by the person who read it, in their own terminal: 'taskpilot dryrun confirm <workflow>'");
+    if (!person.interactive) throw new InputError("A dry run is confirmed by the person who read it, in their own terminal: 'taskfollow dryrun confirm <workflow>'");
     return confirm(home, requireWorkflowId(id), person.as?.trim() || "terminal", now());
   }
   const ids = sub === undefined ? await workflowIds(home) : [requireWorkflowId(sub)];
-  if (ids.length === 0) throw new InputError("No workflows yet: add one with 'taskpilot workflow add <id>'");
+  if (ids.length === 0) throw new InputError("No workflows yet: add one with 'taskfollow workflow add <id>'");
   const runs = [];
   for (const workflowId of ids) runs.push(await dryRun(home, await loadWorkflow(home, workflowId, DEFAULT_TOOLS), now, value));
   return { dry_runs: runs };
 }
-/** `taskpilot sandbox [status | on | off | outbox]`: `off` sends real messages again, so only a person runs it, in a terminal. */
+/** `taskfollow sandbox [status | on | off | outbox]`: `off` sends real messages again, so only a person runs it, in a terminal. */
 export async function sandboxCommand(home: string, sub: string | undefined, person: { interactive: boolean; as?: string }, now: () => string): Promise<Record<string, unknown>> {
   if (sub === undefined || sub === "status") return { mode: (await loadSandboxMode(home)) ?? { on: false }, workflows: (await describeAll(home)).map(({ workflow, sandbox }) => ({ workflow, sandbox })) };
   if (sub === "outbox") return { outbox: await listOutbox(home) };
   if (sub === "on") return { status: "on", mode: await setSandboxMode(home, true, person.interactive ? person.as?.trim() || "terminal" : "agent", now()) };
   if (sub !== "off") throw new InputError("sandbox takes: status, on, off, outbox");
-  if (!person.interactive) throw new InputError("Leaving sandbox sends real messages again: the person runs 'taskpilot sandbox off' in their own terminal");
+  if (!person.interactive) throw new InputError("Leaving sandbox sends real messages again: the person runs 'taskfollow sandbox off' in their own terminal");
   return { status: "off", mode: await setSandboxMode(home, false, person.as?.trim() || "terminal", now()) };
 }
 

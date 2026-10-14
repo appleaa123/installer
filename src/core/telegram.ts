@@ -32,7 +32,7 @@ export interface TelegramApi {
 function refusal(method: string, body: unknown, status: number): ActionFailure {
   const code = isRecord(body) && typeof body.error_code === "number" ? body.error_code : status;
   const description = isRecord(body) && typeof body.description === "string" ? body.description.slice(0, 200) : `HTTP ${status}`;
-  if (code === 401 || code === 404) return new ActionFailure("Telegram refused the bot token: if the bot was deleted or its token revoked, get a new token from @BotFather, then run 'taskpilot secret telegram'");
+  if (code === 401 || code === 404) return new ActionFailure("Telegram refused the bot token: if the bot was deleted or its token revoked, get a new token from @BotFather, then run 'taskfollow secret telegram'");
   if (code === 409) return new ActionFailure("Another program is reading this bot's updates (a webhook, or a second gateway): stop it, then try again");
   return new ActionFailure(`Telegram refused ${method} (${code}: ${description})`);
 }

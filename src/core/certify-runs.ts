@@ -11,7 +11,7 @@ import type { RuntimeProfile } from "./profile.js";
 import type { CapabilityMap } from "./types.js";
 
 /**
- * What `taskpilot certify` really runs (D116): vitest as a child process with its JSON report, git for the commit,
+ * What `taskfollow certify` really runs (D116): vitest as a child process with its JSON report, git for the commit,
  * and the probe in a throwaway folder. The test suite replaces all three with fakes and sets
  * INSTALLER_CERTIFY_SUITES=none, so certify never runs the suite inside itself.
  */
@@ -30,7 +30,7 @@ export async function requireCheckout(root: string = CHECKOUT_ROOT): Promise<str
     await access(join(root, VITEST));
     return root;
   } catch {
-    throw new InputError("taskpilot certify runs from a source checkout of the installer with its development packages (git clone, npm install, npm run build), not from an installed package");
+    throw new InputError("taskfollow certify runs from a source checkout of the installer with its development packages (git clone, npm install, npm run build), not from an installed package");
   }
 }
 
@@ -81,7 +81,7 @@ export async function checkoutState(root: string): Promise<{ readonly commit: st
   return { commit: head.error ? "unknown" : head.stdout.trim(), dirty: status.error !== undefined || status.stdout.trim() !== "" };
 }
 
-/** The probe on the real agent, in a throwaway folder (like `taskpilot probe`). */
+/** The probe on the real agent, in a throwaway folder (like `taskfollow probe`). */
 export async function probeAgent(profile: RuntimeProfile): Promise<CapabilityMap> {
   const cwd = await mkdtemp(join(tmpdir(), "installer-certify-probe-"));
   try {

@@ -1,6 +1,6 @@
-# taskpilot
+# taskfollow
 
-TaskPilot helps a person automate their tasks and workflows and add skills to
+TaskFollow helps a person automate their tasks and workflows and add skills to
 their own AI agent. It is a generic, agent-operated installer and runtime that
 deploys Skills Wiki solutions onto a client's own AI agent (Claude Code, Codex, OpenClaw,
 Hermes, Pi, …), then runs their workflows under enforced human approval.
@@ -16,7 +16,7 @@ scheduler and no password-safe backend yet); Linux is untested.
 ## What is certified
 
 Support tiers follow spec §7.5. A runtime is **Certified** on a platform
-only when a person ran `taskpilot certify` there from a clean checkout and
+only when a person ran `taskfollow certify` there from a clean checkout and
 every check passed: the offline suite, every live check with its keys, and
 the real agent's probe (D116). Nothing is certified by a CI service (O7,
 D48). The record a run writes says which tier it reached and why.

@@ -1,5 +1,5 @@
 {
-  "name": "taskpilot",
+  "name": "taskfollow",
   "version": "0.1.0",
   "private": true,
   "description": "Generic agent-operated installer for Skills Wiki solutions",
@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "bin": {
-    "taskpilot": "dist/cli.js"
+    "taskfollow": "dist/cli.js"
   },
   "files": [
     "dist",

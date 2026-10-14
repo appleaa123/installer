@@ -6,7 +6,7 @@ import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, requireWorkflowId, workflowIds } from "./workflow.js";
 
 /**
- * `taskpilot run <workflow> [--sandbox]` (spec §6.6): a manual run, now, with a fresh idempotency key (§10.7).
+ * `taskfollow run <workflow> [--sandbox]` (spec §6.6): a manual run, now, with a fresh idempotency key (§10.7).
  * `--sandbox` records every outbound message in sandbox/outbox instead of sending it (D90; the full sandbox mode
  * with dry runs is Plan 8).
  */
@@ -23,6 +23,6 @@ export async function runCommand(home: string, id: string | undefined, sandbox: 
     const log = await loadStep(home, record, step.id);
     steps.push({ step: step.id, status: log?.status ?? "not_run", ...(log?.skipped ? { skipped: true } : {}), ...(log?.error ? { error: log.error } : {}), ...(log?.approval ? { approval: log.approval } : {}) });
   }
-  const next = record.status === "waiting" ? { next: `A person decides approval ${record.waiting_on ?? ""} (taskpilot approvals, or a reply code in Telegram); the runner continues the run within a minute after that` } : {};
+  const next = record.status === "waiting" ? { next: `A person decides approval ${record.waiting_on ?? ""} (taskfollow approvals, or a reply code in Telegram); the runner continues the run within a minute after that` } : {};
   return { workflow: record.workflow, run_id: record.run_id, status: record.status, sandbox: record.sandbox, actions: record.actions, needs_human: record.needs_human, ...(record.reason ? { reason: record.reason } : {}), steps, log: `runs/${record.workflow}/${record.run_id}`, ...next };
 }

@@ -33,7 +33,7 @@ function fakes(over: Partial<CertifyDeps> & { offline?: SuiteResult; live?: Suit
   };
 }
 
-describe("taskpilot certify, the local certification (D116)", () => {
+describe("taskfollow certify, the local certification (D116)", () => {
   it("needs a profile", async () => {
     await expect(certify(await makeTempHome(), undefined, fakes())).rejects.toThrow(InputError);
   });

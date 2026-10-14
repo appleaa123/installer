@@ -36,7 +36,7 @@ describe("installer mcp-serve (D56)", () => {
     expect(JSON.parse(server.lines[1] ?? "{}")).toMatchObject({ id: 0, result: { protocolVersion: "2025-06-18", serverInfo: { name: "installer" } } });
   });
 
-  it("enforces approvals exactly like taskpilot tool: refuse, request, a person approves, run once", async () => {
+  it("enforces approvals exactly like taskfollow tool: refuse, request, a person approves, run once", async () => {
     const home = await makeTempHome();
     runCli(["start", "--solution", FIXTURE_REF], { home });
     const server = await connect(home);
@@ -55,7 +55,7 @@ describe("installer mcp-serve (D56)", () => {
 
   it("starts without an install (so the agent can connect early) and says what is missing on a call", async () => {
     const server = await connect(await makeTempHome());
-    expect((await call(server, "memo.list", {})).result).toEqual({ content: [{ text: "No install found in this home; run 'taskpilot start --solution <ref>' first", type: "text" }], isError: true });
+    expect((await call(server, "memo.list", {})).result).toEqual({ content: [{ text: "No install found in this home; run 'taskfollow start --solution <ref>' first", type: "text" }], isError: true });
     expect(await server.close()).toBe(0);
   });
 });
