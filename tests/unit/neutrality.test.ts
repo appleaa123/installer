@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /** R9 / D27: the engine and its fixtures must not contain industry vocabulary. */
-const BANNED = /\b(tenants?|landlords?|realtors?|leases?|rent|rental|mortgages?|propert(y|ies)(?!\s*:)|listings?|brokerages?)\b/i;
+const BANNED = /\b(tenants?|landlords?|realtors?|leases?|rent|rental|mortgages?|propert(y|ies)(?!"?\s*:)|listings?|brokerages?)\b/i;
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
