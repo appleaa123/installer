@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { ActionFailure } from "./failure.js";
 import { runProcess } from "./headless.js";
@@ -80,6 +81,52 @@ const linuxBackend: Keychain = {
   delete: async (id) => (await keychainCommand(["secret-tool", "clear", "service", KEYCHAIN_SERVICE, "account", id])).code === 0,
 };
 
+type Runner = (argv: readonly string[], input?: string) => Promise<{ code: number | null; stdout: string; error?: string }>;
+
+/** PowerShell turns a secret from stdin into a DPAPI blob that only this Windows user can open (Preview, D128). */
+export const winProtectScript = (): string =>
+  "$ErrorActionPreference='Stop'; [Console]::InputEncoding=[Text.Encoding]::UTF8; $v=[Console]::In.ReadToEnd().TrimEnd(\"`r\",\"`n\"); ConvertTo-SecureString $v -AsPlainText -Force | ConvertFrom-SecureString";
+export const winUnprotectScript = (): string =>
+  "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; $s=ConvertTo-SecureString ([Console]::In.ReadToEnd().Trim()); [Console]::Out.Write([pscredential]::new('x',$s).GetNetworkCredential().Password)";
+/** `-EncodedCommand` takes base64 of UTF-16LE text, so no quoting rule of cmd or PowerShell touches the script. */
+export const encodedCommand = (script: string): string => Buffer.from(script, "utf16le").toString("base64");
+const powershell = (script: string): string[] => ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedCommand(script)];
+
+/**
+ * Windows (Preview, D128): one DPAPI-encrypted file per secret under %LOCALAPPDATA%\taskfollow\keys, readable only by the
+ * same Windows user. Node does the file work; PowerShell only encrypts and decrypts, with the secret on stdin.
+ * Not yet run on a real Windows PC: see human task 22.
+ */
+function windowsBackend(env: Env, run: Runner): Keychain {
+  const dir = join(env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "taskfollow", "keys");
+  const pathOf = (id: string): string => join(dir, `${id}.dpapi`);
+  return {
+    get: async (id) => {
+      let blob: string;
+      try {
+        blob = await readFile(pathOf(id), "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw new ActionFailure(`The keychain folder ${dir} cannot be read (${(error as NodeJS.ErrnoException).code})`);
+      }
+      const result = await run(powershell(winUnprotectScript()), blob);
+      requireOk(result, `read '${id}'`);
+      return result.stdout;
+    },
+    set: async (id, value) => {
+      const result = await run(powershell(winProtectScript()), value);
+      requireOk(result, `store '${id}'`);
+      await mkdir(dir, { recursive: true });
+      await writeFile(pathOf(id), result.stdout.trim(), "utf8");
+    },
+    delete: async (id) => {
+      const existed = await readFile(pathOf(id), "utf8").then(() => true, () => false);
+      await rm(pathOf(id), { force: true });
+      return existed;
+    },
+  };
+}
+
 /** Files of mode 0600 in a private folder; used by the test suite and as the fallback where no keychain exists. */
 function fileBackend(dir: string): Keychain {
   const pathOf = (id: string): string => join(dir, id);
@@ -104,7 +151,7 @@ function fileBackend(dir: string): Keychain {
   };
 }
 
-export function selectKeychain(env: Env = process.env): Keychain {
+export function selectKeychain(env: Env = process.env, platform: string = process.platform, run: Runner = keychainCommand): Keychain {
   const chosen = env[KEYCHAIN_ENV];
   if (chosen === "file") {
     const dir = env[KEYCHAIN_DIR_ENV];
@@ -112,9 +159,10 @@ export function selectKeychain(env: Env = process.env): Keychain {
     return fileBackend(resolve(dir));
   }
   if (chosen !== undefined && chosen !== "") throw new ActionFailure(`${KEYCHAIN_ENV} must be unset or 'file', got '${chosen}'`);
-  if (process.platform === "darwin") return macBackend;
-  if (process.platform === "linux") return linuxBackend;
-  throw new ActionFailure(`No keychain backend for ${process.platform} yet; set ${KEYCHAIN_ENV}=file and ${KEYCHAIN_DIR_ENV}=<private folder>`);
+  if (platform === "darwin") return macBackend;
+  if (platform === "linux") return linuxBackend;
+  if (platform === "win32") return windowsBackend(env, run);
+  throw new ActionFailure(`No keychain backend for ${platform} yet; set ${KEYCHAIN_ENV}=file and ${KEYCHAIN_DIR_ENV}=<private folder>`);
 }
 
 export async function getSecret(id: string, env?: Env): Promise<string | null> {
