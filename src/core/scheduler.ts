@@ -27,6 +27,8 @@ export interface ScheduleEntry {
   readonly label: string;
   readonly argv: readonly string[];
   readonly log: string;
+  /** The PATH to run with (macOS and Linux): a scheduler starts with almost none, and the agent lives in the person's own folders (D130). */
+  readonly path?: string;
 }
 
 export interface SchedulerBackend {
@@ -40,10 +42,18 @@ export interface SchedulerBackend {
 }
 
 /** `com.installer.tick.<8 hex of the home>`: one entry per home, so two installs on one machine never clash. */
-export function tickEntry(home: string, node: string, cli: string): ScheduleEntry {
+export function tickEntry(home: string, node: string, cli: string, path?: string): ScheduleEntry {
   const absolute = resolve(home);
   const label = `com.installer.tick.${createHash("sha256").update(absolute).digest("hex").slice(0, 8)}`;
-  return { label, argv: [node, cli, "--home", absolute, "tick"], log: join(absolute, TICK_LOG) };
+  return { label, argv: [node, cli, "--home", absolute, "tick"], log: join(absolute, TICK_LOG), ...(path ? { path } : {}) };
+}
+
+const SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+
+/** The PATH written into the scheduler entry: node's own folder, then what the person's shell had, then the system folders. Relative entries are dropped. */
+export function schedulePath(shellPath: string, node: string): string {
+  const dirs = [dirname(node), ...shellPath.split(":"), ...SYSTEM_PATH].filter((dir) => dir.startsWith("/"));
+  return [...new Set(dirs)].join(":");
 }
 
 export const xml = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -57,6 +67,7 @@ export function plistText(entry: ScheduleEntry): string {
     "<dict>",
     `  <key>Label</key>\n  <string>${xml(entry.label)}</string>`,
     `  <key>ProgramArguments</key>\n  <array>\n${entry.argv.map((arg) => `    <string>${xml(arg)}</string>`).join("\n")}\n  </array>`,
+    ...(entry.path ? [`  <key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>${xml(entry.path)}</string>\n  </dict>`] : []),
     "  <key>StartInterval</key>\n  <integer>60</integer>",
     "  <key>RunAtLoad</key>\n  <true/>",
     `  <key>StandardOutPath</key>\n  <string>${xml(entry.log)}</string>`,
@@ -69,9 +80,9 @@ export function plistText(entry: ScheduleEntry): string {
 
 /** crontab(5): `%` ends the command and a line break ends the entry, so paths with either are refused. */
 export function crontabLine(entry: ScheduleEntry): string {
-  const unsafe = [...entry.argv, entry.log].find((part) => /[%\n\r]/.test(part));
+  const unsafe = [...entry.argv, entry.log, ...(entry.path ? [entry.path] : [])].find((part) => /[%\n\r]/.test(part));
   if (unsafe !== undefined) throw new InputError(`A crontab line cannot hold '${unsafe}' (it contains % or a line break): use a home path without them`);
-  return `* * * * * ${entry.argv.map(shellQuote).join(" ")} >> ${shellQuote(entry.log)} 2>&1 # ${entry.label}\n`;
+  return `* * * * * ${entry.path ? `PATH=${shellQuote(entry.path)} ` : ""}${entry.argv.map(shellQuote).join(" ")} >> ${shellQuote(entry.log)} 2>&1 # ${entry.label}\n`;
 }
 
 /**
@@ -177,6 +188,8 @@ export interface ScheduleOptions {
   readonly platform?: NodeJS.Platform;
   readonly node?: string;
   readonly cli?: string;
+  /** The PATH to write into the entry; defaults to the PATH of this process (the shell that ran the command). */
+  readonly envPath?: string;
 }
 
 /** `taskfollow schedule list | install | remove | report [--value <json>]` (D82, D89). */
@@ -185,7 +198,8 @@ export async function scheduleCommand(home: string, sub: string | undefined, val
   if (sub === "report") return saveReportConfig(home, value, now());
   if (sub !== "install" && sub !== "remove") throw new InputError("schedule needs one of: list, install, remove, report");
   const backend = backendFor(options.platform ?? process.platform);
-  const entry = tickEntry(home, options.node ?? process.execPath, options.cli ?? installerCliPath());
+  const node = options.node ?? process.execPath;
+  const entry = tickEntry(home, node, options.cli ?? installerCliPath(), backend.id === "schtasks" ? undefined : schedulePath(options.envPath ?? process.env.PATH ?? "", node));
   const path = await entryFile(home, backend, entry, sub === "install");
   await appendAudit(home, { ts: now(), actor: "agent", event: `schedule.${sub}_printed`, ref: entry.label, payload: { backend: backend.id } });
   const commands = sub === "install" ? backend.install(path, entry) : backend.remove(path, entry);
