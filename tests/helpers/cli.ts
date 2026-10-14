@@ -21,10 +21,11 @@ function lastJson(text: string): unknown {
   }
 }
 
-export function runCli(args: readonly string[], options: { home?: string; cwd?: string; env?: Record<string, string> }): CliResult {
+export function runCli(args: readonly string[], options: { home?: string; cwd?: string; env?: Record<string, string>; input?: string }): CliResult {
   const homeArgs = options.home === undefined ? [] : ["--home", options.home];
   const result = spawnSync(process.execPath, [CLI, ...homeArgs, ...args], {
     encoding: "utf8",
+    ...(options.input === undefined ? {} : { input: options.input }),
     ...(options.cwd ? { cwd: options.cwd } : {}),
     env: { ...process.env, ...options.env },
   });

@@ -32,6 +32,7 @@ import { inviteCommand, membersCommand, renderInvite } from "./core/invite-comma
 import { getSecret, requireSecretId, setSecret } from "./core/keychain.js";
 import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
+import { HOOK_BLOCK, handleHook, loadHookConfig, type HookConfig } from "./core/agent-hook.js";
 import { startEmailPage } from "./core/email-page.js";
 import { startSlackPage } from "./core/slack-page.js";
 import { startOAuthPage } from "./core/oauth-page.js";
@@ -299,6 +300,27 @@ async function toolCommand(home: string, name: string | undefined, json: string 
   return invokeTool(await toolContext(home, "cli", DEFAULT_TOOLS), name, args);
 }
 
+/** Run by the task step's agent around each tool call (D137); never prints anything but the hook's answer. Fails closed. */
+async function agentHookCommand(phase: string, configFile: string): Promise<number> {
+  const blocked = (message: string): number => {
+    process.stderr.write(`${message}\n`);
+    return HOOK_BLOCK;
+  };
+  if (phase !== "pre" && phase !== "post" && phase !== "failed") return blocked("TaskFollow's hook was called the wrong way, so the call was blocked.");
+  let config: HookConfig;
+  try {
+    config = await loadHookConfig(configFile);
+  } catch {
+    return blocked("TaskFollow's hook settings are missing, so the call was blocked.");
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  const out = await handleHook(phase, Buffer.concat(chunks).toString("utf8"), config);
+  if (out.stdout) process.stdout.write(out.stdout);
+  if (out.stderr) process.stderr.write(`${out.stderr}\n`);
+  return out.exit;
+}
+
 /** Run by the agent's MCP client (D56): JSON-RPC on stdin/stdout and nothing else on stdout; each call reads the install afresh. */
 async function mcpServeCommand(home: string): Promise<number> {
   const call = async (name: string, args: unknown) => {
@@ -391,6 +413,7 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "secret-serve") return secretServeCommand(requireArg(arg, command));
   if (command === "mcp-headers") return headersCommand(requireArg(arg, command));
   if (command === "mcp-serve") return mcpServeCommand(home);
+  if (command === "agent-hook") return agentHookCommand(arg ?? "", extra ?? "");
   if (command === "gateway-serve") return serveGateway(home);
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
