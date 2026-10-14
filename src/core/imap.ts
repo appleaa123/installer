@@ -36,7 +36,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 const LITERAL = /\{(\d+)\}$/;
 /** A message larger than this is never fetched whole; the email channel reads only its headers. */
 export const MAX_MESSAGE_BYTES = 10_000_000;
-const HEADER_FIELDS = "HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO)";
+const HEADER_FIELDS = "HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)";
 
 /** An IMAP quoted string: `\` and `"` escaped; line breaks and non-ASCII cannot be quoted. */
 export function quoted(value: string, what: string): string {

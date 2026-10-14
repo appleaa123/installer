@@ -28,7 +28,7 @@ describe("installer mcp-serve (D56)", () => {
     expect(listed.result.tools.map((tool) => tool.name)).toEqual([
       "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
-      "channel.list", "channel.inbox", "channel.notify", "channel.send",
+      "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send",
     ]);
     expect(await server.close()).toBe(0);
     expect(server.lines).toHaveLength(3);

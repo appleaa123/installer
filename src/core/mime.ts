@@ -1,15 +1,30 @@
 /**
  * Just enough of RFC 5322 / MIME to read what a person typed: the sender's address, the subject, the message ids
- * and the first `text/plain` part, decoded (base64, quoted-printable, charset). HTML-only mail and attachments
- * are not read in v1; quoted earlier messages are cut, so a reply code is the first thing in the text.
+ * and the first `text/plain` part, decoded (base64, quoted-printable, charset). HTML-only mail is not read in v1;
+ * quoted earlier messages are cut, so a reply code is the first thing in the text. Attachments are listed with
+ * their bytes (D132): the caller saves them; nothing here opens, runs or renders them.
  */
+export interface MailAttachment {
+  readonly filename: string;
+  readonly type: string;
+  readonly bytes: Buffer;
+}
+
 export interface ParsedMail {
   readonly from: string;
   readonly subject: string;
   readonly message_id: string;
   readonly in_reply_to: string;
+  /** The first message of the conversation: the start of References, else In-Reply-To, else this message. */
+  readonly thread_root: string;
   readonly text: string;
+  readonly attachments: readonly MailAttachment[];
+  /** Attachments not kept, each with the reason, so the person is told. */
+  readonly skipped: readonly string[];
 }
+
+export const MAX_ATTACHMENT_BYTES = 5_000_000;
+export const MAX_ATTACHMENTS = 10;
 
 type Headers = Readonly<Record<string, string>>;
 const MAX_DEPTH = 3;
@@ -63,7 +78,7 @@ function decodePart(headers: Headers, body: string): string {
 /** The first text/plain part, looking inside multipart parts up to three levels deep. */
 function plainText(headers: Headers, body: string, depth: number): string | null {
   const type = (headers["content-type"] ?? "text/plain").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (type === "text/plain") return decodePart(headers, body);
+  if (type === "text/plain") return isAttachment(headers) ? null : decodePart(headers, body);
   const boundary = param(headers["content-type"] ?? "", "boundary");
   if (!type.startsWith("multipart/") || boundary === "" || depth >= MAX_DEPTH) return null;
   const parts = body.split(`--${boundary}`).slice(1, -1);
@@ -73,6 +88,76 @@ function plainText(headers: Headers, body: string, depth: number): string | null
     if (found !== null) return found;
   }
   return null;
+}
+
+function fileNameOf(headers: Headers): string {
+  const disposition = headers["content-disposition"] ?? "";
+  const star = /filename\*\s*=\s*[^']*'[^']*'([^;]+)/i.exec(disposition);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      /* fall through to the plain form */
+    }
+  }
+  return decodeWords(param(disposition, "filename") || param(headers["content-type"] ?? "", "name"));
+}
+
+const isAttachment = (headers: Headers): boolean => fileNameOf(headers) !== "" || /^\s*attachment/i.test(headers["content-disposition"] ?? "");
+
+/** A name that cannot leave its folder: no path, no control or reserved characters, no leading dots, at most 100 characters. */
+export function safeFileName(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? "";
+  const cleaned = base.replace(/[\u0000-\u001f<>:"|?*]/g, "_").trim().replace(/^\.+/, "").trim();
+  return cleaned.slice(0, 100) || "attachment";
+}
+
+function decodeBytes(headers: Headers, body: string): Buffer {
+  const encoding = (headers["content-transfer-encoding"] ?? "").toLowerCase();
+  if (encoding === "base64") return Buffer.from(body.replace(/\s+/g, ""), "base64");
+  return encoding === "quoted-printable" ? quotedPrintable(body) : Buffer.from(body, "latin1");
+}
+
+/** Every non-multipart part with a file name (or marked as an attachment), looking up to three levels deep. */
+function collectAttachments(headers: Headers, body: string, depth: number, found: { headers: Headers; body: string }[]): void {
+  const type = (headers["content-type"] ?? "text/plain").split(";")[0]?.trim().toLowerCase() ?? "";
+  const boundary = param(headers["content-type"] ?? "", "boundary");
+  if (type.startsWith("multipart/")) {
+    if (boundary === "" || depth >= MAX_DEPTH) return;
+    for (const part of body.split(`--${boundary}`).slice(1, -1)) {
+      const inner = split(part.replace(/^\r?\n/, ""));
+      collectAttachments(inner.headers, inner.body, depth + 1, found);
+    }
+    return;
+  }
+  if (isAttachment(headers)) found.push({ headers, body });
+}
+
+/** `a.txt` taken twice becomes `a.txt` and `a-2.txt`. */
+function uniqueName(name: string, taken: readonly string[]): string {
+  if (!taken.includes(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let count = 2; ; count += 1) {
+    const candidate = `${stem}-${count}${ext}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
+function attachmentsOf(headers: Headers, body: string): { attachments: MailAttachment[]; skipped: string[] } {
+  const parts: { headers: Headers; body: string }[] = [];
+  collectAttachments(headers, body, 0, parts);
+  const attachments: MailAttachment[] = [];
+  const skipped: string[] = [];
+  for (const part of parts) {
+    const filename = uniqueName(safeFileName(fileNameOf(part.headers)), attachments.map((entry) => entry.filename));
+    const bytes = decodeBytes(part.headers, part.body);
+    if (attachments.length >= MAX_ATTACHMENTS) skipped.push(`${filename} (only the first ${MAX_ATTACHMENTS} attachments are kept)`);
+    else if (bytes.length > MAX_ATTACHMENT_BYTES) skipped.push(`${filename} (over ${MAX_ATTACHMENT_BYTES / 1_000_000} MB)`);
+    else attachments.push({ filename, type: (part.headers["content-type"] ?? "application/octet-stream").split(";")[0]?.trim().toLowerCase() ?? "application/octet-stream", bytes });
+  }
+  return { attachments, skipped };
 }
 
 /** Drops quoted lines and everything from a reply header ("On … wrote:") down. */
@@ -89,8 +174,12 @@ function address(value: string): string {
 export function parseMail(raw: Buffer): ParsedMail {
   const { headers, body } = split(raw.toString("latin1"));
   const header = (name: string): string => decodeCharset(Buffer.from(headers[name] ?? "", "latin1"), "utf-8");
+  const references = header("references").match(/<[^<>\s]+>/g) ?? [];
+  const inReplyTo = header("in-reply-to");
+  const { attachments, skipped } = attachmentsOf(headers, body);
   return {
-    from: address(header("from")), subject: decodeWords(header("subject")), message_id: header("message-id"), in_reply_to: header("in-reply-to"),
-    text: withoutQuotes(plainText(headers, body, 0) ?? ""),
+    from: address(header("from")), subject: decodeWords(header("subject")), message_id: header("message-id"), in_reply_to: inReplyTo,
+    thread_root: references[0] ?? /<[^<>\s]+>/.exec(inReplyTo)?.[0] ?? (inReplyTo || header("message-id")),
+    text: withoutQuotes(plainText(headers, body, 0) ?? ""), attachments, skipped,
   };
 }
