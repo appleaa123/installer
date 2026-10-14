@@ -34,6 +34,7 @@ import { buildReport, renderReport } from "./core/report.js";
 import { headlessHint, launchSecretPage, openBrowser, startSecretPage } from "./core/secret-page.js";
 import { HOOK_BLOCK, handleHook, loadHookConfig, type HookConfig } from "./core/agent-hook.js";
 import { startEmailPage } from "./core/email-page.js";
+import { renderWhy, whyCommand } from "./core/why.js";
 import { startSlackPage } from "./core/slack-page.js";
 import { startOAuthPage } from "./core/oauth-page.js";
 import { pauseCommand, unpauseCommand } from "./core/pause.js";
@@ -62,7 +63,7 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, why, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -383,6 +384,11 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   gateway: async ({ deps }, _flags, arg) => gatewayCommand(deps.home, arg, deps.now),
   run: async ({ deps }, flags, arg) => runCommand(deps.home, arg, flags.sandbox === true, deps.now),
   tick: async ({ deps }) => tick(deps.home, deps.now),
+  /** D138: who did what in a run, and why, from the record; plain lines for a person at a terminal. */
+  why: async ({ deps }, _flags, arg) => {
+    const why = await whyCommand(deps.home, arg, deps.now);
+    return process.stdout.isTTY === true ? renderWhy(why) : why;
+  },
   schedule: async ({ deps }, flags, arg) => scheduleCommand(deps.home, arg, flags.value, deps.now),
   model: async ({ deps }, flags) => modelCommand(deps.home, flags.value, deps.now, process.stdin.isTTY === true),
   workflow: async ({ deps }, flags, arg, extra) => workflowCommand(deps.home, arg, extra, flags.value, deps.now),
