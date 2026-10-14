@@ -15,6 +15,20 @@ function stateWith(records: Record<string, StepRecord>): InstallState {
 const allDone = (overrides: Record<string, StepRecord> = {}): InstallState =>
   stateWith({ ...Object.fromEntries(ALL.map((id) => [id, done])), ...overrides });
 
+describe("an install with no Skills Wiki (D126)", () => {
+  const runtime = { profile: "claude-code", agent_version: "2.1.294", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true, c6_mcp: "not_probed" as const, support_level: 2 as const, tier: "compatible" as const, notes: [] };
+
+  it("does not list the Skills Wiki connection as unchecked", () => {
+    const report = buildReport(basicSolution(), { ...stateWith({}), runtime });
+    expect(renderReport(report)).not.toContain("MCP not checked yet");
+    expect(renderReport(report)).toContain("claude-code 2.1.294 — level 2 of 3");
+  });
+
+  it("still lists it when Skills Wiki is connected", () => {
+    expect(renderReport(buildReport(basicSolution(), { ...stateWith({}), runtime, skillswiki: { url: "https://wiki.test/mcp" } }))).toContain("MCP not checked yet");
+  });
+});
+
 describe("buildReport", () => {
   it("is in_progress with the current question under needs_you", () => {
     const report = buildReport(basicSolution(), stateWith({ "preflight.write-config": done, "preflight.check-config": done }));
@@ -79,7 +93,7 @@ describe("runtime line", () => {
   } as const;
 
   it("shows the agent and keeps a full runtime READY", () => {
-    const report = buildReport(basicSolution(), { ...allDone(), runtime });
+    const report = buildReport(basicSolution(), { ...allDone(), runtime, skillswiki: { url: "https://wiki.test/mcp" } });
     expect(report.overall).toBe("ready");
     expect(report.runtime_limits).toEqual([]);
     expect(renderReport(report).split("\n")[2]).toBe("🤖 Agent      claude-code 2.1.294 — level 2 of 3 (MCP not checked yet)");
@@ -93,7 +107,7 @@ describe("runtime line", () => {
 
   it("says fallbacks apply when no agent was recognised (Review Focus 2)", () => {
     const unknown = { ...runtime, profile: null, agent_version: null, c4_headless: false, c4_schema: false, c5_resume: false, support_level: 0, tier: "unknown" } as const;
-    const report = buildReport(basicSolution(), { ...allDone(), runtime: unknown });
+    const report = buildReport(basicSolution(), { ...allDone(), runtime: unknown, skillswiki: { url: "https://wiki.test/mcp" } });
     expect(report.overall).toBe("ready_with_limits");
     expect(renderReport(report)).toContain("🤖 Agent      unknown agent — level 0 of 3 (no known agent profile; fallbacks apply, MCP not checked yet)");
   });

@@ -20,6 +20,8 @@ export interface Report {
   readonly needs_you: readonly ReportItem[];
   readonly runtime: CapabilityMap | null;
   readonly runtime_limits: readonly string[];
+  /** True when this install has Skills Wiki connected; an install without it has nothing to check there. */
+  readonly skillswiki: boolean;
 }
 
 const HEADLINE: Readonly<Record<Overall, string>> = {
@@ -68,7 +70,7 @@ export function buildReport(solution: Solution, state: InstallState): Report {
     hardBlocked.length > 0 ? "blocked" : current ? "in_progress" : limited.length > 0 || limits.length > 0 ? "ready_with_limits" : "ready";
   return {
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: solution.steps.length,
-    working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits,
+    working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined,
   };
 }
 
@@ -76,7 +78,7 @@ function agentLine(report: Report): string | null {
   const runtime = report.runtime;
   if (!runtime) return null;
   const name = runtime.profile ? `${runtime.profile} ${runtime.agent_version ?? ""}`.trim() : "unknown agent";
-  const missing = [...report.runtime_limits, ...(runtime.c6_mcp === "not_probed" ? ["MCP not checked yet"] : [])];
+  const missing = [...report.runtime_limits, ...(runtime.c6_mcp === "not_probed" && report.skillswiki ? ["MCP not checked yet"] : [])];
   return `🤖 Agent      ${name} — level ${runtime.support_level} of 3${missing.length > 0 ? ` (${missing.join(", ")})` : ""}`;
 }
 

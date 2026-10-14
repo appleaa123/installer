@@ -7,6 +7,7 @@ import { loadPinnedSolution } from "./pin.js";
 import { startRun } from "./runner.js";
 import { listInbox } from "./inbox.js";
 import { loadStep, type RunTrigger } from "./runs.js";
+import { loadState } from "./state.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -52,6 +53,8 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   if ((await workflowIds(home)).includes(id)) throw new InputError(`Workflow '${id}' exists already; a change to it is a new version (taskfollow harden), never an overwrite`);
   const raw = newWorkflow(id, value, await suggestions(home));
   const workflow = parseWorkflow(raw, id, DEFAULT_TOOLS);
+  const needsSkill = workflow.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined);
+  if (needsSkill && !(await loadState(home))?.skillswiki) throw new InputError("This workflow uses a Skills Wiki skill. Connect Skills Wiki first (INSTALL.md, section 11) or choose another workflow.");
   await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), raw);
   await saveWorkflowState(home, { workflow: id, sandbox: true });
   await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description" } });
