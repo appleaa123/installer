@@ -112,6 +112,23 @@ describe("oauthReady (live setup guides, 4.5)", () => {
     }
   });
 
+  it("fails with the fix when Google marks the sign-in to expire, which an app still in Testing status gets", async () => {
+    const second = await startFakeGoogle();
+    try {
+      await second.debug("/debug/testing-mode", {});
+      const value = { ...second.env, INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+      await setSecret("google", SIGNED_IN, value);
+      const result = await oauthReady("google", value);
+      expect(result.ok).toBe(false);
+      const hint = result.ok ? "" : result.hint;
+      expect(hint).toContain("expire");
+      expect(hint).toContain("In production");
+      expect(hint).toContain("taskpilot secret google");
+    } finally {
+      second.stop();
+    }
+  });
+
   it("refuses a secret id that is not a connector's sign-in", async () => {
     await expect(oauthReady("skillswiki", await env())).rejects.toThrow(InputError);
   });
