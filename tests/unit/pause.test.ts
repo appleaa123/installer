@@ -8,7 +8,7 @@ import { killSwitchIn } from "../../src/core/envelope.js";
 import { handleInbound } from "../../src/core/inbound.js";
 import { listInbox } from "../../src/core/inbox.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
-import { PAUSED_REASON, isPaused, loadPause, pauseCommand, setPaused, unpauseCommand } from "../../src/core/pause.js";
+import { PAUSED_REASON, isPaused, loadPause, pauseCommand, setPaused, switchRefusal, unpauseCommand } from "../../src/core/pause.js";
 import { startRun } from "../../src/core/runner.js";
 import { listRuns, loadStep } from "../../src/core/runs.js";
 import { HEARTBEAT_FILE, tick } from "../../src/core/tick.js";
@@ -149,5 +149,16 @@ describe("the kill switch (§14.4, D36, D101)", () => {
     expect(await events(home)).toContain("engine.unpause_refused");
     expect(await unpauseCommand(home, PERSON, () => AT)).toMatchObject({ status: "unpaused", paused: false, by: "Owner" });
     expect(await pauseCommand(home, "status", AGENT, undefined, () => AT)).toEqual({ pause: { paused: false, at: AT, by: "Owner", via: "cli" } });
+  });
+});
+
+describe("the refusal on a channel that cannot prove the sender (D130)", () => {
+  it("names the current command, taskfollow, for the terminal", () => {
+    const member = { id: 1, name: "Owner", role: "decision_maker" } as unknown as Parameters<typeof switchRefusal>[0];
+    for (const command of ["pause", "unpause"] as const) {
+      const text = switchRefusal(member, "email", command) ?? "";
+      expect(text).toContain(`'taskfollow ${command}'`);
+      expect(text).not.toContain("installer");
+    }
   });
 });
