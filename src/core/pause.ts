@@ -80,7 +80,7 @@ export async function unpauseCommand(home: string, person: { interactive: boolea
  * only on a channel that proves who wrote (D78: Telegram, not email).
  */
 export function switchRefusal(member: Member, channel: string, command: "pause" | "unpause"): string | null {
-  if (!CHANNEL_FACTS[requireChannelId(channel)].risk.sender_verified) return `/${command} is not accepted by ${channel}, where the sender can be forged: send it in Telegram, or run 'installer ${command}' in a terminal`;
+  if (!CHANNEL_FACTS[requireChannelId(channel)].risk.sender_verified) return `/${command} is not accepted by ${channel}, where the sender can be forged: send it in Telegram, or run 'taskfollow ${command}' in a terminal`;
   if (member.role !== "decision_maker") return `Only the decision maker can send /${command}; nothing was changed`;
   return null;
 }
