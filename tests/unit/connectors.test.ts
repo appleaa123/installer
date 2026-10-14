@@ -102,14 +102,14 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
   }
   const valid = () => (JSON.parse(SHIPPED) as { setup: Record<string, unknown> }).setup;
 
-  it("ships an outcome checklist, Google-only sources and the six known symptoms", async () => {
+  it("ships an outcome checklist, Google-only sources and the seven known symptoms", async () => {
     const def = await loadConnector("google-sheets", "1");
     expect(def.setup?.title).toBe("Your own Google app for Sheets");
     expect(def.setup?.outcome.length).toBeGreaterThanOrEqual(6);
     expect(def.setup?.outcome.join(" ")).toContain("Desktop app");
     expect(def.setup?.outcome.join(" ")).toContain("In production");
     expect(def.setup?.sources.every((url) => url.startsWith("https://"))).toBe(true);
-    expect(def.setup?.symptoms.map((symptom) => symptom.match)).toEqual(["redirect_uri_mismatch", "access_denied", "invalid_client", "invalid_grant", "SERVICE_DISABLED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT"]);
+    expect(def.setup?.symptoms.map((symptom) => symptom.match)).toEqual(["redirect_uri_mismatch", "access_denied", "invalid_client", "invalid_grant", "SERVICE_DISABLED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "admin_policy_enforced"]);
     expect(def.setup?.symptoms.every((symptom) => symptom.fix && symptom.look && symptom.search && symptom.means)).toBe(true);
   });
 
@@ -127,6 +127,16 @@ describe("the connector's setup guide (live setup guides, 4.2)", () => {
   it("loads a setup guide that has no fallback steps", async () => {
     const { steps: _steps, ...withoutSteps } = valid();
     expect((await withSetup(withoutSteps)).setup?.steps).toBeUndefined();
+  });
+
+  it("names TaskFollow, not an old name, in the fallback steps", async () => {
+    expect(((await withSetup(valid())).setup?.steps ?? []).join(" ")).not.toMatch(/taskpilot|installer/i);
+  });
+
+  it("knows what to say when a work account's administrator blocks the app", async () => {
+    const symptom = (await withSetup(valid())).setup?.symptoms.find((entry) => entry.match === "admin_policy_enforced");
+    expect(symptom?.fix).toMatch(/personal Google account|administrator/);
+    expect(symptom?.search).toContain("admin_policy_enforced");
   });
 
   it("prepares the person for Google's unverified-app screens and says not to submit for verification", async () => {
