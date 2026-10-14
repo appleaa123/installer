@@ -4,7 +4,7 @@ This page is for you, not for your computer. It gets you from nothing to a helpe
 
 - a **Mac** or a **Windows 11** computer,
 - an account with Anthropic that can use **Claude Code** (it is the helper; a paid Claude plan works),
-- your own **Google account**, and the **Telegram** app on your phone with an account (TaskFollow uses them; the helper will tell you when),
+- the **Telegram** app on your phone with an account (your assistant reaches you there), and your own **Google account** if you keep your contacts in a Google Sheet. The helper asks what you use and tells you what you need,
 - some time without interruptions. If you get stuck, you can stop and carry on later.
 
 ## 1. Install Node
