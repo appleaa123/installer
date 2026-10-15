@@ -13,6 +13,8 @@ export interface RawInbound {
   readonly message_id: string;
   /** Email only (D143): the subject, so a reply can stay in the same conversation. */
   readonly subject?: string;
+  /** WhatsApp (D149): when the customer sent it, by Meta's clock; the 24-hour reply window starts here. */
+  readonly sent_at?: string;
   readonly attachments?: readonly string[];
   /** Files that came with the message, in memory only; the gateway saves them (D132). */
   readonly files?: readonly InboundFile[];
@@ -34,6 +36,8 @@ export interface InboundEnvelope {
   readonly message_id: string;
   /** Email only (D143): one line, at most 300 characters. Untrusted, like the text. */
   readonly subject?: string;
+  /** WhatsApp (D149): Meta's time of the message. */
+  readonly sent_at?: string;
   /** Always true: inbound text is data, never instructions. */
   readonly untrusted: true;
   /** Names of the injection patterns the text matched (flag, never obey). */
@@ -81,6 +85,7 @@ export function normalizeInbound(raw: RawInbound, receivedAt: string): InboundEn
     channel: raw.channel, from: raw.from.trim().toLowerCase(), thread: raw.thread.trim(), text: cleanText(raw.text),
     attachments: [...(raw.attachments ?? [])], received_at: receivedAt, message_id: raw.message_id, untrusted: true, injection: scanInjection(raw.text),
     ...(raw.subject ? { subject: cleanText(raw.subject).replace(/\s+/g, " ").trim().slice(0, MAX_SUBJECT_TEXT) } : {}),
+    ...(raw.sent_at && !Number.isNaN(Date.parse(raw.sent_at)) ? { sent_at: new Date(Date.parse(raw.sent_at)).toISOString() } : {}),
   };
 }
 
