@@ -1,4 +1,5 @@
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, open, readFile } from "node:fs/promises";
+import { canonicalJson } from "./audit.js";
 
 /**
  * The hook a task step's agent runs around each tool call (D137): Claude Code's PreToolUse, PostToolUse and
@@ -28,6 +29,8 @@ export interface HookConfig {
   readonly may_use: readonly string[];
   /** Whether the step may change things (write flags allowed). */
   readonly changes: boolean;
+  /** D151: a person approved this one call; nothing else may run, and it may run once. */
+  readonly exact?: { readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
 }
 
 export type Phase = "pre" | "post" | "failed";
@@ -46,7 +49,30 @@ export async function loadHookConfig(file: string): Promise<HookConfig> {
   if (!isRecord(raw) || typeof raw.record !== "string" || !Array.isArray(raw.may_use) || !raw.may_use.every((rule) => typeof rule === "string") || typeof raw.changes !== "boolean") {
     throw new Error("The hook settings are damaged");
   }
-  return { record: raw.record, may_use: raw.may_use as string[], changes: raw.changes };
+  const exact = raw.exact;
+  if (exact !== undefined && !(isRecord(exact) && typeof exact.tool === "string" && isRecord(exact.args))) throw new Error("The hook settings are damaged");
+  return { record: raw.record, may_use: raw.may_use as string[], changes: raw.changes, ...(exact === undefined ? {} : { exact: { tool: exact.tool as string, args: exact.args as Raw } }) };
+}
+
+/** The file whose creation marks the approved call as made: next to the step's record, created at most once. */
+export const madeMarker = (record: string): string => (record.endsWith(".calls.jsonl") ? record.slice(0, -".calls.jsonl".length) : record) + ".made";
+const APPROVED_SHOWN = 4000;
+
+/** D151: only the approved call, with exactly the approved arguments, and only the first time. */
+async function decideExact(event: Raw, exact: NonNullable<HookConfig["exact"]>, record: string): Promise<Decision> {
+  const tool = typeof event.tool_name === "string" ? event.tool_name : "";
+  if (tool === REASON_TOOL) return { allow: true };
+  const approved = canonicalJson(exact.args);
+  if (tool !== exact.tool || !isRecord(event.tool_input) || canonicalJson(event.tool_input) !== approved) {
+    return { allow: false, reason: `Only the approved call may run: ${exact.tool} with exactly these arguments: ${approved.slice(0, APPROVED_SHOWN)}` };
+  }
+  try {
+    await (await open(madeMarker(record), "wx", 0o600)).close();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return { allow: false, reason: "The approved call was already made; it runs only once." };
+    throw error;
+  }
+  return { allow: true };
 }
 
 const commandOf = (input: unknown): string => (isRecord(input) && typeof input.command === "string" ? input.command : "");
@@ -94,7 +120,8 @@ function recordLine(phase: Phase, event: Raw, now: string, refused?: string): Ra
   if (tool === REASON_TOOL && isRecord(input)) {
     return { ...base, reason_for: typeof input.tool === "string" ? input.tool : "", why: typeof input.why === "string" ? input.why.slice(0, 500) : "" };
   }
-  const outcome = refused !== undefined ? "refused" : phase === "failed" ? "failed" : "ok";
+  const errored = isRecord(event.tool_response) && event.tool_response.isError === true;
+  const outcome = refused !== undefined ? "refused" : phase === "failed" || errored ? "failed" : "ok";
   return { ...base, input: summarize(input), outcome, ...(typeof event.duration_ms === "number" ? { ms: event.duration_ms } : {}), ...(refused ? { refused_because: refused } : {}) };
 }
 
@@ -110,7 +137,12 @@ export async function handleHook(phase: Phase, stdin: string, config: HookConfig
     return { exit: HOOK_BLOCK, stdout: "", stderr: "TaskFollow could not read this tool call, so it was blocked." };
   }
   if (event.tool_name === ANSWER_TOOL) return { exit: 0, stdout: "" };
-  const decision = phase === "pre" ? decide(event, config) : { allow: true as const };
+  let decision: Decision;
+  try {
+    decision = phase !== "pre" ? { allow: true } : config.exact ? await decideExact(event, config.exact, config.record) : decide(event, config);
+  } catch {
+    return { exit: HOOK_BLOCK, stdout: "", stderr: "TaskFollow could not check this tool call, so it was blocked." };
+  }
   if (phase === "pre" && decision.allow) return { exit: 0, stdout: "" };
   try {
     await appendFile(config.record, `${JSON.stringify(recordLine(phase, event, now(), decision.allow ? undefined : decision.reason))}\n`, { mode: 0o600 });
