@@ -302,8 +302,23 @@ Each item: plan first, Fable review, build test-first (the rule in `docs/next-st
 
 This conversation is the product direction and vision correction. Every file in the project, README.md included, is subject to change to match it.
 
-1. **The product description.** README.md, START-HERE.md and the INSTALL.md introduction say the vision in 9.2 (today they say TaskFollow "deploys Skills Wiki solutions onto a client's own AI agent"). INSTALL.md's operator rules gain the new rules: show the inbox and pending approvals at session start, the opportunity rule, the skills reminder.
+1. **The product description.** README.md, START-HERE.md and the INSTALL.md introduction say the vision in 9.2 (today they say TaskFollow "deploys Skills Wiki solutions onto a client's own AI agent"). INSTALL.md's operator rules gain the new rules: at session start, tell the owner about runs since they last spoke and present pending approvals (level 1 of the ladder in 9.4); the opportunity rule; the skills reminder.
 2. **`docs/next-steps.md`** is rewritten from section 9 once the current scope (9.1) is finished; `docs/human-tasks.md` gains the new human tasks.
 3. **Human task: the spike** (9.12, item 1) needs the owner's real Claude Code, like tasks 25 and 26.
 4. **Where user 1's runs happen.** The owner decides at install time: a laptop (runs only while it is on and awake; missed runs are skipped, D38) or an always-on machine (Team host mode, exists). The report says plainly when runs happen and that they use the owner's own Claude plan.
 5. **Uninstall** removes everything TaskFollow wrote, the skill folders and the `CLAUDE.md`/`AGENTS.md` section included, and nothing else: no other setting of the owner's is touched (D109's rule, extended to the new files).
+
+### 9.14 What to do with PR #40 before v1 starts
+
+State on 2026-10-15, end of day: #41 (this file, D152) and #39 (flaky tests) are merged into `main`. **#40 `feat/approve-agent-call` (D151) is open**, paused by the owner. It was stacked on #39, so against today's `main` it is only its own commits: an `approve` step with `agent_call` (a person approves one exact call to the agent's own MCP tool, then the agent may make that call once), and every task step hardened to fail closed (`onFailure: "block"`, Claude Code 2.1.295 or newer). It touches `src/core/{runner,runner-steps,task-step,workflow,approvals,approval-commands,agent-call,agent-hook,agent-task,profile,reply-codes}.ts`, `profiles/claude-code.json`, INSTALL.md (section 9a and the product example in 9b), DECISIONS.md, `docs/next-steps.md`, `docs/human-tasks.md`.
+
+Why finish it before v1's workflow items: it is level C applied to the agent's own tool (9.8, core), its fail-closed gate is a hard-rules improvement (9.2), and it edits the same runner and INSTALL.md files that build items 3–6 will edit, so every week it waits costs a harder merge.
+
+Steps, in order:
+
+1. **Bring it up to date.** `git switch feat/approve-agent-call && git merge main`. The only expected conflict is in `DECISIONS.md`: two rows added at the same place; keep both, D151 above D152. Then `npm run typecheck` and the full `npm test` (do not edit files while it runs); push.
+2. **Human task 28** (`docs/human-tasks.md`, about 20 minutes): on the owner's real Claude Code and test store, approve one product change, then let the agent make it. The owner pastes the output back; any fix goes on the same branch, test-first.
+3. **The owner merges #40.** Then `git switch main && git pull`.
+4. **Start v1 from `main`** with the build order in 9.12. Items 1–4 (the spike, skills, the bare-minimum install, the level-B step) do not depend on #40 and may go first if task 28 is delayed; item 5 (inbox triage) should not start before #40 is in.
+
+Publishing to npm (9.1) waits for the v1 build (9.12, item 9); `npx --yes taskfollow instructions` is not needed before then, because the owner is user 1 and installs from the checkout.
