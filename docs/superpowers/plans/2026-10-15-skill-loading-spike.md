@@ -72,6 +72,8 @@ Whichever row applies, the fallback is never a change to the agent: a profile fl
 
 ## 3. Human task 29: the test plan (about 40 minutes)
 
+**How to run it:** after the setup, every step is one short command, `bash ~/Desktop/ML-Project/installer/docs/testing/task29-spike.sh <step>` (steps `1 1r 1b 2 3 4 5 5b 6 7 8 9 10`), which runs exactly the commands below and prints them through `docs/testing/task29-show.mjs`. Long pasted lines broke in the owner's terminal on the first try (a line wrapped inside a quoted string), so the commands live in the script; the blocks below stay as the record of what each step runs. For the step 1 retry wording in later steps, prefix the command with `SPIKE_PREFIX="Use the taskfollow-spike skill. "`.
+
 Paste each block into one terminal window (no block uses a heredoc: a pasted end marker with spaces in front leaves the shell waiting at `heredoc>`) and keep that window for the whole task (the `show` helper below lives in it). Each `claude` command prints a few lines: `result:`, `is_error:` and `tools called:` (the tool name and its input for every call the model made, or `none`). After each step, paste back those lines. If anything surprises you, paste its exact wording.
 
 ### Setup
