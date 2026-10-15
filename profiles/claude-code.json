@@ -1,7 +1,7 @@
 {
   "id": "claude-code",
   "name": "Claude Code",
-  "min_version": "2.1.0",
+  "min_version": "2.1.295",
   "detect": { "cmd": ["claude", "--version"], "match": "Claude Code" },
   "headless": {
     "cmd": ["claude", "-p", "{prompt}", "--output-format", "json"],

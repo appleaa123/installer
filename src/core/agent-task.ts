@@ -66,8 +66,9 @@ const builtinTools = (mayUse: readonly string[]): string => (mayUse.some((rule) 
 /** Claude Code settings for this run only: the hook around every call, before, after and on failure. */
 export function hookSettings(configFile: string, execPath: string, cliPath: string, platform: string): string {
   const quote = platform === "win32" ? winQuote : shellQuote;
-  const entry = (phase: string) => [{ matcher: "*", hooks: [{ type: "command", command: `${quote(execPath)} ${quote(cliPath)} agent-hook ${phase} ${quote(configFile)}`, timeout: HOOK_TIMEOUT_S }] }];
-  return JSON.stringify({ hooks: { PreToolUse: entry("pre"), PostToolUse: entry("post"), PostToolUseFailure: entry("failed") } });
+  const entry = (phase: string, extra: object = {}) => [{ matcher: "*", hooks: [{ type: "command", command: `${quote(execPath)} ${quote(cliPath)} agent-hook ${phase} ${quote(configFile)}`, timeout: HOOK_TIMEOUT_S, ...extra }] }];
+  // The gate: Claude Code lets a call through when a hook times out or fails, unless the hook says to block (2.1.295+).
+  return JSON.stringify({ hooks: { PreToolUse: entry("pre", { onFailure: "block" }), PostToolUse: entry("post"), PostToolUseFailure: entry("failed") } });
 }
 
 export function buildTaskArgv(profile: RuntimeProfile, request: TaskRequest, parts: { readonly settingsJson: string; readonly mcpConfig: string }, schemaFile = ""): string[] {

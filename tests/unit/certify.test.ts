@@ -15,7 +15,7 @@ const AT = "2026-10-09T12:00:00.000Z";
 const PASSED: SuiteResult = { status: "passed", files: 93, tests: 1241, passed: 1241, failed: 0, skipped: 0 };
 const LIVE_PASSED: SuiteResult = { status: "passed", files: 7, tests: 12, passed: 12, failed: 0, skipped: 0 };
 const ALL_KEYS = { ...Object.fromEntries(LIVE_KEYS.map((name) => [name, `value-of-${name}`])), INSTALLER_LIVE_AGENT: "1" };
-const CLAUDE: CapabilityMap = { ...FAKE_RUNTIME, profile: "claude-code", agent_version: "2.1.294" };
+const CLAUDE: CapabilityMap = { ...FAKE_RUNTIME, profile: "claude-code", agent_version: "2.1.300" };
 
 /** Fakes for everything certify runs; `runs` lists each suite it asked for. */
 function fakes(over: Partial<CertifyDeps> & { offline?: SuiteResult; live?: SuiteResult; map?: CapabilityMap } = {}): CertifyDeps & { readonly runs: [boolean, string][] } {
@@ -56,7 +56,7 @@ describe("taskfollow certify, the local certification (D116)", () => {
 
   it("certifies a shipped profile with reviewed terms only when everything ran and passed from a clean checkout", async () => {
     const record = await certify(await makeTempHome(), "claude-code", fakes());
-    expect(record).toMatchObject({ profile: "claude-code", agent_version: "2.1.294", tier: "certified", reasons: [] });
+    expect(record).toMatchObject({ profile: "claude-code", agent_version: "2.1.300", tier: "certified", reasons: [] });
   });
 
   it.each([
@@ -66,8 +66,8 @@ describe("taskfollow certify, the local certification (D116)", () => {
     ["a live key that is not set", { env: { ...ALL_KEYS, TELEGRAM_BOT_TOKEN: "" } }, ["the live checks lacked TELEGRAM_BOT_TOKEN"], "compatible"],
     ["no C6 rehearsal", { env: { ...ALL_KEYS, INSTALLER_LIVE_AGENT: "" } }, ["the live checks lacked INSTALLER_LIVE_AGENT=1"], "compatible"],
     ["an agent without session resume", { map: { ...CLAUDE, c5_resume: false } }, ["the agent did not pass C4, C4 schema and C5"], "compatible"],
-    ["an agent older than the profile's minimum", { map: { ...CLAUDE, agent_version: "2.0.1" } }, ["the agent's version is unknown or older than 2.1.0"], "unknown"],
-    ["no agent at all", { map: unknownRuntime("No known agent was found; fallbacks will apply") }, ["the agent did not pass C4, C4 schema and C5", "the agent's version is unknown or older than 2.1.0"], "unknown"],
+    ["an agent older than the profile's minimum", { map: { ...CLAUDE, agent_version: "2.0.1" } }, ["the agent's version is unknown or older than 2.1.295"], "unknown"],
+    ["no agent at all", { map: unknownRuntime("No known agent was found; fallbacks will apply") }, ["the agent did not pass C4, C4 schema and C5", "the agent's version is unknown or older than 2.1.295"], "unknown"],
     ["changes that are not committed", { checkout: async () => ({ commit: "abc1234", dirty: true }) }, ["the checkout has changes that are not committed"], "compatible"],
   ])("does not certify after %s, and says why", async (_name, over, reasons, tier) => {
     const deps = fakes(over as Parameters<typeof fakes>[0]);
