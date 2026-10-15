@@ -329,7 +329,7 @@ describe("installer CLI", () => {
     it("knows skillswiki and the pinned connectors, exit 2 for anything else", async () => {
       const result = runCli(["disconnect", "gmail"], { home: await makeTempHome() });
       expect(result.code).toBe(2);
-      expect(result.json).toMatchObject({ error: "'gmail' cannot be disconnected; this version can disconnect: skillswiki, telegram, email, slack, google-sheets" });
+      expect(result.json).toMatchObject({ error: "'gmail' cannot be disconnected; this version can disconnect: skillswiki, telegram, email, slack, whatsapp, google-sheets" });
     });
 
     it("disconnects a connector: deletes its sign-in and says where to remove the grant (§14.2)", async () => {
