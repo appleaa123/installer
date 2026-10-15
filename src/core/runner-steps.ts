@@ -1,5 +1,5 @@
-import { isAgentCall, makeApprovedCall, prepareAgentCall } from "./agent-call.js";
-import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
+import { makeApprovedCall, prepareAgentCall } from "./agent-call.js";
+import { getApproval, isAgentCall, requestApproval, type PreparedAction } from "./approvals.js";
 import { calculate } from "./calc.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";

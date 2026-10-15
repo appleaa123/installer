@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { AGENT_CALL_NO_EDIT, isAgentCall } from "./agent-call.js";
-import { approveItem, editItem, getApproval, listApprovals, previewOf, refuseDecision, rejectItem, type ApprovalItem, type Decider } from "./approvals.js";
+import { AGENT_CALL_NO_EDIT, approveItem, editItem, getApproval, isAgentCall, listApprovals, previewOf, refuseDecision, rejectItem, type ApprovalItem, type Decider } from "./approvals.js";
 import { canonicalJson } from "./audit.js";
 import { isOptedOut } from "./channel-policy.js";
 import { GATEWAY_MARK } from "./channel-tools.js";
@@ -48,7 +47,7 @@ export async function decideByReply(ctx: ToolContext, member: Member, code: Repl
     }
     if (code.decision === "approve") return decided(await approveItem(ctx.home, item.id, decider, ctx.now()));
     if (code.decision === "reject") return decided(await rejectItem(ctx.home, item.id, decider, code.text || undefined, ctx.now()));
-    if (isAgentCall(item)) return AGENT_CALL_NO_EDIT;
+    if (isAgentCall(item)) return await refuseDecision(ctx.home, item, member.name, AGENT_CALL_NO_EDIT, ctx.now());
     return decided(await edit(ctx, item, decider, code.text));
   } catch (error) {
     if (error instanceof InputError) return error.message;

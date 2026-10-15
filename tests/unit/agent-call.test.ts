@@ -203,6 +203,16 @@ describe("an approved agent call cannot be edited (D151)", () => {
     const { approvalsCommand } = await import("../../src/core/approval-commands.js");
     await expect(approvalsCommand(home, { decision_maker: "Owner" }, { sub: "edit", id: "1", value: changed, as: "Owner", interactive: true }, () => AT)).rejects.toThrow("cannot be edited");
     expect((await getApproval(home, 1, AT))).toMatchObject({ status: "pending", action: { args: ARGS } });
+    expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain("approval.refused");
+  });
+
+  it("cannot be edited even by a caller that skips those checks", async () => {
+    const home = await runnerHome();
+    await startRun(request(home));
+    const { editItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    await expect(editItem(home, 1, prepareAgentCall("publish", TOOL, { ...ARGS, title: "Red mug" }), { name: "Owner", role: "decision_maker" }, AT)).rejects.toThrow("cannot be edited");
+    expect((await getApproval(home, 1, AT)).status).toBe("pending");
   });
 
   it("is not offered for editing in a chat, and an edit code is refused there", async () => {
