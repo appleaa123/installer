@@ -4,7 +4,9 @@ import { dirname, join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
+import { loadProfileById } from "./profile.js";
 import { installerCliPath, shellQuote, winQuote } from "./register.js";
+import { loadState } from "./state.js";
 import { REASON_NAME } from "./watch-record.js";
 import { isToolRule } from "./workflow.js";
 
@@ -190,6 +192,16 @@ async function changeAsk(home: string, state: WatchState, sub: "ask" | "unask", 
   return { ...state, ask: [...state.ask, rule] };
 }
 
+/** Turning watching or always-ask on edits Claude Code's settings, so it is refused for a person whose agent is another one. */
+async function requireClaudeSettings(home: string): Promise<void> {
+  const id = (await loadState(home))?.runtime?.profile;
+  if (!id) return;
+  const profile = await loadProfileById(id);
+  if (profile.personal_settings !== "claude") {
+    throw new InputError(`Watching and always-ask work only with Claude Code for now; your agent is ${profile.name}. TaskFollow did not change anything.`);
+  }
+}
+
 export async function watchCommand(home: string, request: { readonly sub: string | undefined; readonly arg?: string; readonly interactive: boolean }, now: () => string, env: Env = process.env): Promise<Raw> {
   const state = await loadWatch(home);
   const sub = request.sub ?? "list";
@@ -208,6 +220,7 @@ export async function watchCommand(home: string, request: { readonly sub: string
     await appendAudit(home, { ts: now(), actor: "human", event: "watch.suggest", ref: "watch", payload: { to: changed.suggest_to ?? null } });
     return { on: changed.on, services: [...changed.services], ask: [...changed.ask], ...(changed.suggest_to ? { suggest_to: changed.suggest_to } : {}) };
   }
+  if (sub === "on" || sub === "ask") await requireClaudeSettings(home);
   if (sub === "ask" || sub === "unask") {
     const changed = await changeAsk(home, state, sub, requireRule(request.arg), env, now());
     await writeConfig(home, WATCH_CONFIG, changed);

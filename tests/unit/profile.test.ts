@@ -72,6 +72,7 @@ describe("runtime profiles", () => {
     ["a result_line without equals", { ...valid, headless: { ...valid.headless, result_line: { path: "type" } } }, /headless.result_line.equals must be a non-empty string/],
     ["a resume with both a flag and a command", { ...valid, resume: { flag: ["-r", "{session_id}"], cmd: ["x", "{session_id}", "{prompt}"] } }, /resume has either a flag or a cmd/],
     ["a resume command without {prompt}", { ...valid, resume: { cmd: ["x", "resume", "{session_id}"] } }, /resume.cmd must contain \{prompt\}/],
+    ["personal settings TaskFollow cannot edit", { ...valid, personal_settings: "codex" }, /personal_settings must be claude/],
   ])("refuses %s", (_name, raw, message) => {
     expect(() => parseProfile(raw, "/p")).toThrow(ProfileError);
     expect(() => parseProfile(raw, "/p")).toThrow(message);
