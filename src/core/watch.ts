@@ -173,7 +173,10 @@ export function settingsWithoutAsk(settings: Raw, rules: readonly string[]): Raw
   if (!isRecord(settings.permissions)) return settings;
   const { ask: _ask, ...others } = settings.permissions;
   const kept = askRules(settings).filter((rule) => !rules.includes(rule));
-  return { ...settings, permissions: kept.length > 0 ? { ...others, ask: kept } : others };
+  const permissions = kept.length > 0 ? { ...others, ask: kept } : others;
+  if (Object.keys(permissions).length > 0) return { ...settings, permissions };
+  const { permissions: _empty, ...rest } = settings;
+  return rest;
 }
 
 function requireRule(arg: string | undefined): string {
