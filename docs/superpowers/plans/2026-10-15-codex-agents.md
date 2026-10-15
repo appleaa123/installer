@@ -1,6 +1,9 @@
 # Plan: task steps, watching and always-ask for Codex (postponed item 1)
 
-Status: draft for Fable's review (2026-10-15). Branch `feat/codex`, stacked on `feat/whatsapp` (#37).
+Status: **postponed** (2026-10-15, D150). The owner has no Codex account, so this cannot be proven in real use. Reviewed by Fable;
+the findings are at the end and must be applied before building. Built from this plan already: the masking fix (§0, done
+differently from the review's suggestion, which would have unmasked `api_key`), the 30 s gate timeout (finding 3) and
+`watch` refusing for agents other than Claude Code (§2, first paragraph).
 
 ## What the research found (2026-10-15)
 Codex CLI 0.162.1 was installed in a scratch folder only and run against a mock model server, with `CODEX_HOME`
@@ -211,3 +214,78 @@ report.
    in the private folder?
 3. Refusing MCP always-ask on Codex, rather than editing `config.toml`: is that acceptable for v1?
 4. Is normalising `may_use` across agents wise, or should a workflow be bound to the agent it was written for?
+
+## Fable's review (2026-10-15), to apply when this is picked up
+Checked against the Codex source at `rust-v0.162.1`.
+
+Confirmed:
+- `exec_command` reaches the hook as `Bash` with `{command}`.
+- A parse error in the `-c hooks=` table drops all of that layer's hooks together.
+- `--output-schema` is not a tool, so there is no `StructuredOutput` trap on Codex.
+- `-c` values win over the person's own config.
+
+Blockers:
+1. **Automatic review in the person's config.** A person who set `approvals_reviewer = "auto_review"` makes `exec`
+   rebuild its config without `approval_policy=never`, so a model answers the approvals the plan counts on being
+   denied. Pin `-c approvals_reviewer="user"`, and say that with approve-mode servers the hook is the only gate.
+2. **`write_stdin` is not hooked** (`write_stdin.rs`) and cannot be turned off. Once a command is allowed, stdin to it
+   is unrecorded. On Codex, refuse `Bash(...)` rules whose first word is a shell or an interpreter (bash, sh, zsh,
+   node, python, ssh, …).
+3. **Hook timeout.** A hook that times out lets the call go ahead. Hooks run as `$SHELL -lc` (login shell plus a cold
+   Node start). Use 30 s or more. (Done for Claude Code.)
+4. **Prove the gate per run from `--json` items.** Every `command_execution`, `mcp_tool_call`, `file_change` or
+   `collab_tool_call` item must have a hook line (with `record_pre`); more items than lines means the gate was not
+   running. Make the once-per-version check a real deny test: `may_use: ["Bash(echo:*)"]`; run `echo <nonce>` and
+   `uname`; pass only if `echo` is ok, `uname` is refused and the answer has the nonce. The SessionStart marker is a
+   weak extra, and SessionStart in `exec` is untested.
+5. **`taskEnv` drops `CODEX_HOME`.** Keep `CODEX_HOME`, and `CODEX_API_KEY`/`OPENAI_API_KEY` for API-key sign-in.
+
+Should fix:
+6. Pin `-c features.hooks=true` and `-c features.multi_agent=false`, and add `--disable view_image`. If the gate check
+   fails, name `allow_managed_hooks_only` as a possible cause.
+7. Always allow `update_plan` (beside `StructuredOutput`) and do not record it. `tool_search` is not hooked: it acts on
+   nothing, but MCP tools are reached only through it, so check that it works under `exec`.
+8. **Sandbox by "a Bash rule is listed", not by `changes`** (the sandbox limits files and network, not the service).
+   - Bash rule: `workspace-write` plus `sandbox_workspace_write.network_access=true`, and maybe a writable root for
+     the CLI's config folder.
+   - MCP only: `read-only`.
+   - Never `danger-full-access`.
+9. Avoid double records by `cwd` under `state/tasks/` in `watch-hook.js`, not by an environment variable.
+10. A changed matcher must be trusted again: print the `/hooks` line on `watch add`, `remove` and `on`. Uninstall
+    leaves a harmless stale `hooks.state` entry in `config.toml`.
+11. Apply the same name normalising in `watchMatcher` and `thinLine` (Codex also renames servers:
+    `shopify-dev` → `shopify_dev`).
+12. Pair `pre` and `post` by `tool_use_id` (record it as `call`). On Codex, `ms` then comes from the two timestamps.
+13. Be honest about always-ask on Codex:
+    - `prefix_rule` does not fire for commands with redirection, `$(…)` or variables.
+    - With `auto_review`, a model answers instead of the person.
+    - An ask rule turns matching commands into denials inside tasks.
+    - Codex must be restarted.
+14. Masking (done another way; see Status).
+15. Slice order: run the real-binary spike first, before slices 2–3. Also check:
+    - SessionStart fires in `exec`;
+    - the `hooks.json` shape loads, and is skipped while untrusted;
+    - MCP tools are reachable through `tool_search`;
+    - `update_plan` is present;
+    - the `--json` item counts.
+
+    Set `required=true` on the `installer` MCP server.
+
+Minor:
+16. Prove that the TOML writer's output round-trips, including `\` and `"`.
+17. Say that the person's own Codex hooks run during tasks.
+18. The fake Codex can pull the hook commands out with a regex; it needs no TOML parser.
+19. `default_tools_approval_mode` and `approvals_reviewer` have no version dates; the gate check covers them.
+20. On Codex, the record, not the hook, is the guarantee (D137).
+
+Answers to the open questions:
+1. Use the bypass flag, but only together with findings 1, 4 and 9.
+2. Choose the sandbox by whether a Bash rule is listed.
+3. Refusing MCP always-ask on Codex is right for v1.
+4. Normalise on Codex only, for MCP rules only, and document the near-twin collision.
+
+Not built for the other agents (D150):
+- **Gemini CLI.** Hooks fail open, a hook answering "ask" hangs in headless mode, there is no schema output, and
+  settings are trust-gated (`GEMINI_CLI_TRUST_WORKSPACE`).
+- **opencode.** JS plugins; a rejected ask stops the whole loop.
+- **Cursor and Copilot.** It is unverified whether hooks fire in headless mode, and there is no per-run hook option.
