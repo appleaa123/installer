@@ -108,4 +108,27 @@ describe("workflow add: the workflow's own skill (9.12 item 2)", () => {
     expect(await refreshAgentFile(home)).toBe(join(work, "CLAUDE.md"));
     expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **inbox**");
   });
+
+  it("says in plain words when the skill folder cannot be written (review finding 4)", async () => {
+    const { home, work } = await install();
+    await mkdir(join(work, ".claude"), { recursive: true });
+    await chmod(join(work, ".claude"), 0o500);
+    try {
+      await expect(add(home, "inbox", { description: "Sort mail." })).rejects.toThrow(`TaskFollow could not write the workflow's files (${join(skillsDir(work), "inbox")}`);
+    } finally {
+      await chmod(join(work, ".claude"), 0o700);
+    }
+    expect(await workflowIds(home)).toEqual([]);
+  });
+
+  it("names the real gap when the install folder is not known", async () => {
+    const { home } = await install();
+    const state = await loadState(home);
+    if (state) {
+      const { work_dir: _gone, ...rest } = state;
+      await saveState(home, rest);
+    }
+    expect(await add(home, "inbox", { description: "Sort mail." })).toMatchObject({ skill_folder: null, note: expect.stringContaining("does not know which folder") });
+  });
 });
+

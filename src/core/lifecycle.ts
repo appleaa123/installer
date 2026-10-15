@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
+import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
@@ -88,8 +89,9 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
 }
 
 /** What the person must hear when the workflow's own skill cannot be written (9.7: say every gap clearly). */
-function noFolderNote(profile: { name: string } | undefined, roots: SkillRoots): string {
+function noFolderNote(profile: { name: string; skills_dirs?: { project?: string } } | undefined, roots: SkillRoots, workDirKnown: boolean): string {
   if (roots.home_folder) return HOME_FOLDER_NOTE;
+  if (!workDirKnown && profile?.skills_dirs?.project) return "TaskFollow does not know which folder this install was started from, so the workflow's own skill and the CLAUDE.md section are not written; tell the person";
   return `${profile?.name ?? "This agent"} has no skills folder TaskFollow knows, so this workflow's own rules have nowhere to live yet; tell the person`;
 }
 
@@ -103,10 +105,11 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const needsSkill = owner.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || owner.skills.some(isSkillswikiRef);
   if (needsSkill && !(await loadState(home))?.skillswiki) throw new InputError("This workflow uses a Skills Wiki skill. Connect Skills Wiki first (INSTALL.md, section 11) or choose another workflow.");
   const { profile, roots, agentFile } = await installTargets(home);
+  const workDirKnown = (await loadState(home))?.work_dir !== undefined;
   await checkLocalSkills(owner.skills.filter((ref) => !isSkillswikiRef(ref)), roots);
   // Everything that can refuse does so before anything is written (H4): the folder name and the agent file's section.
   const folder = await plannedSkillFolder(roots, id);
-  if (folder === null && rules !== undefined) throw new InputError(noFolderNote(profile, roots));
+  if (folder === null && rules !== undefined) throw new InputError(noFolderNote(profile, roots, workDirKnown));
   const final = folder === null ? raw : { ...raw, skills: [folder, ...owner.skills] };
   const workflow = parseWorkflow(final, id, DEFAULT_TOOLS);
   const before = await agentFileBefore(agentFile);
@@ -123,9 +126,10 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
     if (agentFile) await restoreFile(agentFile, before).catch(() => undefined);
     await rm(join(home, WORKFLOWS_DIR, id), { recursive: true, force: true }).catch(() => undefined);
     await saveWritten(home, writtenBefore).catch(() => undefined);
-    throw error;
+    if (error instanceof InputError || error instanceof ActionFailure) throw error;
+    throw new ActionFailure(`TaskFollow could not write the workflow's files (${folder ?? join(home, WORKFLOWS_DIR, id)}): ${(error as Error).message}. Nothing was added; check that the folder can be written, then try again`);
   }
-  const note = folder === null ? { note: noFolderNote(profile, roots) } : {};
+  const note = folder === null ? { note: noFolderNote(profile, roots, workDirKnown) } : {};
   await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description", skills: workflow.skills, skill_folder: folder, agent_file: agentFile } });
   return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, skill_folder: folder, agent_file: agentFile, ...note, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
 }

@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -100,4 +100,48 @@ describe("agent file: writing and removing the section", () => {
     await restoreFile(fresh, none);
     await expect(readFile(fresh, "utf8")).rejects.toThrow();
   });
+
+  it("refuses a file it cannot read, and never replaces it (review finding 1)", async () => {
+    const file = join(await folder(), "CLAUDE.md");
+    await writeFile(file, "# The owner's notes\n");
+    await chmod(file, 0o000);
+    try {
+      await expect(readSection(file)).rejects.toThrow("cannot be read");
+      await expect(writeSection(file, "BODY")).rejects.toThrow("cannot be read");
+    } finally {
+      await chmod(file, 0o600);
+    }
+    expect(await readFile(file, "utf8")).toBe("# The owner's notes\n");
+  });
+
+  it("writes through a linked CLAUDE.md into the file it points to, and keeps the link (review finding 2)", async () => {
+    const dir = await folder();
+    await writeFile(join(dir, "AGENTS.md"), "# Shared\n");
+    await symlink("AGENTS.md", join(dir, "CLAUDE.md"));
+    await writeSection(join(dir, "CLAUDE.md"), "BODY");
+    expect((await lstat(join(dir, "CLAUDE.md"))).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("BODY");
+    expect(await removeSection(join(dir, "CLAUDE.md"), false)).toBe("removed");
+    expect((await lstat(join(dir, "CLAUDE.md"))).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toBe("# Shared\n");
+  });
+
+  it("refuses a link that points to nothing", async () => {
+    const dir = await folder();
+    await symlink("missing.md", join(dir, "CLAUDE.md"));
+    await expect(writeSection(join(dir, "CLAUDE.md"), "BODY")).rejects.toThrow("points to a file that does not exist");
+  });
+
+  it("leaves no temporary file behind when the write fails", async () => {
+    const dir = await folder();
+    await writeFile(join(dir, "CLAUDE.md"), "# Mine\n");
+    await chmod(dir, 0o500);
+    try {
+      await expect(writeSection(join(dir, "CLAUDE.md"), "BODY")).rejects.toThrow();
+    } finally {
+      await chmod(dir, 0o700);
+    }
+    expect(await readdir(dir)).toEqual(["CLAUDE.md"]);
+  });
 });
+

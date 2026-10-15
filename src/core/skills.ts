@@ -83,16 +83,23 @@ export function frontmatter(text: string): { readonly name?: string; readonly de
 }
 
 /** Each direct subfolder of `root` with a SKILL.md: its name and description only. */
-export async function localSkills(root: string, source: SkillEntry["source"]): Promise<SkillEntry[]> {
+export async function localSkills(root: string, source: SkillEntry["source"], notes: string[] = []): Promise<SkillEntry[]> {
   let names: string[];
+  let realRoot: string;
   try {
     names = (await readdir(root)).sort();
+    realRoot = await realpath(root);
   } catch {
     return [];
   }
   const found: SkillEntry[] = [];
   for (const name of names) {
     try {
+      // A linked folder that leads outside the skills folder cannot be used by a workflow, so it is not offered.
+      if (!inside(realRoot, await realpath(join(root, name)))) {
+        notes.push(`'${name}' links to a folder outside ${root}, so a workflow cannot use it; copy the folder there to use it`);
+        continue;
+      }
       const head = frontmatter(await readFile(join(root, name, SKILL_FILE), "utf8"));
       found.push({ source, name: head.name ?? name, description: head.description ?? "", ref: join(root, name) });
     } catch {
@@ -146,8 +153,8 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
   if (profile) {
     const roots = skillRoots(profile, state?.work_dir, env);
     if (roots.home_folder) notes.push(HOME_FOLDER_NOTE);
-    if (roots.project) skills.push(...(await localSkills(roots.project, "install folder")));
-    if (roots.user) skills.push(...(await localSkills(roots.user, "your own")));
+    if (roots.project) skills.push(...(await localSkills(roots.project, "install folder", notes)));
+    if (roots.user) skills.push(...(await localSkills(roots.user, "your own", notes)));
   }
   if (state?.skillswiki) {
     try {
@@ -163,10 +170,10 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
 
 export const HOME_FOLDER_NOTE = "TaskFollow was started from your home folder, so it will not write a workflow skill or CLAUDE.md there; start it from the install folder (START-HERE step 4)";
 
-const inside = (root: string, path: string): boolean => {
+function inside(root: string, path: string): boolean {
   const rel = relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
-};
+}
 
 async function realRoots(roots: SkillRoots): Promise<string[]> {
   const found: string[] = [];

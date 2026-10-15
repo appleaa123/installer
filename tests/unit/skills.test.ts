@@ -56,6 +56,15 @@ describe("skills: the inventory of local folders", () => {
     expect(JSON.stringify(listed)).not.toContain("must never be listed");
   });
 
+  it("does not list a linked folder that points outside the skills folder, and says why (review finding 3)", async () => {
+    const root = await temp();
+    const outside = await skill(await temp(), "tone", "---\nname: tone\n---");
+    await symlink(outside, join(root, "tone"));
+    const notes: string[] = [];
+    expect(await localSkills(root, "your own", notes)).toEqual([]);
+    expect(notes).toEqual([`'tone' links to a folder outside ${root}, so a workflow cannot use it; copy the folder there to use it`]);
+  });
+
   it("gives an empty list for a folder that does not exist", async () => {
     expect(await localSkills(join(await temp(), "missing"), "your own")).toEqual([]);
   });

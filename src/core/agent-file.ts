@@ -1,4 +1,4 @@
-import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, relative } from "node:path";
 import { InputError } from "./inputs.js";
 
@@ -44,13 +44,34 @@ export function sectionText(lines: readonly WorkflowLine[], workDir: string): st
 const count = (text: string, part: string): number => text.split(part).length - 1;
 const brokenMessage = (file: string): string => `${file} has a TaskFollow section that is not closed; fix or remove the line '${SECTION_BEGIN}' and try again`;
 
-/** The file's text, or null when it does not exist; a broken section (one marker, two sections, end before begin) is refused. */
+/**
+ * The file TaskFollow actually writes: the file itself, or, when it is a link (for example CLAUDE.md -> AGENTS.md),
+ * the file it points to, so the link stays. A link to nothing is refused.
+ */
+async function targetOf(file: string): Promise<string> {
+  let linked: boolean;
+  try {
+    linked = (await lstat(file)).isSymbolicLink();
+  } catch {
+    return file;
+  }
+  if (!linked) return file;
+  try {
+    return await realpath(file);
+  } catch {
+    throw new InputError(`${file} is a link that points to a file that does not exist; fix or remove the link and try again`);
+  }
+}
+
+/** The file's text, or null when it does not exist; one that cannot be read, or has a broken section, is refused. */
 export async function readSection(file: string): Promise<string | null> {
   let text: string;
   try {
-    text = await readFile(file, "utf8");
-  } catch {
-    return null;
+    text = await readFile(await targetOf(file), "utf8");
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new InputError(`${file} cannot be read (${(error as NodeJS.ErrnoException).code ?? (error as Error).message}); fix its permissions or move it away, then try again`);
   }
   const [begins, ends] = [count(text, SECTION_BEGIN), count(text, SECTION_END)];
   const ok = (begins === 0 && ends === 0) || (begins === 1 && ends === 1 && text.indexOf(SECTION_BEGIN) < text.indexOf(SECTION_END));
@@ -62,7 +83,7 @@ const eolOf = (text: string): string => (text.includes("\r\n") ? "\r\n" : "\n");
 
 async function modeOf(file: string): Promise<number> {
   try {
-    return (await stat(file)).mode & 0o777;
+    return (await stat(await targetOf(file))).mode & 0o777;
   } catch {
     return NEW_FILE_MODE;
   }
@@ -70,9 +91,15 @@ async function modeOf(file: string): Promise<number> {
 
 /** Writes through a temporary file in the same folder, so the file is never half written; the mode is kept. */
 async function replaceFile(file: string, text: string, mode: number): Promise<void> {
-  const temp = `${file}.taskfollow-tmp`;
-  await writeFile(temp, text, { mode });
-  await rename(temp, file);
+  const target = await targetOf(file);
+  const temp = `${target}.taskfollow-tmp`;
+  try {
+    await writeFile(temp, text, { mode });
+    await rename(temp, target);
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Puts `body` between the markers: creates the file, appends to it, or replaces the old section. */
@@ -108,7 +135,7 @@ export async function removeSection(file: string, created: boolean): Promise<"re
   else if (before === "" && after.startsWith(eol)) after = after.slice(eol.length);
   const rest = `${before}${after}`;
   if (created && rest.trim() === "") {
-    await rm(file, { force: true });
+    await rm(await targetOf(file), { force: true });
     return "deleted";
   }
   await replaceFile(file, rest, await modeOf(file));

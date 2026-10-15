@@ -162,8 +162,8 @@ async function replaceVersion(home: string, workflow: Workflow, next: Raw): Prom
   try {
     await refreshAgentFile(home);
   } catch (error) {
-    if (!(error instanceof InputError)) throw error;
-    await appendAudit(home, { ts: new Date().toISOString(), actor: "engine", event: "agent_file.not_refreshed", ref: `workflow:${workflow.id}`, payload: { why: error.message } });
+    // The new version is in place either way; the section waits for the next workflow change (said in the audit).
+    await appendAudit(home, { ts: new Date().toISOString(), actor: "engine", event: "agent_file.not_refreshed", ref: `workflow:${workflow.id}`, payload: { why: (error as Error).message } });
   }
   return checked;
 }
