@@ -1,4 +1,5 @@
 import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
+import { calculate } from "./calc.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { raiseAlert } from "./alerts.js";
@@ -146,4 +147,14 @@ export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog)
   const reason = rejected ? `approval ${id} was rejected${item.decision?.reason ? `: ${item.decision.reason}` : ""}` : `approval ${id} is ${item.status}`;
   await save(exec, record, { ...log, status: rejected ? "rejected" : "failed", error: reason });
   return { kind: "stop", status: rejected ? "partial" : "failed", reason };
+}
+
+/** A calc step (D144): arithmetic only, no model. `compare` that has no value yet (the first run) compares with nothing. */
+export async function runCalc(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "calc" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
+  const spec = step.calc;
+  const list = interpolate(spec.from, scope);
+  const compare = spec.compare === undefined ? undefined : (lookup(scope, spec.compare.slice(2, -1)) ?? null);
+  const output = calculate(list, { sum: spec.sum, ...(spec.group_by ? { group_by: spec.group_by } : {}), ...(compare === undefined ? {} : { compare }) });
+  await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(list), output });
+  return { kind: "done", output, actions: 0, needs_human: 0 };
 }

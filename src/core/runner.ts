@@ -7,8 +7,8 @@ import { InputError } from "./inputs.js";
 import type { JudgeBackend } from "./judge.js";
 import { judgeBackend } from "./model.js";
 import { loadPinnedContract } from "./pin.js";
-import { checkApproval, runApprove, runJudge, runTool, type Exec, type StepOutcome } from "./runner-steps.js";
-import { FINISHED, auditRun, claimRun, fingerprint, loadStep, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
+import { checkApproval, runApprove, runCalc, runJudge, runTool, type Exec, type StepOutcome } from "./runner-steps.js";
+import { FINISHED, auditRun, claimRun, fingerprint, loadStep, previousOutputs, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
 import { PAUSED_REASON, isPaused } from "./pause.js";
 import { runsInSandbox } from "./sandbox.js";
 import { TASK_INTERRUPTED, runTaskStep } from "./task-step.js";
@@ -50,10 +50,11 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
 /** The data a run starts from: `run`, and `event` (the inbox message, untrusted) for an event trigger. */
 async function scopeOf(home: string, record: RunRecord): Promise<Record<string, unknown>> {
   const run = { id: record.run_id, key: record.key, trigger: record.trigger.kind, scheduled_for: record.trigger.scheduled_for ?? null };
-  if (record.trigger.sample_event !== undefined) return { run, event: record.trigger.sample_event };
-  if (record.trigger.inbox_id === undefined) return { run };
+  const previous = await previousOutputs(home, record);
+  if (record.trigger.sample_event !== undefined) return { run, previous, event: record.trigger.sample_event };
+  if (record.trigger.inbox_id === undefined) return { run, previous };
   const event = (await listInbox(home)).find((item) => item.id === record.trigger.inbox_id);
-  return { run, event: event ?? null };
+  return { run, previous, event: event ?? null };
 }
 
 /** Escalation: a short internal message to the decision maker; a message that cannot go out is audited instead. */
@@ -87,6 +88,7 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   if (step.kind === "tool") return runTool(exec, record, step, scope, startedAt);
   if (step.kind === "judge") return runJudge(exec, record, step, scope, startedAt);
   if (step.kind === "task") return runTaskStep(exec, record, step, scope, startedAt);
+  if (step.kind === "calc") return runCalc(exec, record, step, scope, startedAt);
   if (step.kind === "agent") return continueAgent(agentRun(exec, record, step.id, step.agent, step.agent.input === undefined ? { ...scope } : interpolate(step.agent.input, scope), startedAt), []);
   return runApprove(exec, record, step, scope, startedAt);
 }
