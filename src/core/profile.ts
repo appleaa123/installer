@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export class ProfileError extends Error {
@@ -38,6 +38,10 @@ export interface RuntimeProfile {
   readonly task?: { readonly cmd: readonly string[] };
   /** The person's own settings TaskFollow knows how to edit for watching and always-ask (D146, D147); none for other agents. */
   readonly personal_settings?: "claude";
+  /** The agent's own skill folders (9.12 item 2): `project` relative to the install folder, `user` may start with `~/`. */
+  readonly skills_dirs?: { readonly project?: string; readonly user?: string };
+  /** The agent-level instructions file in the install folder (`CLAUDE.md`, `AGENTS.md`), where TaskFollow keeps one section. */
+  readonly instructions_file?: string;
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -143,6 +147,22 @@ function personalPart(raw: Raw): Pick<RuntimeProfile, "personal_settings"> {
   return { personal_settings: "claude" };
 }
 
+/** A plain relative folder or file name: no absolute path and no `..`, so a profile cannot point outside the install folder. */
+const isPlainRelative = (path: string): boolean => !isAbsolute(path) && !path.split(/[\\/]/).includes("..");
+
+function skillsPart(raw: Raw): Pick<RuntimeProfile, "skills_dirs" | "instructions_file"> {
+  const dirs = raw.skills_dirs === undefined ? undefined : obj(raw.skills_dirs, "skills_dirs");
+  const project = dirs?.project === undefined ? undefined : str(dirs.project, "skills_dirs.project");
+  if (project !== undefined && !isPlainRelative(project)) throw new ProfileError("Profile skills_dirs.project must be a folder inside the install folder, without '..'");
+  const user = dirs?.user === undefined ? undefined : str(dirs.user, "skills_dirs.user");
+  const file = raw.instructions_file === undefined ? undefined : str(raw.instructions_file, "instructions_file");
+  if (file !== undefined && (!isPlainRelative(file) || /[\\/]/.test(file))) throw new ProfileError("Profile instructions_file must be a file name in the install folder, for example CLAUDE.md");
+  return {
+    ...(dirs ? { skills_dirs: { ...(project ? { project } : {}), ...(user ? { user } : {}) } } : {}),
+    ...(file ? { instructions_file: file } : {}),
+  };
+}
+
 export function parseProfile(value: unknown, dir: string): RuntimeProfile {
   const raw = obj(value, "file");
   const id = str(raw.id, "id");
@@ -160,6 +180,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     ...mcpParts(raw),
     ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
     ...personalPart(raw),
+    ...skillsPart(raw),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };
