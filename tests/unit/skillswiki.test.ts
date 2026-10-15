@@ -22,6 +22,14 @@ afterEach(() => {
   servers.splice(0).forEach((fake) => fake.stop());
 });
 
+describe("skillswiki: a bundled workflow's skills list (9.12 item 2)", () => {
+  it("counts a skillswiki entry in a workflow's skills as using Skills Wiki", () => {
+    const solution = { id: "s", version: "1.0.0", steps: [], workflows: [{ workflow: "w", skills: ["skillswiki:p/s/SKILL.md"] }] } as unknown as Solution;
+    expect(usesSkillswiki(solution)).toBe(true);
+    expect(usesSkillswiki({ ...solution, workflows: [{ workflow: "w", skills: ["/local/skill"] }] } as unknown as Solution)).toBe(false);
+  });
+});
+
 describe("skillswiki: references", () => {
   it("splits pack, skill and a path with slashes", () => {
     expect(parseSkillswikiRef("skillswiki:demo/install/recipes/v1/recipe.json")).toEqual({ pack: "demo", skill: "install", path: "recipes/v1/recipe.json" });

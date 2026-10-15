@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAction, runCheck } from "../../src/core/actions.js";
@@ -232,5 +232,58 @@ describe("a suggested workflow that depends on a choice (D131)", () => {
     const listed = (await workflowCommand(at, "suggestions", undefined, undefined, () => AT)) as { suggestions: { workflow: string }[] };
     expect(listed.suggestions.map((entry) => entry.workflow)).toEqual(["note"]);
     await expect(workflowCommand(at, "add", "needs-sheet", undefined, () => AT)).rejects.toThrow("No suggested workflow 'needs-sheet' (note)");
+  });
+});
+
+describe("WORKFLOWS: skills for a workflow (9.12 item 2, D126 changed)", () => {
+  async function userSkill(name: string): Promise<string> {
+    const root = process.env.INSTALLER_AGENT_USER_SKILLS ?? "";
+    const folder = join(root, name);
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "SKILL.md"), `---\nname: ${name}\ndescription: Test skill.\n---\nDo it well.\n`);
+    return folder;
+  }
+  const raw = async (at: string, id: string) => JSON.parse(await readFile(join(at, "workflows", id, "workflow.json"), "utf8")) as Record<string, unknown>;
+
+  it("adds a workflow with a local skill without Skills Wiki", async () => {
+    const at = await home();
+    const folder = await userSkill("count-rules");
+    const words = JSON.stringify({ description: "Count the memos.", tools: ["memo.list", "memo.add"], skills: [folder] });
+    expect(await workflowCommand(at, "add", "count", words, () => AT)).toMatchObject({ status: "added" });
+    expect((await raw(at, "count")).skills).toEqual([folder]);
+    expect((await workflowCommand(at, "list", undefined, undefined, () => AT)).workflows).toEqual([expect.objectContaining({ workflow: "count", skills: [folder] })]);
+  });
+
+  it("still needs Skills Wiki for a skillswiki reference", async () => {
+    const at = await home();
+    const words = JSON.stringify({ description: "Count the memos.", tools: ["memo.list"], skills: ["skillswiki:p/s/SKILL.md"] });
+    await expect(workflowCommand(at, "add", "count", words, () => AT)).rejects.toThrow("Connect Skills Wiki first");
+  });
+
+  it("adds a suggestion with the skills the person confirmed", async () => {
+    const at = await home();
+    const folder = await userSkill("note-rules");
+    expect(await workflowCommand(at, "add", "note", JSON.stringify({ skills: [folder] }), () => AT)).toMatchObject({ status: "added", mode: "typed" });
+    expect(await raw(at, "note")).toMatchObject({ steps: NOTE.steps, skills: [folder] });
+  });
+
+  it("refuses a folder outside the agent's skill folders and writes nothing", async () => {
+    const at = await home();
+    const outside = await makeTempHome();
+    await writeFile(join(outside, "SKILL.md"), "---\nname: x\n---\n");
+    await expect(workflowCommand(at, "add", "count", JSON.stringify({ description: "Count.", tools: ["memo.list"], skills: [outside] }), () => AT)).rejects.toThrow("is not inside your agent's skills folders");
+    expect(await workflowIds(at)).toEqual([]);
+  });
+
+  it("refuses more than 9 skills from the person: the workflow's own skill takes the tenth place", async () => {
+    const at = await home();
+    const folders = await Promise.all(Array.from({ length: 10 }, (_, index) => userSkill(`s${index}`)));
+    await expect(workflowCommand(at, "add", "count", JSON.stringify({ description: "Count.", tools: ["memo.list"], skills: folders }), () => AT)).rejects.toThrow("at most 9 skills");
+  });
+
+  it("writes no skills key when none were given", async () => {
+    const at = await home();
+    await workflowCommand(at, "add", "count", JSON.stringify({ description: "Count.", tools: ["memo.list"] }), () => AT);
+    expect(await raw(at, "count")).not.toHaveProperty("skills");
   });
 });

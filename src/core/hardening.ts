@@ -167,7 +167,7 @@ function hardenedFile(workflow: Workflow, current: Raw, proposal: Proposal): Raw
   const spec = { instructions: agent.instructions, tools: agent.tools, max_turns: agent.max_turns };
   const kept = current.mode === "agentic" ? [] : (current.steps as unknown[]).slice(0, -1);
   const steps = [...kept, ...proposal.promoted, ...(proposal.agent_kept ? [{ id: agent.id, agent: spec }] : [])];
-  return { workflow: workflow.id, version: workflow.version + 1, description: workflow.description, mode: "typed", ...(current.trigger === undefined ? {} : { trigger: current.trigger }), steps, fallback: spec };
+  return { workflow: workflow.id, version: workflow.version + 1, description: workflow.description, mode: "typed", ...(current.trigger === undefined ? {} : { trigger: current.trigger }), steps, fallback: spec, ...(Array.isArray(current.skills) && current.skills.length > 0 ? { skills: current.skills } : {}) };
 }
 
 /** Applies the proposal once the replay gate passed: a person's decision, in their own terminal (§10.8 "human approves"). */

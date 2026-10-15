@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { isTimeZone, parseCron } from "./cron.js";
 import { conditionRoots, parseCondition, templateRoots } from "./expressions.js";
@@ -26,6 +26,8 @@ export const DEFAULT_MAX_TURNS = 8;
 export const MAX_TURNS = 20;
 export const DEFAULT_TASK_MINUTES = 10;
 export const MAX_TASK_MINUTES = 30;
+/** A workflow's skills (9.12 item 2): the workflow's own skill folder first, then up to 9 the person confirmed. */
+export const MAX_WORKFLOW_SKILLS = 10;
 /** The id of the one step of an agentic workflow, and of the step a drifting run falls back to. */
 export const AGENT_STEP = "agent";
 export const FALLBACK_STEP = "fallback";
@@ -107,6 +109,8 @@ export interface Workflow {
   readonly steps: readonly WorkflowStep[];
   /** The agent a run falls back to when one of its typed steps fails (drift, D18). */
   readonly fallback?: AgentSpec;
+  /** Skills every run's prompt gets (9.12 item 2, D153): local skill folders (absolute paths) or `skillswiki:` refs. */
+  readonly skills: readonly string[];
 }
 
 export class WorkflowError extends InputError {
@@ -309,6 +313,21 @@ function rawSteps(value: Raw, fail: (message: string) => never): readonly unknow
   return [{ id: AGENT_STEP, agent }];
 }
 
+const SKILLSWIKI_REF = /^skillswiki:[^/]+\/[^/]+\/.+$/;
+
+function parseSkills(value: unknown, fail: (message: string) => never): readonly string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return fail("skills must be a list of skill folders or skillswiki references");
+  if (value.length > MAX_WORKFLOW_SKILLS) return fail(`skills must list at most ${MAX_WORKFLOW_SKILLS} skills`);
+  const seen = new Set<string>();
+  return value.map((ref, index) => {
+    if (typeof ref !== "string" || !(SKILLSWIKI_REF.test(ref) || isAbsolute(ref))) return fail(`skills[${index}] must be a folder path from 'taskfollow skills' or skillswiki:<pack>/<skill>/<path>`);
+    if (seen.has(ref)) return fail(`skills lists '${ref}' twice`);
+    seen.add(ref);
+    return ref;
+  });
+}
+
 export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry): Workflow {
   const fail = (message: string): never => {
     throw new WorkflowError(id, message);
@@ -322,6 +341,7 @@ export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry
   const workflow: Workflow = {
     id, version, description: typeof value.description === "string" ? value.description : "", mode: value.mode === "agentic" ? "agentic" : "typed",
     trigger: parseTrigger(value.trigger, fail), steps: rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), ...fallback,
+    skills: parseSkills(value.skills, fail),
   };
   try {
     checkReferences(workflow, fail);
