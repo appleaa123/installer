@@ -72,19 +72,14 @@ Whichever row applies, the fallback is never a change to the agent: a profile fl
 
 ## 3. Human task 29: the test plan (about 40 minutes)
 
-Paste each block into one terminal window and keep that window for the whole task (the `show` helper below lives in it). Each `claude` command prints a few lines: `result:`, `is_error:` and `tools called:` (the tool name and its input for every call the model made, or `none`). After each step, paste back those lines. If anything surprises you, paste its exact wording.
+Paste each block into one terminal window (no block uses a heredoc: a pasted end marker with spaces in front leaves the shell waiting at `heredoc>`) and keep that window for the whole task (the `show` helper below lives in it). Each `claude` command prints a few lines: `result:`, `is_error:` and `tools called:` (the tool name and its input for every call the model made, or `none`). After each step, paste back those lines. If anything surprises you, paste its exact wording.
 
 ### Setup
 
 ```
 mkdir -p ~/taskfollow-task29/.claude/skills/taskfollow-spike
-cat > ~/taskfollow-task29/.claude/skills/taskfollow-spike/SKILL.md <<'SKILL'
----
-name: taskfollow-spike
-description: Use when asked for the TaskFollow check word.
----
-When asked for the TaskFollow check word, answer with exactly: PELICAN-7342
-SKILL
+printf '%s\n' '---' 'name: taskfollow-spike' 'description: Use when asked for the TaskFollow check word.' '---' 'When asked for the TaskFollow check word, answer with exactly: PELICAN-7342' > ~/taskfollow-task29/.claude/skills/taskfollow-spike/SKILL.md
+cat ~/taskfollow-task29/.claude/skills/taskfollow-spike/SKILL.md
 shasum -a 256 ~/.claude/settings.json
 ls ~/.claude/projects | grep taskfollow-task29 || echo "no task29 transcripts"
 show() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const used=[];for(const line of s.split("\n")){if(!line.trim())continue;let j;try{j=JSON.parse(line)}catch{console.log("raw:",line);continue}if(j.type==="assistant")for(const c of j.message?.content??[])if(c.type==="tool_use")used.push(c.name+" "+JSON.stringify(c.input));if(j.type==="result"){console.log("result:",j.result);console.log("is_error:",j.is_error)}}console.log("tools called:",used.length?used.join(" | "):"none")})'; }
@@ -184,13 +179,7 @@ Expect 7a: no `taskfollow-spike` in the list. Paste back all four results and to
 
 ```
 mkdir -p ~/.claude/skills/taskfollow-spike-user
-cat > ~/.claude/skills/taskfollow-spike-user/SKILL.md <<'SKILL'
----
-name: taskfollow-spike-user
-description: Use when asked for the TaskFollow user check word.
----
-When asked for the TaskFollow user check word, answer with exactly: HERON-5189
-SKILL
+printf '%s\n' '---' 'name: taskfollow-spike-user' 'description: Use when asked for the TaskFollow user check word.' '---' 'When asked for the TaskFollow user check word, answer with exactly: HERON-5189' > ~/.claude/skills/taskfollow-spike-user/SKILL.md
 claude -p "What is the TaskFollow user check word? Answer with the word only." --output-format stream-json --verbose --no-session-persistence --restricted --permission-prompts none --permission-mode manual --tools "" --allowedTools "mcp__installer__actions_reason" --settings '{}' | show
 rm -r ~/.claude/skills/taskfollow-spike-user
 ls ~/.claude/skills | grep taskfollow-spike-user || echo removed
