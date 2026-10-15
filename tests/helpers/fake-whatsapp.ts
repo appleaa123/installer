@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 
+export const CF_TOKEN = "cf-fake-token";
 export const WA = { token: "EAAfake-token", secret: "app-secret-fake", phone_id: "1098765", pull: "pull-fake", verify: "verify-fake", path_key: "a".repeat(32) } as const;
 
 export interface FakeWhatsApp {
@@ -11,12 +12,14 @@ export interface FakeWhatsApp {
   readonly deliver: (payload: unknown, sign?: "good" | "wrong" | "none") => Promise<{ status: number }>;
   readonly sent: () => Promise<Record<string, unknown>[]>;
   readonly pulls: () => Promise<number>;
+  /** What the fake Cloudflare saw: uploads, the module's sha256 and type, bindings kept, the workers.dev switch. */
+  readonly cloudflare: () => Promise<{ uploads: number; module_sha256: string; module_type: string; keep_bindings: string[] | null; enabled: boolean; subdomain: string | null; databases: { uuid: string; name: string }[]; queries: string[]; bindings: { type: string; name: string; database_id?: string }[] }>;
   readonly stop: () => void;
 }
 
 /** Starts tests/fakes/fake-whatsapp.mjs in its own process, so a spawned CLI and a detached gateway can reach it. */
-export function startFakeWhatsApp(): Promise<FakeWhatsApp> {
-  const child = spawn(process.execPath, [resolve("tests/fakes/fake-whatsapp.mjs")], { stdio: ["ignore", "pipe", "ignore"] });
+export function startFakeWhatsApp(extraEnv: Readonly<Record<string, string>> = {}): Promise<FakeWhatsApp> {
+  const child = spawn(process.execPath, [resolve("tests/fakes/fake-whatsapp.mjs")], { stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, ...extraEnv } });
   return new Promise((done, fail) => {
     let buffer = "";
     child.stdout.setEncoding("utf8");
@@ -29,7 +32,7 @@ export function startFakeWhatsApp(): Promise<FakeWhatsApp> {
       done({
         url, env: { INSTALLER_CONNECTOR_SERVER: url, INSTALLER_KEYCHAIN: "file" },
         deliver: async (payload, sign = "good") => (await fetch(`${url}/debug/deliver`, { method: "POST", body: JSON.stringify({ payload, sign }) })).json() as Promise<{ status: number }>,
-        sent: () => get("/debug/sent"), pulls: async () => (await get<{ pulls: number }>("/debug/pulls")).pulls, stop: () => void child.kill("SIGKILL"),
+        sent: () => get("/debug/sent"), cloudflare: () => get("/debug/cloudflare"), pulls: async () => (await get<{ pulls: number }>("/debug/pulls")).pulls, stop: () => void child.kill("SIGKILL"),
       });
     });
     child.on("error", fail);

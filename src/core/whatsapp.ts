@@ -128,9 +128,11 @@ function relayAllowed(url: string, env: Env): boolean {
 
 export async function pullRelay(relayUrl: string, pullToken: string, after: number, env: Env = process.env): Promise<RelayItem[]> {
   if (!relayAllowed(relayUrl, env)) throw new ActionFailure("The WhatsApp relay address is not a workers.dev address of TaskFollow's relay: run 'taskfollow secret whatsapp' again");
+  // Tests (throwaway keychain only): a workers.dev address is served by the loopback fake instead.
+  const base = RELAY_ADDRESS.test(relayUrl) && env.INSTALLER_KEYCHAIN === "file" && env.INSTALLER_CONNECTOR_SERVER ? env.INSTALLER_CONNECTOR_SERVER : relayUrl;
   let response: Response;
   try {
-    response = await fetch(`${relayUrl}/pull?after=${after}`, { headers: { authorization: `Bearer ${pullToken}` }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+    response = await fetch(`${base}/pull?after=${after}`, { headers: { authorization: `Bearer ${pullToken}` }, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   } catch (error) {
     throw new ActionFailure(`Cannot reach the WhatsApp relay (${(error as Error).message})`);
   }
