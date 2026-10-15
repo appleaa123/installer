@@ -1,3 +1,4 @@
+import { watchHealth } from "./watch.js";
 import { readFile, readdir, statfs } from "node:fs/promises";
 import { confinedPath } from "./actions.js";
 import { verifyAudit, withAuditLock } from "./audit.js";
@@ -247,6 +248,14 @@ async function packsCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
   return { id: "packs", status: "warn", detail: states.join("; "), fix: "'taskfollow packs shadow <pack>' tries a version not run yet; the decision maker reads 'taskfollow packs list' and switches with 'taskfollow packs switch <pack> --as <name>' in their own terminal" };
 }
 
+/** D146: when the person watches their agent's direct calls, the hook is still in place and can run. */
+export async function watchCheck(ctx: Pick<DoctorContext, "home" | "env">): Promise<DoctorCheck | null> {
+  const health = await watchHealth(ctx.home, ctx.env);
+  if (!health.on) return null;
+  if (!health.problem) return ok("watch", "the agent's direct calls to watched services are recorded");
+  return { id: "watch", status: "warn", detail: `Watching is on, but ${health.problem}`, fix: "The person runs 'taskfollow watch on' again in their own terminal (or 'taskfollow watch off')" };
+}
+
 export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "state", run: stateCheck },
   { id: "audit", run: auditCheck },
@@ -263,4 +272,5 @@ export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "runs", run: runsCheck },
   { id: "retention", run: retentionCheck },
   { id: "hardening", run: hardeningCheck },
+  { id: "watch", run: watchCheck },
 ];

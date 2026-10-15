@@ -139,6 +139,16 @@ Each task says why it is needed and what to do, step by step.
 4. Add `"may_use": ["mcp__<your Shopify MCP server>__<a read tool>"]` instead, if you use a Shopify MCP server: does it load in the task run? (The run uses `--restricted`; we need to know whether your MCP servers still load there.)
 5. Tell Claude whether anything appeared in `~/.claude/projects` for these runs (it should not: no transcript is saved).
 
+### 26. Check watching with your real Claude Code (before watching is promised to a client)
+
+**Why:** `taskfollow watch` (D146) edits your real `~/.claude/settings.json`; it was built against a copy. About 15 minutes. Tell Claude what happens at each step.
+
+1. In your own terminal: `taskfollow watch add cli:shopify`, then `taskfollow watch on`. Open `~/.claude/settings.json` and check that only one new entry was added under `hooks.PostToolUse` and nothing else changed.
+2. Start a new Claude Code session and ask it to run one read-only `shopify store execute` query. Then `taskfollow why direct`: the call should be there, with only `shopify store execute` and no query text.
+3. If you use a Shopify MCP server or the claude.ai Shopify connector: `taskfollow watch add mcp:<its server name>` (the name in tool names, for example `claude_ai_Shopify`), ask for one read, and check `why direct` again.
+4. Tell Claude whether the session felt slower on watched calls.
+5. `taskfollow watch off`: the entry should be gone and the file otherwise as before.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

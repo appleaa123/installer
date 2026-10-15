@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { REASON_TOOL, summarize } from "./agent-hook.js";
+import { CALLS_DIR, REASON_NAME } from "./watch-record.js";
 import { listApprovals, type ApprovalItem } from "./approvals.js";
 import { InputError } from "./inputs.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
@@ -102,7 +104,45 @@ async function explainRun(home: string, record: RunRecord, now: string): Promise
   return entries;
 }
 
-export async function whyCommand(home: string, arg: string | undefined, now: () => string): Promise<Raw> {
+const DIRECT = "your agent, directly (outside TaskFollow)";
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** D146: the calls the agent made directly to watched services on one day, each with the reason it gave, if any. */
+async function directCalls(home: string, day: string): Promise<WhyEntry[]> {
+  let text: string;
+  try {
+    text = await readFile(await confinedPath(home, join(CALLS_DIR, `${day}.jsonl`)), "utf8");
+  } catch {
+    return [];
+  }
+  const pending = new Map<string, string>();
+  const entries: WhyEntry[] = [];
+  for (const line of text.split("\n").filter((row) => row !== "")) {
+    let row: unknown;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRecord(row)) continue;
+    const tool = str(row.tool);
+    if (tool === REASON_NAME) {
+      pending.set(`${str(row.session)} ${str(row.reason_for)}`, str(row.why));
+      continue;
+    }
+    const key = `${str(row.session)} ${tool}`;
+    entries.push({ at: str(row.ts), who: DIRECT, what: str(row.what) ? `${tool} (${str(row.what)})` : tool, why: pending.get(key) ?? "the agent gave no reason" });
+    pending.delete(key);
+  }
+  return entries;
+}
+
+export async function whyCommand(home: string, arg: string | undefined, now: () => string, extra?: string): Promise<Raw> {
+  if (arg === "direct") {
+    const day = extra ?? now().slice(0, 10);
+    if (!DAY.test(day)) throw new InputError("why direct takes a day, for example: taskfollow why direct 2026-10-14");
+    return { day, timeline: await directCalls(home, day), note: "Only calls to the services the person chose to watch ('taskfollow watch list') are here, with the tool and the names of what it was given, never the values." };
+  }
   if (arg !== undefined && RUN_ID.test(arg)) {
     const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === arg);
     if (!record) throw new InputError(`No run '${arg}': 'taskfollow why' lists the recent runs`);
