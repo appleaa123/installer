@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REASON_TOOL } from "../../src/core/agent-hook.js";
-import { buildTaskArgv, runTask, taskEnv, taskPrompt, type TaskRequest } from "../../src/core/agent-task.js";
+import { buildTaskArgv, hookSettings, runTask, taskEnv, taskPrompt, type TaskRequest } from "../../src/core/agent-task.js";
 import { loadProfile, loadProfileById } from "../../src/core/profile.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -17,6 +17,11 @@ async function request(over: Partial<TaskRequest> = {}): Promise<TaskRequest> {
 const valueAfter = (argv: readonly string[], flag: string) => argv[argv.indexOf(flag) + 1];
 
 describe("the command that hands a task to Claude Code (D139)", () => {
+  it("gives the gate 30 seconds, so a slow start never cuts it short", () => {
+    const settings = JSON.parse(hookSettings("/h/hook.json", "/n/node", "/t/cli.js", "darwin")) as { hooks: Record<string, { hooks: { timeout: number }[] }[]> };
+    for (const phase of ["PreToolUse", "PostToolUse", "PostToolUseFailure"]) expect(settings.hooks[phase]?.[0]?.hooks[0]?.timeout).toBe(30);
+  });
+
   it("runs restricted, with no prompts, no saved transcript, and only the step's tools plus the reason tool", async () => {
     const profile = await loadProfileById("claude-code");
     const argv = buildTaskArgv(profile, await request(), { settingsJson: "{}", mcpConfig: "{}" });

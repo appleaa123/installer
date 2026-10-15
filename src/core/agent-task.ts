@@ -14,7 +14,8 @@ import { installerCliPath, shellQuote, toolsServerConfig, TOOLS_MCP_NAME, winQuo
  * the environment do not reach it. The answer comes back as the step's output, checked against its schema.
  */
 export const TASK_DIR = join("state", "tasks");
-const HOOK_TIMEOUT_S = 5;
+/** Long enough for a cold Node start under load: a hook cut short must never decide a call. */
+const HOOK_TIMEOUT_S = 30;
 /** Variables the agent and its tools need to run and sign in; nothing else from the environment reaches a task. */
 const KEEP = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TERM", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "PATHEXT", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"];
 /** Test doubles of the agent read their script from these. */
