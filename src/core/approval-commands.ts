@@ -1,3 +1,4 @@
+import { AGENT_CALL_NO_EDIT, isAgentCall } from "./agent-call.js";
 import { approveItem, deciderFor, editItem, getApproval, listApprovals, refuseDecision, rejectItem, withoutToken, type ApprovalItem } from "./approvals.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -48,6 +49,7 @@ async function decide(home: string, roles: Roles | undefined, command: Approvals
   if (command.sub === "approve") return approveItem(home, id, decider, now());
   if (command.sub === "reject") return rejectItem(home, id, decider, command.reason, now());
   const item = await getApproval(home, id, now());
+  if (isAgentCall(item)) throw new InputError(AGENT_CALL_NO_EDIT);
   const ctx = await toolContext(home, "cli", DEFAULT_TOOLS, now);
   const prepared = await prepareAction(ctx, requireTool(DEFAULT_TOOLS, item.action.tool), argsOf(editedArgs(command.value)));
   return editItem(home, id, prepared, decider, now());

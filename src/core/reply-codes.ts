@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { AGENT_CALL_NO_EDIT, isAgentCall } from "./agent-call.js";
 import { approveItem, editItem, getApproval, listApprovals, previewOf, refuseDecision, rejectItem, type ApprovalItem, type Decider } from "./approvals.js";
 import { canonicalJson } from "./audit.js";
 import { isOptedOut } from "./channel-policy.js";
@@ -47,6 +48,7 @@ export async function decideByReply(ctx: ToolContext, member: Member, code: Repl
     }
     if (code.decision === "approve") return decided(await approveItem(ctx.home, item.id, decider, ctx.now()));
     if (code.decision === "reject") return decided(await rejectItem(ctx.home, item.id, decider, code.text || undefined, ctx.now()));
+    if (isAgentCall(item)) return AGENT_CALL_NO_EDIT;
     return decided(await edit(ctx, item, decider, code.text));
   } catch (error) {
     if (error instanceof InputError) return error.message;
@@ -66,7 +68,7 @@ function whatWillHappen({ tool, args }: ApprovalItem["action"]): string {
  * labelled as the agent's. A text too long for one message is cut, and says so.
  */
 export function announcement(item: ApprovalItem): string {
-  const editable = typeof item.action.args.text === "string" ? `, or E${item.id} <new text> to change the text` : "";
+  const editable = typeof item.action.args.text === "string" && !isAgentCall(item) ? `, or E${item.id} <new text> to change the text` : "";
   const preview = item.preview === previewOf(item.action) ? "" : `\nThe agent says: ${item.preview}`;
   const text = `${GATEWAY_MARK} ${item.urgent ? "URGENT " : ""}Approval ${item.id} (${item.level}). Reply A${item.id} to approve, R${item.id} <reason> to reject${editable}. It expires at ${item.expires_at}.
 What will happen: ${whatWillHappen(item.action)}${preview}\nWhy, as the agent says: ${item.why}`;

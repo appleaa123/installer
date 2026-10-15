@@ -27,6 +27,8 @@ const AGAIN = "run the workflow again to ask for a new approval";
 
 /** TaskFollow's own tools are named like `memo.add`; an agent's MCP tool is `mcp__<server>__<tool>`. */
 export const isAgentCall = (item: ApprovalItem): boolean => item.action.tool.startsWith("mcp__");
+/** An edit would make it a call nobody approved as a whole; the person rejects it and the workflow drafts it again. */
+export const AGENT_CALL_NO_EDIT = "A call to the agent's own tool cannot be edited: reject it, then run the workflow again with the change";
 
 export function prepareAgentCall(step: string, tool: string, args: Readonly<Record<string, unknown>>): PreparedAction {
   if (Buffer.byteLength(canonicalJson(args)) > AGENT_CALL_MAX_BYTES) {

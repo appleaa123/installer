@@ -151,3 +151,28 @@ describe("making the approved call (D151)", () => {
     expect(await agentRan()).toBe(false);
   });
 });
+
+describe("an approved agent call cannot be edited (D151)", () => {
+  const changed = JSON.stringify({ ...ARGS, title: "Text with a new title" });
+
+  it("is refused in plain words at the terminal and changes nothing", async () => {
+    const home = await runnerHome();
+    await startRun(request(home));
+    const { approvalsCommand } = await import("../../src/core/approval-commands.js");
+    await expect(approvalsCommand(home, { decision_maker: "Owner" }, { sub: "edit", id: "1", value: changed, as: "Owner", interactive: true }, () => AT)).rejects.toThrow("cannot be edited");
+    expect((await getApproval(home, 1, AT))).toMatchObject({ status: "pending", action: { args: ARGS } });
+  });
+
+  it("is not offered for editing in a chat, and an edit code is refused there", async () => {
+    const home = await runnerHome();
+    await startRun(request(home));
+    const item = await getApproval(home, 1, AT);
+    const { announcement, decideByReply } = await import("../../src/core/reply-codes.js");
+    expect(announcement({ ...item, action: { ...item.action, args: { ...ARGS, text: "a field called text" } } })).not.toContain("E1");
+    const { toolContext } = await import("../../src/core/tools.js");
+    const member = { id: 1, name: "Owner", role: "decision_maker" as const, code_hash: "", created_at: AT, expires_at: AT, status: "joined" as const };
+    const answer = await decideByReply(await toolContext(home, "gateway", DEFAULT_TOOLS, () => AT), member, { decision: "edit", id: 1, text: "new text" });
+    expect(answer).toContain("cannot be edited");
+    expect((await getApproval(home, 1, AT)).status).toBe("pending");
+  });
+});
