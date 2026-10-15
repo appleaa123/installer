@@ -1,7 +1,7 @@
 /**
  * Just enough of RFC 5322 / MIME to read what a person typed: the sender's address, the subject, the message ids
- * and the first `text/plain` part, decoded (base64, quoted-printable, charset). HTML-only mail is not read in v1;
- * quoted earlier messages are cut, so a reply code is the first thing in the text. Attachments are listed with
+ * and the first `text/plain` part, decoded (base64, quoted-printable, charset). Mail with only an HTML part is read
+ * as plain text (D143): scripts, styles, comments and tags are dropped and never rendered. Quoted earlier messages are cut, so a reply code is the first thing in the text. Attachments are listed with
  * their bytes (D132): the caller saves them; nothing here opens, runs or renders them.
  */
 export interface MailAttachment {
@@ -75,19 +75,47 @@ function decodePart(headers: Headers, body: string): string {
   return decodeCharset(bytes, param(headers["content-type"] ?? "", "charset") || "utf-8");
 }
 
-/** The first text/plain part, looking inside multipart parts up to three levels deep. */
-function plainText(headers: Headers, body: string, depth: number): string | null {
+/** The first part of this type (text/plain or text/html) that is not an attachment, up to three levels deep. */
+function textPart(headers: Headers, body: string, depth: number, wanted: string): string | null {
   const type = (headers["content-type"] ?? "text/plain").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (type === "text/plain") return isAttachment(headers) ? null : decodePart(headers, body);
+  if (type === wanted) return isAttachment(headers) ? null : decodePart(headers, body);
   const boundary = param(headers["content-type"] ?? "", "boundary");
   if (!type.startsWith("multipart/") || boundary === "" || depth >= MAX_DEPTH) return null;
   const parts = body.split(`--${boundary}`).slice(1, -1);
   for (const part of parts) {
     const inner = split(part.replace(/^\r?\n/, ""));
-    const found = plainText(inner.headers, inner.body, depth + 1);
+    const found = textPart(inner.headers, inner.body, depth + 1, wanted);
     if (found !== null) return found;
   }
   return null;
+}
+
+const ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+/** The words of an HTML part, as plain text: nothing in it is kept as markup, followed or rendered (D143). */
+export function htmlToText(html: string): string {
+  const text = html
+    .replace(/\r?\n/g, " ")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(script|style|head|title|blockquote)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "\n- ")
+    .replace(/<\/?(p|div|h[1-6]|tr|table|ul|ol|section|article)\b[^>]*>/gi, "\n\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
+      if (name.startsWith("#x") || name.startsWith("#X")) return String.fromCodePoint(Number.parseInt(name.slice(2), 16));
+      if (name.startsWith("#")) return String.fromCodePoint(Number.parseInt(name.slice(1), 10));
+      return ENTITIES[name.toLowerCase()] ?? whole;
+    });
+  return text.split("\n").map((line) => line.replace(/[ \t\u00a0]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** What the person typed: the plain-text part, else the HTML part as plain text. */
+function plainText(headers: Headers, body: string): string | null {
+  const plain = textPart(headers, body, 0, "text/plain");
+  if (plain !== null) return plain;
+  const html = textPart(headers, body, 0, "text/html");
+  return html === null ? null : htmlToText(html);
 }
 
 function fileNameOf(headers: Headers): string {
@@ -180,6 +208,6 @@ export function parseMail(raw: Buffer): ParsedMail {
   return {
     from: address(header("from")), subject: decodeWords(header("subject")), message_id: header("message-id"), in_reply_to: inReplyTo,
     thread_root: references[0] ?? /<[^<>\s]+>/.exec(inReplyTo)?.[0] ?? (inReplyTo || header("message-id")),
-    text: withoutQuotes(plainText(headers, body, 0) ?? ""), attachments, skipped,
+    text: withoutQuotes(plainText(headers, body) ?? ""), attachments, skipped,
   };
 }

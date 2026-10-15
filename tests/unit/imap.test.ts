@@ -88,7 +88,7 @@ describe("reading a message (MIME)", () => {
     expect(parseMail(Buffer.from(raw)).text).toBe("A42");
   });
 
-  it("reads no text from HTML-only mail", () => {
-    expect(parseMail(Buffer.from("Subject: s\r\nContent-Type: text/html\r\n\r\n<b>A42</b>\r\n")).text).toBe("");
+  it("reads the words of HTML-only mail as plain text (D143)", () => {
+    expect(parseMail(Buffer.from("Subject: s\r\nContent-Type: text/html\r\n\r\n<b>A42</b>\r\n")).text).toBe("A42");
   });
 });

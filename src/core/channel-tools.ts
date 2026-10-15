@@ -54,14 +54,34 @@ function attachmentsArg(args: ToolArgs, channel: ChannelId): ToolArgs {
   return { attachments: [...refs] };
 }
 
+/** A Message-ID as received: `<…>`, one line, no spaces. */
+const MESSAGE_ID = /^<[^<>\s]{1,250}>$/;
+
+function replyArg(args: ToolArgs, channel: ChannelId): ToolArgs {
+  if (args.reply_to === undefined) return {};
+  if (channel !== "email") throw new InputError("channel.send: only email messages have a 'reply_to'");
+  const id = textArg(args, "reply_to", "channel.send");
+  if (!MESSAGE_ID.test(id)) throw new InputError("channel.send: 'reply_to' must be the message_id of a received email, for example <abc@example.com> (see channel.inbox)");
+  return { reply_to: id };
+}
+
+/** The received email a reply answers: it must be in the inbox and come from the address the reply goes to (D143). */
+async function replyTarget(home: string, to: string, messageId: string): Promise<{ readonly subject: string }> {
+  const item = (await listInbox(home)).find((entry) => entry.channel === "email" && entry.message_id === messageId && entry.from === to);
+  if (!item) throw new InputError(`channel.send: 'reply_to' must be the message_id of an email you received from ${to} (see channel.inbox)`);
+  return { subject: item.subject ?? "" };
+}
+
+const replySubject = (original: string): string => (/^re:/i.test(original) ? original : `Re: ${original || "your message"}`).slice(0, MAX_SUBJECT);
+
 function parseSend(args: ToolArgs): ToolArgs {
-  onlyKeys(args, ["channel", "to", "text", "subject", "attachments"], "channel.send");
+  onlyKeys(args, ["channel", "to", "text", "subject", "attachments", "reply_to"], "channel.send");
   const channel = channelArg(args, "channel.send");
   if (isInternalOnly(channel)) throw new InputError(`channel.send: ${channel} reaches your own team only; use channel.notify to message a member`);
   const raw = textArg(args, "to", "channel.send");
   if (channel === "telegram" && !TELEGRAM_CHAT.test(raw)) throw new InputError("channel.send: for telegram, 'to' is the chat id, a number (see channel.inbox, field 'thread')");
   const to = channel === "email" ? requireEmailAddress(raw, "channel.send: 'to'") : raw;
-  return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel), ...attachmentsArg(args, channel) };
+  return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel), ...attachmentsArg(args, channel), ...replyArg(args, channel) };
 }
 
 /** Opt-out and consent (§12.5): a refusal here happens before any approval is asked, or any token spent. */
@@ -72,11 +92,13 @@ async function sendExpected(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs>
   if (policy.consent === "inbound_first" && !(await hasWrittenFirst(ctx.home, identity))) {
     throw new InputError(`The consent policy says a contact must write first; ${identity.address} has not written on ${identity.channel}`);
   }
+  // A reply's subject comes from the email it answers, so it joins the approved action too (D143).
+  const reply = args.reply_to === undefined ? {} : { reply_subject: args.subject ?? replySubject((await replyTarget(ctx.home, args.to as string, args.reply_to as string)).subject) };
   // The files' content hashes join the approved action, so a file changed after approval cannot go out under it (D133).
   const refs = (args.attachments as string[] | undefined) ?? [];
-  if (refs.length === 0) return {};
+  if (refs.length === 0) return reply;
   const files = await Promise.all(refs.map((ref) => loadAttachment(ctx.home, ref)));
-  return { attachments: files.map((file) => ({ ref: file.ref, sha256: file.sha256, size: file.bytes.length })) };
+  return { ...reply, attachments: files.map((file) => ({ ref: file.ref, sha256: file.sha256, size: file.bytes.length })) };
 }
 
 async function sendReady(ctx: ToolContext, args: ToolArgs): Promise<string | null> {
@@ -164,13 +186,14 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "channel.send", description: "Send a message to an outside contact. A person approves the exact message first (L2); opt-outs, consent and quiet hours are enforced.",
-    fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT }, attachments: { type: "array", items: { type: "string" }, maxItems: MAX_SEND_FILES } }, required: ["channel", "to", "text"],
+    fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT }, attachments: { type: "array", items: { type: "string" }, maxItems: MAX_SEND_FILES }, reply_to: { type: "string", description: "Email only: the message_id of the email this answers (see channel.inbox)" } }, required: ["channel", "to", "text"],
     parse: parseSend, expected: sendExpected, ready: sendReady, outbound: true,
     run: async (ctx, args) => {
       const refs = (args.attachments as string[] | undefined) ?? [];
       const files = await Promise.all(refs.map((ref) => loadAttachment(ctx.home, ref)));
+      const reply = args.reply_to === undefined ? null : { in_reply_to: args.reply_to as string, subject: (args.subject as string | undefined) ?? replySubject((await replyTarget(ctx.home, args.to as string, args.reply_to as string)).subject) };
       const message = {
-        to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}),
+        to: args.to as string, text: args.text as string, ...(args.subject ? { subject: args.subject as string } : {}), ...(reply ?? {}),
         ...(files.length > 0 ? { attachments: files.map((file) => ({ filename: file.filename, type: file.type, bytes: file.bytes })) } : {}),
       };
       const delivery = await deliver(ctx.home, args.channel as ChannelId, message, ctx.now(), process.env, ctx.sandbox, ctx.run);
