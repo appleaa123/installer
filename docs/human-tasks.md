@@ -150,6 +150,18 @@ Each task says why it is needed and what to do, step by step.
 5. `taskfollow watch off`: the entry should be gone and the file otherwise as before.
 6. `taskfollow watch ask Bash(shopify store execute:*)`, then ask Claude (new session) to run a read: does Claude Code ask you first? Then try it when you had earlier chosen "always allow" for that command: does it still ask? `taskfollow watch unask Bash(shopify store execute:*)` afterwards.
 
+### 27. Try WhatsApp with a real business number (before WhatsApp is promised to a client)
+
+**Why:** WhatsApp (D149) was built against a fake Meta and a fake Cloudflare. About an hour, with Meta's free test number first. Tell Claude what happens at each step, with exact wording of anything unexpected.
+
+1. Make a free Cloudflare account and a Meta developer app (type Business) with WhatsApp added. Run `taskfollow secret whatsapp` and follow step 1: does the token with the three listed permissions work? Does a brand-new account get a workers.dev address?
+2. Step 2: paste the callback address and verify token into Meta's webhook settings; does Meta accept them at once? Subscribe to `messages`. Make a system user token: which permissions did Meta ask for, and does it say it never expires?
+3. Step 3: add your own number to the test number's allowed list, send a message, press Check: Connected?
+4. `taskfollow channel whatsapp`, then send another message and check `channel.inbox`.
+5. Ask Claude to send you a reply through an approval: it should arrive. Then wait more than 24 hours after your last message and try again: it must be refused before anything is asked.
+6. If you can, have someone with a WhatsApp username (no visible number) write: does the message arrive, and does a reply reach them?
+7. Note whether Meta asked you to switch the app to Live, and what it required.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

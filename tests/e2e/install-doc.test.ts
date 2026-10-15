@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, verifyAudit } from "../../src/core/audit.js";
 import { channelCommand } from "../../src/core/channel-commands.js";
+import { listInbox } from "../../src/core/inbox.js";
 import { loadChannel, saveChannel } from "../../src/core/channels.js";
 import { dryrunCommand } from "../../src/core/lifecycle.js";
 import { createInvite, joinWithCode } from "../../src/core/members.js";
@@ -16,6 +17,7 @@ import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { SIGNED_IN, startFakeGoogle, type FakeGoogle } from "../helpers/fake-google.js";
+import { WA, startFakeWhatsApp, textPayload, type FakeWhatsApp } from "../helpers/fake-whatsapp.js";
 import { APP_TOKEN, BOT_TOKEN as SLACK_BOT_TOKEN, SLACK_IDS, startFakeSlack, type FakeSlack } from "../helpers/fake-slack.js";
 import { MAIL_PASSWORD, MAIL_USER, TEST_TLS_ENV, startFakeImap, startFakeSmtp, type FakeServer } from "../helpers/fake-mail.js";
 import { BOT_TOKEN } from "../helpers/fake-telegram.js";
@@ -175,7 +177,7 @@ const stopGateway = (home: string, env: Record<string, string>): Promise<void> =
   });
 
 describe("starter install, operated the way INSTALL.md says", () => {
-  const servers: (FakeMcp | FakeGoogle | FakeSlack)[] = [];
+  const servers: (FakeMcp | FakeGoogle | FakeSlack | FakeWhatsApp)[] = [];
   const installs: { home: string; env: Record<string, string> }[] = [];
 
   const mailFakes: FakeServer[] = [];
@@ -250,7 +252,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none" },
+      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -288,7 +290,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -330,7 +332,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email", "services.slack": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
       perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
     };
     const home = await makeTempHome();
@@ -350,7 +352,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
@@ -368,6 +370,49 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(runCli(["report"], { home, env }).stdout).not.toContain("taskfollow add email");
   });
 
+  it("WhatsApp added after the install is connected, and a customer's message then reaches the inbox (D149)", async () => {
+    const wa = await startFakeWhatsApp();
+    servers.push(wa);
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const env = { ...keychain, ...wa.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS };
+    const solutionRef = `file:${await pinnedStarter()}`;
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const first = await operate({
+      home, solutionRef, startArgs: [], env,
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+    });
+    expect(first.final.status).toBe("complete");
+    expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add whatsapp");
+    expect(runCli(["add", "whatsapp"], { home, env }).json).toMatchObject({ status: "step", view: { step: { step_id: "channels.whatsapp-key" } } });
+    const second = await operate({
+      home, solutionRef, startArgs: [], env,
+      script: {
+        answers: {},
+        perform: {
+          "channels.whatsapp-key": async (): Promise<void> => {
+            await setSecret("whatsapp", JSON.stringify({ access_token: WA.token, app_secret: WA.secret, pull_token: WA.pull, verify_token: WA.verify, path_key: WA.path_key }), keychain);
+            await setSecret("whatsapp-settings", JSON.stringify({ relay_url: "https://taskfollow-whatsapp.sam.workers.dev", phone_number_id: WA.phone_id, display_number: "+1 555 0100" }), keychain);
+          },
+          "channels.whatsapp": async (home2: string): Promise<void> => {
+            const result = runCli(["channel", "whatsapp"], { home: home2, env });
+            if (result.code !== 0) throw new Error(`taskfollow channel whatsapp failed: ${result.stderr}`);
+          },
+        },
+      },
+    });
+    expect(second.final.status).toBe("complete");
+    expect(await loadChannel(home, "whatsapp")).toMatchObject({ channel: "whatsapp", phone_number_id: WA.phone_id, display_number: "+1 555 0100" });
+    await wa.deliver(textPayload({ id: "wamid.e2e", text: "Is my order on its way?" }));
+    const end = Date.now() + 30_000;
+    let found = false;
+    while (!found && Date.now() < end) {
+      found = (await listInbox(home)).some((item) => item.channel === "whatsapp" && item.text === "Is my order on its way?");
+      if (!found) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect(found).toBe(true);
+  });
+
   it("Slack added after the install is connected, and the gateway then holds a live connection to it (D135)", async () => {
     const slack = await startFakeSlack();
     servers.push(slack);
@@ -378,7 +423,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add slack");
