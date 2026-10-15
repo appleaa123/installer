@@ -252,7 +252,7 @@ async function certifyCommand(home: string, flags: Flags): Promise<unknown> {
 /** The email setup page fills `email-settings` itself; nothing else may write the servers that receive the app password (D127). */
 function requirePageSecret(id: string): string {
   const handoff = requireSecretId(id);
-  if (handoff === "email-settings" || handoff === "slack-settings") {
+  if (handoff === "email-settings" || handoff === "slack-settings" || handoff === "whatsapp-settings") {
     throw new InputError(`'${handoff}' is filled by its setup page: run 'taskfollow secret ${handoff.replace("-settings", "")}' instead`);
   }
   return id;

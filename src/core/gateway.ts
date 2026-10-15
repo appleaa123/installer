@@ -54,7 +54,7 @@ export async function receiveRound(options: GatewayOptions, id: ChannelId, opene
 }
 
 /** Telegram polls for a long time; Slack waits on its live connection. Email asks and moves on. */
-const waitsLong = (id: ChannelId): boolean => CHANNEL_FACTS[id].capabilities.inbound === "long_poll" || CHANNEL_FACTS[id].capabilities.inbound === "socket";
+const waitsLong = (id: ChannelId): boolean => ["long_poll", "socket", "relay_poll"].includes(CHANNEL_FACTS[id].capabilities.inbound);
 
 /** Repeats `round` until the gateway stops; a failure is logged and waits 1 s, 2 s, 4 s … up to a minute. */
 async function loop(options: GatewayOptions, name: string, round: () => Promise<number>, pauseMs: number): Promise<void> {

@@ -4,6 +4,7 @@ import { confinedPath } from "./actions.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { emailChannel } from "./email-channel.js";
 import { slackChannel } from "./slack-channel.js";
+import { whatsappChannel } from "./whatsapp-channel.js";
 import type { RawInbound } from "./envelope.js";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
@@ -18,7 +19,7 @@ import { telegramApi, telegramInbound, type TelegramBot } from "./telegram.js";
  * the bot token and the app password stay in the keychain items `telegram` and `email`). The gateway keeps each
  * channel's read position in `state/gateway/<id>.cursor.json`.
  */
-export const CHANNEL_IDS = ["telegram", "email", "slack"] as const;
+export const CHANNEL_IDS = ["telegram", "email", "slack", "whatsapp"] as const;
 export type ChannelId = (typeof CHANNEL_IDS)[number];
 export const CHANNELS_DIR = join("config", "channels");
 export const CURSORS_DIR = join("state", "gateway");
@@ -27,7 +28,7 @@ export interface ChannelCapabilities {
   readonly buttons: boolean;
   readonly attachments: readonly string[];
   readonly reply_window: "none" | "24h";
-  readonly inbound: "long_poll" | "webhook" | "imap_poll" | "socket";
+  readonly inbound: "long_poll" | "webhook" | "imap_poll" | "socket" | "relay_poll";
 }
 
 export interface ChannelRisk {
@@ -35,6 +36,8 @@ export interface ChannelRisk {
   readonly outbound_external: boolean;
   /** The platform proves who sent a message (a Telegram user id). An email's From line can be forged, so it cannot (D78). */
   readonly sender_verified: boolean;
+  /** WhatsApp v1 (D149): for customers only; members never join, decide or pause over it. */
+  readonly customers_only?: boolean;
 }
 
 /** v1 uses reply codes (buttons later) and stores no attachments. */
@@ -42,7 +45,11 @@ export const CHANNEL_FACTS: Readonly<Record<ChannelId, { readonly capabilities: 
   telegram: { capabilities: { buttons: false, attachments: [], reply_window: "none", inbound: "long_poll" }, risk: { official_api: true, outbound_external: true, sender_verified: true } },
   email: { capabilities: { buttons: false, attachments: [], reply_window: "none", inbound: "imap_poll" }, risk: { official_api: true, outbound_external: true, sender_verified: false } },
   slack: { capabilities: { buttons: false, attachments: [], reply_window: "none", inbound: "socket" }, risk: { official_api: true, outbound_external: false, sender_verified: true } },
+  whatsapp: { capabilities: { buttons: false, attachments: [], reply_window: "24h", inbound: "relay_poll" }, risk: { official_api: true, outbound_external: true, sender_verified: true, customers_only: true } },
 };
+
+/** A channel only customers write on (WhatsApp, D149): no joining, reply codes or kill switch there. */
+export const isCustomersOnly = (id: string): boolean => (CHANNEL_IDS as readonly string[]).includes(id) && CHANNEL_FACTS[id as ChannelId].risk.customers_only === true;
 
 /** A channel that reaches the client's own team only (Slack): no outside contacts, so no `channel.send` (D135). */
 export const isInternalOnly = (id: ChannelId): boolean => !CHANNEL_FACTS[id].risk.outbound_external;
@@ -74,7 +81,16 @@ export interface SlackConfig {
   readonly verified_at: string;
 }
 
-export type ChannelConfig = TelegramConfig | EmailConfig | SlackConfig;
+export interface WhatsAppConfig {
+  readonly channel: "whatsapp";
+  /** The client's own relay on workers.dev (D149). */
+  readonly relay_url: string;
+  readonly phone_number_id: string;
+  readonly display_number: string;
+  readonly verified_at: string;
+}
+
+export type ChannelConfig = TelegramConfig | EmailConfig | SlackConfig | WhatsAppConfig;
 /** Telegram: `{offset}`; email: `{uidvalidity, last_uid}`; Slack: `{seq}`, the last spooled event handled. */
 export type Cursor = Readonly<Record<string, number>>;
 
@@ -181,6 +197,9 @@ export function channelConnector(config: ChannelConfig, secret: string, env: Env
     case "slack":
       if (home === undefined) throw new InputError("The Slack channel keeps its events in the install's home: open it with openChannel");
       return slackChannel(config, secret, env, home);
+    case "whatsapp":
+      if (home === undefined) throw new InputError("The WhatsApp channel records rejected deliveries in the install's home: open it with openChannel");
+      return whatsappChannel(config, secret, env, home);
     default:
       return config satisfies never;
   }

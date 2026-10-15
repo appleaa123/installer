@@ -23,7 +23,7 @@ async function requireTerminal(home: string, interactive: boolean, command: stri
   throw new InputError(`Members are invited and removed by a person in their own terminal, not by the agent: open a terminal and run '${command}' there`);
 }
 
-function howToJoin(channel: ChannelConfig, code: string): string {
+function howToJoin(channel: ChannelConfig, code: string): string | null {
   switch (channel.channel) {
     case "telegram":
       return `Telegram: open https://t.me/${channel.bot.username}?start=${code.replace("-", "")} and press Start, or send '/join ${code}' to @${channel.bot.username}`;
@@ -31,6 +31,8 @@ function howToJoin(channel: ChannelConfig, code: string): string {
       return `Email: send an email to ${channel.address} whose first line is 'JOIN ${code}'`;
     case "slack":
       return `Slack: open the TaskFollow app (under Apps in the sidebar) and send it a message: JOIN ${code}`;
+    case "whatsapp":
+      return null;
     default:
       return channel satisfies never;
   }
@@ -46,7 +48,7 @@ export async function inviteCommand(home: string, roles: Roles | undefined, name
   if (channels.length === 0) throw new InputError("No channel is set up yet: run 'taskfollow channel telegram' or 'taskfollow channel email' first");
   const { member, code } = await createInvite(home, person, roles, now());
   return {
-    ...shown(member), code, join: channels.map((channel) => howToJoin(channel, code)),
+    ...shown(member), code, join: channels.map((channel) => howToJoin(channel, code)).filter((line): line is string => line !== null),
     next: `Give ${person} the code privately (it works once and expires at ${member.expires_at}). Once the gateway runs, their first message with it joins them as ${member.role === "decision_maker" ? "the decision maker" : "a member"}.`,
   };
 }
