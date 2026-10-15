@@ -107,7 +107,7 @@ claude -p "List the names of the skills you can see, comma-separated, nothing el
 
 Expect: A gives `PELICAN-7342` with a `Skill` call in the tools line; B includes `taskfollow-spike`. Paste back both results and both tools lines.
 
-If A fails but B lists the skill, run A once more as `Use the taskfollow-spike skill. What is the TaskFollow check word? Answer with the word only.` and paste that result too: it tells whether the model saw the skill but did not choose it. **If that retry was needed, use the same "Use the taskfollow-spike skill." wording for prompt A in every later step**, so that later failures are not the model's choice. If B does not list it, stop and tell Claude: the setup is wrong, not the product.
+If A fails but B lists the skill, run A once more as `Use the taskfollow-spike skill. What is the TaskFollow check word? Answer with the word only.` and paste that result too: it tells whether the model saw the skill but did not choose it. **If that retry was needed, use the same "Use the taskfollow-spike skill." wording for prompt A in every later step**, so that later failures are not the model's choice. If B does not list it, look at whether the list seems cut off (you have about twenty skills of your own, and the listing the model sees is truncated at 1,536 characters): rerun B with `--setting-sources project,local` added, which leaves your user-level skills out. If `taskfollow-spike` appears then, the setup is fine and the truncation goes into D153 (item 2's inventory must allow for it). If it still does not appear, stop and tell Claude: the setup is wrong, not the product.
 
 ### Step 2: `--restricted` added (layer D)
 
@@ -236,7 +236,7 @@ rm -r ~/taskfollow-task29 ~/taskfollow-task29-elsewhere
 ls ~/.claude/projects | grep taskfollow-task29 || echo "transcripts removed"
 ```
 
-Paste back: the `mcp list` output (no `installer` or `taskfollow` entry expected), the checksum (must equal the setup's), the `projects` line before removal (expected exactly one entry ending `-home-runtime-probe`, the probe's; any entry containing `state-tasks` means a task run saved a transcript, which it must not), the skill line, and the last line (`transcripts removed`).
+Paste back: the `mcp list` output (no `installer` or `taskfollow` entry expected), the checksum (must equal the setup's), the `projects` line before removal (expected: one entry ending `-home-runtime-probe`, the probe's; other `taskfollow-task29` entries are just removed and reported; the only failure is an entry containing `state-tasks`, which means a task run saved a transcript, and it must not), the skill line, and the last line (`transcripts removed`).
 
 ## 4. What I will do with the output
 
