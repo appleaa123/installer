@@ -17,12 +17,6 @@ afterEach(async () => {
 });
 
 const SIGNAL = new AbortController().signal;
-async function socket(extra: Partial<ConstructorParameters<typeof SlackSocket>[0]> = {}) {
-  const spoolDir = await mkdtemp(join(tmpdir(), "slack-spool-"));
-  const made = new SlackSocket({ api: slackApi({ bot: BOT_TOKEN, app: APP_TOKEN }, fake.env), spoolDir, env: fake.env, backoff: { initialMs: 20, maxMs: 200 }, ...extra });
-  open.push(made);
-  return { socket: made, spoolDir };
-}
 const until = async (check: () => Promise<boolean>, what: string, ms = 5000): Promise<void> => {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -31,6 +25,21 @@ const until = async (check: () => Promise<boolean>, what: string, ms = 5000): Pr
   }
   throw new Error(`Timed out waiting for ${what}`);
 };
+/**
+ * `connected` waits for this socket's own connection. Right after the previous test closes its socket, the fake can
+ * still count that one as live, and an event sent then goes to the closing socket and is lost.
+ */
+async function socket(extra: Partial<ConstructorParameters<typeof SlackSocket>[0]> = {}) {
+  const opens = (await fake.stats()).opens;
+  const spoolDir = await mkdtemp(join(tmpdir(), "slack-spool-"));
+  const made = new SlackSocket({ api: slackApi({ bot: BOT_TOKEN, app: APP_TOKEN }, fake.env), spoolDir, env: fake.env, backoff: { initialMs: 20, maxMs: 200 }, ...extra });
+  open.push(made);
+  const connected = () => until(async () => {
+    const stats = await fake.stats();
+    return stats.opens > opens && stats.live === 1;
+  }, "this test's connection");
+  return { socket: made, spoolDir, connected };
+}
 
 describe("which addresses the live connection may use (D135)", () => {
   it("allows wss on slack.com", () => {
@@ -50,9 +59,9 @@ describe("which addresses the live connection may use (D135)", () => {
 
 describe("receiving over the live connection (D135)", () => {
   it("saves an event first and only then acknowledges it", async () => {
-    const { socket: live, spoolDir } = await socket();
+    const { socket: live, spoolDir, connected } = await socket();
     const first = live.receive(0, 3, SIGNAL);
-    await until(async () => (await fake.stats()).live === 1, "the connection");
+    await connected();
     const sent = await fake.event({ user: "U0ADA", text: "hello" });
     const events = await first;
     expect(events).toHaveLength(1);
@@ -77,9 +86,9 @@ describe("receiving over the live connection (D135)", () => {
   });
 
   it("deletes what the last round already handled", async () => {
-    const { socket: live, spoolDir } = await socket();
+    const { socket: live, spoolDir, connected } = await socket();
     const first = live.receive(0, 3, SIGNAL);
-    await until(async () => (await fake.stats()).live === 1, "the connection");
+    await connected();
     await fake.event({ text: "one" });
     const [item] = await first;
     await fake.event({ text: "two" });
@@ -89,9 +98,9 @@ describe("receiving over the live connection (D135)", () => {
   });
 
   it("keeps one copy of an event Slack sends again, and still acknowledges it", async () => {
-    const { socket: live, spoolDir } = await socket();
+    const { socket: live, spoolDir, connected } = await socket();
     const first = live.receive(0, 3, SIGNAL);
-    await until(async () => (await fake.stats()).live === 1, "the connection");
+    await connected();
     const sent = await fake.event({ text: "again" });
     await first;
     const before = (await fake.acks()).filter((id) => id === sent.envelope_id).length;
@@ -101,9 +110,9 @@ describe("receiving over the live connection (D135)", () => {
   });
 
   it("does not acknowledge when too much is waiting, so Slack sends it later", async () => {
-    const { socket: live } = await socket({ maxSpool: 2 });
+    const { socket: live, connected } = await socket({ maxSpool: 2 });
     const first = live.receive(0, 3, SIGNAL);
-    await until(async () => (await fake.stats()).live === 1, "the connection");
+    await connected();
     const acksBefore = (await fake.acks()).length;
     for (const text of ["a", "b", "c"]) await fake.event({ text });
     await first;
@@ -116,7 +125,7 @@ describe("receiving over the live connection (D135)", () => {
     const first = await socket();
     // A long wait: receive returns as soon as the event is saved, and a busy machine must not end it first.
     const waiting = first.socket.receive(0, 30, SIGNAL);
-    await until(async () => (await fake.stats()).live >= 1, "the connection");
+    await first.connected();
     await fake.event({ text: "unfinished" });
     expect((await waiting).length).toBe(1);
     await first.socket.close();
@@ -129,9 +138,9 @@ describe("receiving over the live connection (D135)", () => {
 
 describe("staying connected (D135)", () => {
   it("connects again after the connection drops", async () => {
-    const { socket: live } = await socket();
+    const { socket: live, connected } = await socket();
     live.receive(0, 1, SIGNAL).catch(() => undefined);
-    await until(async () => (await fake.stats()).live === 1, "the first connection");
+    await connected();
     const opens = (await fake.stats()).opens;
     await fake.drop();
     await until(async () => (await fake.stats()).opens > opens && (await fake.stats()).live === 1, "a new connection");
@@ -141,9 +150,9 @@ describe("staying connected (D135)", () => {
   });
 
   it("opens the new connection before closing the old one when Slack asks for a refresh", async () => {
-    const { socket: live } = await socket();
+    const { socket: live, connected } = await socket();
     live.receive(0, 1, SIGNAL).catch(() => undefined);
-    await until(async () => (await fake.stats()).live === 1, "the first connection");
+    await connected();
     const opens = (await fake.stats()).opens;
     await fake.disconnect("refresh_requested");
     await until(async () => (await fake.stats()).opens > opens, "a second connection");
