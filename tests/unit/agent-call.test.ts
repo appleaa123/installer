@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { actionHash, approveItem, getApproval, listApprovals } from "../../src/core/approvals.js";
+import { AUDIT_FILE } from "../../src/core/audit.js";
 import { resumeRun, startRun, type RunRequest } from "../../src/core/runner.js";
 import { loadStep } from "../../src/core/runs.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
@@ -59,10 +60,10 @@ describe("an approve step for a call to the agent's own tool (D151)", () => {
   });
 
   it("fails the run before asking when the arguments are not an object, or too large", async () => {
-    for (const args of ["${run.id}", { notes: "x".repeat(21_000) }]) {
+    for (const [args, reason] of [["${run.id}", "must be an object"], [{ notes: "x".repeat(21_000) }, "larger than 20 kB"]] as const) {
       const home = await runnerHome();
       const run = await startRun(request(home, withStep({ agent_call: { tool: TOOL, args }, why: "x" })));
-      expect(run).toMatchObject({ status: "failed" });
+      expect(run).toMatchObject({ status: "failed", reason: expect.stringContaining(reason) });
       expect(await listApprovals(home, AT)).toEqual([]);
     }
   });
@@ -143,6 +144,33 @@ describe("making the approved call (D151)", () => {
     expect(await agentRan()).toBe(false);
   });
 
+  /** Writes into the step's record or marker before the agent runs, for cases the fake agent cannot produce. */
+  async function approvedWith(prepare: (dir: string) => Promise<void>, calls: unknown[]) {
+    const home = await runnerHome();
+    const run = await startRun(request(home));
+    await approveItem(home, 1, OWNER, LATER);
+    const dir = join(home, "runs", run.workflow, run.run_id);
+    await (await import("node:fs/promises")).mkdir(dir, { recursive: true });
+    await prepare(dir);
+    script(calls);
+    return { home, done: await resumeRun(request(home, workflow(), { now: () => LATER }), run) };
+  }
+  const line = (tool: string, outcome: string) => `${JSON.stringify({ ts: AT, session: "s", tool, input: "{}", outcome })}\n`;
+  const write = (name: string, text: string) => async (dir: string) => (await import("node:fs/promises")).writeFile(join(dir, name), text);
+
+  it.each([
+    ["a result for another tool (it ran past the gate)", write("publish.calls.jsonl", line("mcp__shopify__productDelete", "ok")), [exact], "ran without TaskFollow's check", true],
+    ["two results for the approved tool", write("publish.calls.jsonl", line(TOOL, "ok")), [exact], "ran without TaskFollow's check", true],
+    ["a result but no mark from the gate", write("publish.calls.jsonl", line(TOOL, "ok")), [], "ran without TaskFollow's check", true],
+    ["a mark from the gate but no result", write("publish.made", ""), [exact], "may have been made", false],
+    ["a damaged record", write("publish.calls.jsonl", "not json\n"), [exact], "record is damaged", false],
+  ] as const)("fails, in plain words, on %s", async (_name, prepare, calls, reason, unchecked) => {
+    const { home, done } = await approvedWith(prepare, [...calls]);
+    expect(done).toMatchObject({ status: "failed", reason: expect.stringContaining(reason) });
+    const audit = await readFile(join(home, AUDIT_FILE), "utf8");
+    expect(audit.includes("run.agent_call_unchecked")).toBe(unchecked);
+  });
+
   it("never starts the agent when the call is rejected", async () => {
     const home = await runnerHome();
     const run = await startRun(request(home));
@@ -188,5 +216,50 @@ describe("an approved agent call cannot be edited (D151)", () => {
     const answer = await decideByReply(await toolContext(home, "gateway", DEFAULT_TOOLS, () => AT), member, { decision: "edit", id: 1, text: "new text" });
     expect(answer).toContain("cannot be edited");
     expect((await getApproval(home, 1, AT)).status).toBe("pending");
+  });
+});
+
+describe("from a draft to the approved call, end to end (D151)", () => {
+  const OWNER = { name: "Owner", role: "decision_maker" as const };
+  const LATER = "2026-10-15T12:05:00.000Z";
+  const DRAFTED = { ...WORKFLOW, steps: [
+    { id: "draft", task: { prompt: "Draft the product change.", input: { message: "Make the mug blue" }, may_use: ["mcp__shopify__get_product"], output: { type: "object", properties: { change: { type: "boolean" }, call: { type: "object" } }, required: ["change"] } } },
+    { id: "publish", when: "draft.change == true", approve: { agent_call: { tool: TOOL, args: "${draft.call}" }, why: "Change the product as asked" } },
+  ] };
+
+  it("asks to approve exactly the drafted call, and the agent may then make only that call", async () => {
+    const home = await runnerHome();
+    // One script for both agent runs: the draft step may only read, so its attempt at the change is refused there.
+    vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [{ tool: TOOL, input: ARGS }], answer: { change: true, call: ARGS } }));
+    const run = await startRun(request(home, workflow(DRAFTED)));
+    expect(run).toMatchObject({ status: "waiting", waiting_on: 1 });
+    const item = await getApproval(home, 1, AT);
+    expect(item.action).toEqual({ tool: TOOL, args: ARGS });
+    expect(item.action_hash).toBe(actionHash(TOOL, ARGS, {}));
+    const lines = async (step: string) => (await readFile(join(home, "runs", run.workflow, run.run_id, `${step}.calls.jsonl`), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { outcome: string });
+    expect((await lines("draft")).map((line) => line.outcome)).toEqual(["refused"]);
+    await approveItem(home, 1, OWNER, LATER);
+    expect(await resumeRun(request(home, workflow(DRAFTED), { now: () => LATER }), run)).toMatchObject({ status: "completed" });
+    expect((await lines("publish")).map((line) => line.outcome)).toEqual(["ok"]);
+  });
+
+  it("skips the approval when the draft says there is no change", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [], answer: { change: false } }));
+    expect(await startRun(request(home, workflow(DRAFTED)))).toMatchObject({ status: "completed" });
+    expect(await listApprovals(home, AT)).toEqual([]);
+  });
+
+  it("after a crash between spending the approval and starting the agent, fails without starting it", async () => {
+    const home = await runnerHome();
+    const run = await startRun(request(home));
+    const approved = await approveItem(home, 1, OWNER, LATER);
+    const { redeemToken } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    await redeemToken(home, approved.token ?? "", prepareAgentCall("publish", TOOL, ARGS), LATER);
+    vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [{ tool: TOOL, input: ARGS }], answer: { done: true } }));
+    expect(await resumeRun(request(home, workflow(), { now: () => LATER }), run)).toMatchObject({ status: "failed", reason: expect.stringContaining("approval 1 is used") });
+    expect(await agentRan()).toBe(false);
+    expect(await listApprovals(home, LATER)).toHaveLength(1);
   });
 });

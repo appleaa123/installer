@@ -1,7 +1,7 @@
 import { access, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { confinedPath } from "./actions.js";
-import { madeMarker } from "./agent-hook.js";
+import { madeMarker, REASON_TOOL } from "./agent-hook.js";
 import { runTask } from "./agent-task.js";
 import { actionHash, redeemToken, ToolRefusal, type ApprovalItem, type PreparedAction } from "./approvals.js";
 import { canonicalJson } from "./audit.js";
@@ -19,7 +19,7 @@ import type { Exec, StepOutcome } from "./runner-steps.js";
  * stops the run for a person), and the agent runs under the hook's exact mode. Whether the call was made is read from
  * the record and the hook's marker, never from the agent's answer. Nothing is tried again on the same approval.
  */
-export const AGENT_CALL_MAX_BYTES = 20_000;
+const AGENT_CALL_MAX_BYTES = 20_000;
 const REASON = "a call to the agent's own tool, outside TaskFollow";
 const CALL_TIMEOUT_MS = 5 * 60_000;
 const DONE = { type: "object", properties: { done: { type: "boolean" } }, required: ["done"], additionalProperties: false };
@@ -40,24 +40,39 @@ export function prepareAgentCall(step: string, tool: string, args: Readonly<Reco
 const callPrompt = (tool: string): string =>
   `A person approved exactly one call to ${tool}. Make that call once, using the input below as its arguments exactly as they are, and make no other call. Then answer {"done": true}, or {"done": false} if it could not be made.`;
 
-/** The record's result lines for the approved tool (refused attempts are not results). */
-async function results(path: string, tool: string): Promise<string[]> {
-  const text = await readFile(path, "utf8").catch(() => "");
-  return text.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as { tool?: string; outcome?: string })
-    .filter((line) => line.tool === tool && (line.outcome === "ok" || line.outcome === "failed")).map((line) => line.outcome ?? "");
+type Result = { readonly tool: string; readonly outcome: string };
+
+/** Every result in the record (refused attempts and stated reasons are not results); null when a line is damaged. */
+async function results(path: string): Promise<Result[] | null> {
+  const lines = (await readFile(path, "utf8").catch(() => "")).split("\n").filter((line) => line !== "");
+  const parsed: Result[] = [];
+  for (const line of lines) {
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      return null;
+    }
+    const { tool, outcome } = (typeof value === "object" && value !== null ? value : {}) as Partial<Result>;
+    if (typeof tool === "string" && tool !== REASON_TOOL && (outcome === "ok" || outcome === "failed")) parsed.push({ tool, outcome });
+  }
+  return parsed;
 }
 
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
 
+/** Exactly one result, for the approved tool, made after the gate marked it: anything else is a plain failure. */
 async function verdict(exec: Exec, record: RunRecord, path: string, tool: string, agentError: string | undefined): Promise<string | null> {
-  const [marked, made] = [await exists(madeMarker(path)), await results(path, tool)];
-  if (!marked && made.length > 0) {
-    await auditRun(exec.home, exec.ctx.now(), "run.agent_call_unchecked", record, { tool });
-    return `${tool} ran without TaskFollow's check; see 'taskfollow why --run ${record.run_id}'`;
+  const why = `'taskfollow why --run ${record.run_id}'`;
+  const [marked, made] = [await exists(madeMarker(path)), await results(path)];
+  if (made === null) return `the step's record is damaged, so TaskFollow cannot tell whether the call was made; check with ${why}`;
+  if (made.length > 1 || made.some((result) => result.tool !== tool) || (!marked && made.length > 0)) {
+    await auditRun(exec.home, exec.ctx.now(), "run.agent_call_unchecked", record, { tool, results: made.map((result) => result.tool) });
+    return `a call ran without TaskFollow's check; see ${why}`;
   }
   if (!marked) return `the agent did not make the approved call${agentError ? ` (${agentError})` : ""}; ${AGAIN}`;
-  if (made.length === 0) return `the agent started the approved call but no result was recorded, so it may have been made; check with 'taskfollow why --run ${record.run_id}' before you ${AGAIN}`;
-  if (made[0] === "failed") return `the approved call to ${tool} failed; see 'taskfollow why --run ${record.run_id}', then ${AGAIN}`;
+  if (made.length === 0) return `the agent started the approved call but no result was recorded, so it may have been made; check with ${why} before you ${AGAIN}`;
+  if (made[0]?.outcome === "failed") return `the approved call to ${tool} failed; see ${why}, then ${AGAIN}`;
   return null;
 }
 
@@ -69,10 +84,10 @@ export async function makeApprovedCall(exec: Exec, record: RunRecord, log: StepL
   };
   try {
     const profile = await profileFor(exec);
-    await redeemToken(exec.home, token, prepareAgentCall(log.step, tool, args), exec.ctx.now());
-    await saveStep(exec.home, record, { ...log, status: "failed", error: TASK_INTERRUPTED });
     const path = await confinedPath(exec.home, callsFile(record, log.step));
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await redeemToken(exec.home, token, prepareAgentCall(log.step, tool, args), exec.ctx.now());
+    await saveStep(exec.home, record, { ...log, status: "failed", error: TASK_INTERRUPTED });
     const result = await runTask(exec.home, profile, { prompt: callPrompt(tool), input: args, may_use: [tool], changes: true, output: DONE, timeoutMs: CALL_TIMEOUT_MS, record: path, exact: { tool, args } }, { env: { ...(exec.env ?? process.env) } });
     await seal(exec, record, log.step, path);
     const problem = await verdict(exec, record, path, tool, result.ok ? undefined : result.error);
