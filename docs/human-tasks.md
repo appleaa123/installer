@@ -141,16 +141,6 @@ Each task says why it is needed and what to do, step by step.
 6. If you can, have someone with a WhatsApp username (no visible number) write: does the message arrive, and does a reply reach them?
 7. Note whether Meta asked you to switch the app to Live, and what it required.
 
-### 29. The spike: does your Claude Code load skills inside a TaskFollow task run? (9.12, item 1)
-
-**Why:** build item 2 (skills reminded, not controlled, 9.5) needs to know whether a restricted, unattended task run (`claude -p --restricted`, the command in `profiles/claude-code.json`) sees your skills at all, or TaskFollow must put the skill text into the prompt (the D83 fallback). Task 25 proved that your MCP servers load there; skills were never checked. About 40 minutes on this Mac, read-only, no store or mailbox. The full plan with every command to paste and what to paste back is `docs/superpowers/plans/2026-10-15-skill-loading-spike.md`, section 3; run it one step at a time with Claude.
-
-1. Setup: a throwaway folder with a one-line test skill, a checksum of `~/.claude/settings.json` and a helper that prints each run's answer and the tools the model called.
-2. Steps 1–6: the same question under one more flag each time (plain, `--restricted`, `--tools ""`, the product's permission flags, the `Skill` tool named and allowed, a `/skill-name` prefix), so each layer that can block a skill is told apart.
-3. Step 7: from folders without the skill above them, with `--add-dir`, and from a deep subfolder. Step 8: a skill under `~/.claude/skills/`, created and removed in the same step.
-4. Step 9: one real task step through `taskfollow run` in a throwaway home, then `why` and the calls record.
-5. Step 10: clean up by hand and check that nothing of yours changed. The test touches your real Claude Code in three known ways, each undone: the step 8 skill folder, the `installer` MCP entry that `start` registers at user scope (`claude mcp remove -s user installer`), and the probe's transcript folder under `~/.claude/projects/`. **Never run `taskfollow uninstall` in the test home:** it deletes the keychain items named `installer` for your whole Mac account, which are your real ones.
-
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
@@ -170,6 +160,7 @@ Each task says why it is needed and what to do, step by step.
 
 ## Done
 
+- 2026-10-15: Task 29, the skill-loading spike (9.12 item 1), on your real Claude Code (2.1.301) in a throwaway folder with a one-line test skill, read-only; result in D153. (1) passed: a normal print-mode run lists the folder's skill with your own and plugin skills and loads it through a real `Skill` call. (2) **failed, the answer:** with `--restricted` the model sees only Claude Code's built-in skills; it found the check word by Grep and Read of the file, not as a skill, and a real task run has no file tools. (6) a `/taskfollow-spike` prompt prefix is not recognised under `--restricted`. (7) `--add-dir` gives file access but no skills; an unrelated folder and a deep subfolder show the same built-in list. Steps 3–5, 8 and 9 were skipped: each adds restriction on top of step 2. So TaskFollow puts the workflow's skill text into the task prompt (9.5's fallback). Clean-up: `~/.claude/settings.json` byte-identical; no MCP entry or skill left; Claude Code had made an empty `memory` folder under `~/.claude/projects/` for the test folder despite `--no-session-persistence` (no transcript), removed. Lessons: long pasted commands wrap inside quotes in your terminal, so test steps now live in a script (`docs/testing/task29-spike.sh`); never run `taskfollow uninstall` in a test home, it deletes your real keychain items.
 - 2026-10-08: Plan 1 live test (14 of 14 passed).
 - 2026-10-08: Dev keys file filled in and verified (Skills Wiki, Google Sheets, Telegram, Zoho email).
 - 2026-10-08: Google token scope: Google grants Drive along with Sheets; you chose to keep it. Claude calls only the Google Sheets API (`sheets.googleapis.com`); any other Google service needs your confirmation first.
