@@ -11,6 +11,8 @@ import { appendFile, readFile } from "node:fs/promises";
  */
 /** Claude Code shows TaskFollow's `actions.reason` tool under this name (dots become underscores, D56). */
 export const REASON_TOOL = "mcp__installer__actions_reason";
+/** Claude Code's own tool that returns the answer when a run has `--json-schema`; it acts on nothing. */
+export const ANSWER_TOOL = "StructuredOutput";
 /** Claude Code reads exit 2 from a hook as "block this call". */
 export const HOOK_BLOCK = 2;
 const SUMMARY_MAX = 200;
@@ -63,7 +65,7 @@ export function matchesRule(rule: string, tool: string, input: unknown): boolean
 
 export function decide(event: Raw, config: HookConfig): Decision {
   const tool = typeof event.tool_name === "string" ? event.tool_name : "";
-  if (tool === REASON_TOOL) return { allow: true };
+  if (tool === REASON_TOOL || tool === ANSWER_TOOL) return { allow: true };
   if (!config.may_use.some((rule) => matchesRule(rule, tool, event.tool_input))) {
     return { allow: false, reason: `This step may only use: ${config.may_use.join(", ")}. Return what you found instead, or explain what a person should do.` };
   }
@@ -104,6 +106,7 @@ export async function handleHook(phase: Phase, stdin: string, config: HookConfig
   } catch {
     return { exit: HOOK_BLOCK, stdout: "", stderr: "TaskFollow could not read this tool call, so it was blocked." };
   }
+  if (event.tool_name === ANSWER_TOOL) return { exit: 0, stdout: "" };
   const decision = phase === "pre" ? decide(event, config) : { allow: true as const };
   if (phase === "pre" && decision.allow) return { exit: 0, stdout: "" };
   try {
