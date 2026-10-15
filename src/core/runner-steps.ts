@@ -1,3 +1,4 @@
+import { prepareAgentCall } from "./agent-call.js";
 import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
 import { calculate } from "./calc.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
@@ -122,6 +123,14 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
 
 export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "approve" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const args = argsFor(step.args, scope, step.id);
+  if (step.agent_call) {
+    const prepared = prepareAgentCall(step.id, step.tool, args);
+    if (exec.ctx.sandbox) {
+      await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output: null, skipped: true });
+      return { kind: "done", output: null, actions: 0, needs_human: 0 };
+    }
+    return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent || record.urgent === true, startedAt, policy: false });
+  }
   const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
   if (!needsApproval(prepared.level)) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs no approval; make it a tool step`);
   if (exec.ctx.sandbox) {
