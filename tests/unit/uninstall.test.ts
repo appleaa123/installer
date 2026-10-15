@@ -1,4 +1,4 @@
-import { access, readFile, readdir, stat } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
@@ -11,6 +11,9 @@ import { loadState, saveState } from "../../src/core/state.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { uninstall } from "../../src/core/uninstall.js";
+import { workflowCommand } from "../../src/core/lifecycle.js";
+import { writePinnedSolution } from "../../src/core/pin.js";
+import { saveWritten } from "../../src/core/workflow-skill.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -69,4 +72,41 @@ describe("taskfollow uninstall (§16.4, D109)", () => {
     expect(again).toMatchObject({ status: "uninstalled", unregistered: { skillswiki: { unregistered: false }, installer: { unregistered: false } } });
     expect(Object.values(again.secrets as Record<string, string>)).toEqual(["none", "none", "none", "none", "none", "none", "none"]);
   });
+
+  it("removes the workflow skill folders and the CLAUDE.md section it wrote, and nothing of the person's (9.13 item 5)", async () => {
+    const { home, env } = await installedHome();
+    const work = await makeTempHome();
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, work_dir: work });
+    await writePinnedSolution(home, JSON.stringify({ id: "fixture-runner", version: "1.0.0", workflows: [], steps: [{ step_id: "report.final", phase: "REPORT", type: "auto", title: "Finish", why: "Finishes.", blocking: true, auto: { action: "noop" } }] }));
+    const skills = join(work, ".claude", "skills");
+    await mkdir(join(skills, "mine"), { recursive: true });
+    await writeFile(join(skills, "mine", "SKILL.md"), "the person's own skill");
+    await writeFile(join(work, "CLAUDE.md"), "# Mine\n");
+    for (const id of ["inbox", "leads"]) await workflowCommand(home, "add", id, JSON.stringify({ description: `${id} work.`, tools: ["memo.list"] }), () => AT);
+    await writeFile(join(skills, "inbox", "references", "my-rules.md"), "Edited by the person since.");
+    const result = await uninstall(home, { interactive: true }, () => AT, { ...OS, env });
+    expect(result.removed).toEqual({ skill_folders: [join(skills, "inbox"), join(skills, "leads")], left: [], agent_file: "removed" });
+    expect((await readdir(skills)).sort()).toEqual(["mine"]);
+    expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toBe("# Mine\n");
+    const again = await uninstall(home, { interactive: true }, () => AT, { ...OS, env });
+    expect(again.removed).toEqual({ skill_folders: [], left: [], agent_file: "absent" });
+  });
+
+  it("leaves a recorded folder that now points elsewhere, and says so", async () => {
+    const { home, env } = await installedHome();
+    const work = await makeTempHome();
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, work_dir: work });
+    const skills = join(work, ".claude", "skills");
+    const elsewhere = await makeTempHome();
+    await writeFile(join(elsewhere, "SKILL.md"), "not TaskFollow's");
+    await mkdir(skills, { recursive: true });
+    await symlink(elsewhere, join(skills, "inbox"));
+    await saveWritten(home, { skill_folders: [{ workflow: "inbox", path: join(skills, "inbox"), root: skills }] });
+    const result = await uninstall(home, { interactive: true }, () => AT, { ...OS, env });
+    expect(result.removed).toMatchObject({ skill_folders: [], left: [{ path: join(skills, "inbox") }] });
+    expect(await readFile(join(elsewhere, "SKILL.md"), "utf8")).toBe("not TaskFollow's");
+  });
 });
+
