@@ -1,6 +1,7 @@
 # Plan: a person approves, then the agent makes exactly that call (postponed item 2)
 
-Status: draft for Fable's review (2026-10-15). Branch `feat/approve-agent-call`, off `main` after #39.
+Status: **revised after Fable's review (2026-10-15); the "Revised design" section below wins over the draft above it.**
+Branch `feat/approve-agent-call`, stacked on `fix/flaky-tests` (#39).
 
 ## The problem
 Task steps (D142) let a workflow use the person's own tools: Shopify CLI, MCP servers. A step that may change
@@ -120,3 +121,78 @@ possible, but is described as weaker.
    the same time? Should it use a lock file instead?
 4. Should a failed approved call be retryable by the person (`taskfollow run … --resume`) with the same approval, or
    always need a new approval?
+
+## Fable's review (2026-10-15), applied
+- **Blockers**
+  - **B1. Once.** The pre-hook writes nothing on allow, so "once" cannot be read from the record. Fix: an
+    exclusive-create marker `runs/<wf>/<run>/<step>.made` (`open(…, "wx")`) before allowing; if it already exists,
+    deny.
+  - **B2. The hook fails open on its own errors.** Any throw exits 1, and the call goes ahead. A timeout also lets the
+    call go ahead (Claude Code docs, checked: "A timed-out command … hook doesn't block the tool call"). Fix:
+    - every throw in `agent-hook` exits 2;
+    - the PreToolUse entry gets `onFailure: "block"` (documented; needs Claude Code 2.1.295 or later). This applies
+      to **all** task steps.
+  - **B3. Spending the approval.** It is unspecified. Fix: `redeemToken` before the agent starts (D58 order), and
+    drive the agent from `item.action`.
+  - **B4. Crash and resume ask the person again.** Fix: the interrupted check in `runner.ts` works for every step
+    kind; the interrupted log keeps `approval: id`.
+  - **B5. Editing is reachable** from `approvals decide` and from the channel `E<id>` code, and both hit "unknown
+    tool". Fix: an `isAgentCall` guard before preparing in both places; the announcement offers no `E`.
+  - **B6. `Bash` does not fit** `may_use` and `--allowedTools`. Fix: cut Bash from v1 (MCP only, as proven in task
+    25).
+- **Should fix**
+  - **S1.** Exact mode still allows `actions_reason` and `StructuredOutput`.
+  - **S2.** Post-run check: a marker **and** exactly one post/failed line. A line without a marker means the call ran
+    past the gate (fail and audit). A marker without a line means it may have been made (fail, wording as
+    `TASK_INTERRUPTED`).
+  - **S3.** Record `failed` when an MCP `tool_response.isError === true`. "Done" means made with no error reported.
+  - **S5.** A denied attempt is told the approved JSON (up to 4 kB). Strict equality is kept (no `updatedInput`).
+  - **S6.** No custom preview and no `approvals show`. The existing preview prints `tool` plus the canonical args;
+    `approvals list` has the whole action.
+  - **S7.** The args go in the task's `input` (the untrusted block), are never stripped, and the hash covers the
+    same object.
+- **Minor.** No new audit event (M1). `why` needs no change (M2). No `exact.hash` (M3). A hand-built L3
+  `PreparedAction` (M4). Output schema `{done: boolean}` (M5). §9b: copy the tool name exactly as Claude Code shows
+  it (M6).
+- **Open questions answered**
+  - **Q1.** Fixed L3.
+  - **Q2.** Strict canonical equality of the whole object. Check it on the real Claude Code in task 28.
+  - **Q3.** The marker.
+  - **Q4.** No retry on the same approval: "run the workflow again for a new approval".
+
+## Revised design (what gets built)
+1. **Gate hardening, all task steps.**
+   - The PreToolUse entry gets `onFailure: "block"`.
+   - `agent-hook` turns any throw into exit 2.
+   - `profiles/claude-code.json` `min_version` becomes 2.1.295.
+2. **Hook exact mode.** `HookConfig.exact = {tool, args}`.
+   - The reason tool and `StructuredOutput` are always allowed.
+   - A call to `tool` whose input is canonically equal to `args` creates `<record minus .calls.jsonl>.made` with
+     `wx`, then it is allowed. If the marker exists, it is denied.
+   - Anything else is denied, with the approved JSON (≤ 4 kB) in the reason.
+   - In the post phase, `tool_response.isError === true` is recorded as `failed`.
+3. **Approve step `agent_call`** (MCP only: `mcp__<server>__<tool>`, no wildcard).
+   - The args template must resolve to an object of at most 20 kB.
+   - A hand-built L3 `PreparedAction` with reason "a call to the agent's own tool, outside TaskFollow".
+   - `policy: false`, the default preview. Skipped in a sandbox run.
+4. **On approval** (`agent-call.ts`):
+   - `redeemToken`;
+   - save `{…waiting log, status: failed, error: TASK_INTERRUPTED}`;
+   - `runTask` with `may_use: [tool]`, `changes: true`, `input: item.action.args`, `exact`, 5 minutes, output
+     `{done: boolean}`;
+   - seal the record;
+   - check the marker plus exactly one post/failed line → done, or fail with a plain reason ("run the workflow again
+     for a new approval").
+5. **`runner.ts`:** the interrupted check works for every step kind.
+6. **The `isAgentCall` guard** in `approval-commands.ts` and in the reply codes (no `E` offer, `E` refused).
+7. **Docs.** §9b example (a draft task, then `agent_call` with the full product fields), D151, human task 28
+   (MCP connector on the test store; check the store shows exactly the approved text, that `onFailure` is accepted,
+   and the record matches the approved args as emitted).
+
+Slices:
+1. Gate hardening.
+2. Exact mode.
+3. Parsing and approval item.
+4. On-approval run and resume.
+5. Edit guards.
+6. Docs.
