@@ -17,10 +17,14 @@ describe("taskfollow skills and workflow add (9.12 item 2)", () => {
     const state = await loadState(home);
     if (state) await saveState(home, { ...state, work_dir: work });
     await writePinnedSolution(home, JSON.stringify(SOLUTION));
-    expect(runCli(["skills"], { home }).json).toMatchObject({ skills: [], notes: [], next: expect.stringContaining("add only the ones they confirm") });
+    // The person's own skill folder is shared by the whole test run, so only the install folder's skills are compared.
+    const fromInstall = (json: unknown) => ((json as { skills: { source: string }[] }).skills ?? []).filter((entry) => entry.source === "install folder");
+    const before = runCli(["skills"], { home }).json;
+    expect(before).toMatchObject({ notes: [], next: expect.stringContaining("add only the ones they confirm") });
+    expect(fromInstall(before)).toEqual([]);
     const added = runCli(["workflow", "add", "inbox", "--value", JSON.stringify({ description: "Sort mail.", tools: ["memo.list"], my_rules: "Flag repairs." })], { home });
     expect(added).toMatchObject({ code: 0, json: { status: "added", skill_folder: join(work, ".claude", "skills", "inbox") } });
-    expect(runCli(["skills"], { home }).json).toMatchObject({ skills: [{ source: "install folder", name: "inbox", ref: join(work, ".claude", "skills", "inbox") }] });
+    expect(fromInstall(runCli(["skills"], { home }).json)).toEqual([expect.objectContaining({ name: "inbox", ref: join(work, ".claude", "skills", "inbox") })]);
     expect((await readdir(work)).sort()).toEqual([".claude", "CLAUDE.md"]);
     expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **inbox**: Sort mail.");
   });
