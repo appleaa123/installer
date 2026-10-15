@@ -13,6 +13,7 @@ export default defineConfig({
     include: live ? ["tests/live/**/*.test.ts"] : ["tests/**/*.test.ts"],
     exclude: [...configDefaults.exclude, ...(live ? [] : ["tests/live/**"])],
     globalSetup: ["tests/global-setup.ts"],
+    setupFiles: ["tests/setup-keychain.ts"],
     testTimeout: 60_000,
     env: {
       // Operator-only folder of extra runtime profiles; solutions name them by id (D34).
