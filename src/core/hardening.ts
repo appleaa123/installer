@@ -5,6 +5,7 @@ import { interpolate } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { listRuns, loadStep, type AgentTurn, type RunRecord } from "./runs.js";
 import { saveWorkflowState } from "./sandbox.js";
+import { refreshAgentFile } from "./workflow-skill.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, type AgentSpec, type Workflow } from "./workflow.js";
 
@@ -157,6 +158,13 @@ async function replaceVersion(home: string, workflow: Workflow, next: Raw): Prom
   await writeConfig(home, versionFile(workflow.id, workflow.version), await readConfig(home, fileOf(workflow.id)));
   await saveWorkflowState(home, { workflow: workflow.id, sandbox: true });
   await writeConfig(home, fileOf(workflow.id), next);
+  // 9.12 item 2: the CLAUDE.md section follows the current version; a broken section is left for the person to fix.
+  try {
+    await refreshAgentFile(home);
+  } catch (error) {
+    if (!(error instanceof InputError)) throw error;
+    await appendAudit(home, { ts: new Date().toISOString(), actor: "engine", event: "agent_file.not_refreshed", ref: `workflow:${workflow.id}`, payload: { why: error.message } });
+  }
   return checked;
 }
 

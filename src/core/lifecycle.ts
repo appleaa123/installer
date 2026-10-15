@@ -13,8 +13,10 @@ import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { checkLocalSkills, isSkillswikiRef, skillRoots, type SkillRoots } from "./skills.js";
-import { loadProfileById } from "./profile.js";
+import { rm } from "node:fs/promises";
+import { restoreFile } from "./agent-file.js";
+import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
+import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, writeWorkflowSkill } from "./workflow-skill.js";
 import { MAX_WORKFLOW_SKILLS, WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
 
 /**
@@ -85,25 +87,47 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
   return { workflow: id, version: 1, mode: "agentic", description, instructions: description, tools, ...(trigger === undefined ? {} : { trigger }), ...(turns === undefined ? {} : { max_turns: turns }), ...skills };
 }
 
-/** The agent's skill folders for this install, or none when no agent was found yet. */
-async function installRoots(home: string): Promise<SkillRoots> {
-  const state = await loadState(home);
-  if (!state?.runtime?.profile) return {};
-  return skillRoots(await loadProfileById(state.runtime.profile), state.work_dir, process.env);
+/** What the person must hear when the workflow's own skill cannot be written (9.7: say every gap clearly). */
+function noFolderNote(profile: { name: string } | undefined, roots: SkillRoots): string {
+  if (roots.home_folder) return HOME_FOLDER_NOTE;
+  return `${profile?.name ?? "This agent"} has no skills folder TaskFollow knows, so this workflow's own rules have nowhere to live yet; tell the person`;
 }
 
 async function addWorkflow(home: string, id: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
   if ((await workflowIds(home)).includes(id)) throw new InputError(`Workflow '${id}' exists already; a change to it is a new version (taskfollow harden), never an overwrite`);
   const raw = newWorkflow(id, value, await suggestions(home));
-  const workflow = parseWorkflow(raw, id, DEFAULT_TOOLS);
+  const rules = value === undefined ? undefined : parseWords(value).my_rules;
+  if (rules !== undefined && typeof rules !== "string") throw new InputError('workflow add: "my_rules" must be text, the person\'s own rules from the interview');
+  const owner = parseWorkflow(raw, id, DEFAULT_TOOLS);
   // D126 changed (9.12 item 2): only a skillswiki: reference needs a Skills Wiki connection; a local skill does not.
-  const needsSkill = workflow.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || workflow.skills.some(isSkillswikiRef);
+  const needsSkill = owner.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || owner.skills.some(isSkillswikiRef);
   if (needsSkill && !(await loadState(home))?.skillswiki) throw new InputError("This workflow uses a Skills Wiki skill. Connect Skills Wiki first (INSTALL.md, section 11) or choose another workflow.");
-  await checkLocalSkills(workflow.skills.filter((ref) => !isSkillswikiRef(ref)), await installRoots(home));
-  await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), raw);
-  await saveWorkflowState(home, { workflow: id, sandbox: true });
-  await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description", skills: workflow.skills } });
-  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
+  const { profile, roots, agentFile } = await installTargets(home);
+  await checkLocalSkills(owner.skills.filter((ref) => !isSkillswikiRef(ref)), roots);
+  // Everything that can refuse does so before anything is written (H4): the folder name and the agent file's section.
+  const folder = await plannedSkillFolder(roots, id);
+  if (folder === null && rules !== undefined) throw new InputError(noFolderNote(profile, roots));
+  const final = folder === null ? raw : { ...raw, skills: [folder, ...owner.skills] };
+  const workflow = parseWorkflow(final, id, DEFAULT_TOOLS);
+  const before = await agentFileBefore(agentFile);
+  const writtenBefore = await loadWritten(home);
+  try {
+    if (folder) await writeWorkflowSkill(folder, id, workflow.description, rules);
+    await refreshAgentFile(home, { workflow: id, description: workflow.description, skills: workflow.skills });
+    await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), final);
+    await saveWorkflowState(home, { workflow: id, sandbox: true });
+    const written = await loadWritten(home);
+    if (folder && roots.project) await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: id, path: folder, root: roots.project }] });
+  } catch (error) {
+    if (folder) await rm(folder, { recursive: true, force: true });
+    if (agentFile) await restoreFile(agentFile, before).catch(() => undefined);
+    await rm(join(home, WORKFLOWS_DIR, id), { recursive: true, force: true }).catch(() => undefined);
+    await saveWritten(home, writtenBefore).catch(() => undefined);
+    throw error;
+  }
+  const note = folder === null ? { note: noFolderNote(profile, roots) } : {};
+  await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description", skills: workflow.skills, skill_folder: folder, agent_file: agentFile } });
+  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, skill_folder: folder, agent_file: agentFile, ...note, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
 }
 
 async function describeAll(home: string): Promise<Record<string, unknown>[]> {
