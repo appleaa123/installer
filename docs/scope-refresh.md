@@ -186,6 +186,10 @@ Settled by the owner on 2026-10-15, after the discussion above. The owner's answ
 
 TaskFollow is a thin layer on top of the agent the owner already has (Claude Code, Codex, Antigravity, Pi, OpenClaw, Hermes, …). **It does not change the agent and does not add capabilities to it.** It turns the agent the owner has into a "vertical" agent: the knowledge of which skills to use, which workflows to run, when to loop in a person, and whatever else a commercial, customised agent would offer. The agent's own model does the thinking: it gathers the inputs, asks the questions, chooses the tools and decides. TaskFollow executes what it can, or flags the gap and says why and what to do instead.
 
+**The hard rules.** Money, legal matters, messages to customers, and deletes are hard-coded: when a workflow or a chat request runs into one of them, a person is asked, every time, however confident the model is. This exists today for every action that goes through TaskFollow's tools: the floor (D24, compiled in `src/core/levels.ts`, D59) and the approval on every external message (D79). The honest limit: when the agent calls one of its own tools directly (its own email server, for example), TaskFollow's code is not in the path. There the rule is enforced by the agent's own permission system (level B, set up and tested in 9.3) and by hooks where the agent has them (level D); where the agent offers neither, that is a gap, flagged in plain words (section 6).
+
+In the terms of the two developer remarks in section 1: the *harness* is TaskFollow's setup, the operator rules in INSTALL.md, the agent-level file, and the hard rules; the *graph workflow* is the workflow file, described by the owner and run by the state machine; the *skills and tool sets* are the workflow skills and the agent's own tools. The core is set. What remains to write is skills and workflow shapes.
+
 Three deliverables follow from the goal (9.3–9.5), plus the five back-office workflows from the owner's research (9.6). Nothing else is in v1 unless the owner adds it.
 
 ### 9.3 Deliverable 1: step-by-step setup
@@ -204,7 +208,8 @@ The owner's version: *"I tell you my day, you tell me how to automate my day."*
 - **Exists:** the interview ("walk me through your week"), the runner (the state machine: triggers, schedule, run record, `why`), task steps through the agent's own tools, approvals, `calc`.
 - **Build:**
   - the interview proposes workflows from the five shapes (9.6) and anything else the owner's day suggests; the owner picks; the owner's answers go into the workflow's skill (`references/my-rules.md`, section 5);
-  - **the opportunity rule:** whenever anyone (the model, TaskFollow, any trigger) sees repetitive work that could be a workflow, it says so, shows the proposed workflow, and the owner approves or gives feedback. Nothing is created without a yes. The agent is never limited to a fixed set of workflows a developer wrote for the owner. "I noticed" (D148) is one existing source of such proposals.
+  - **the opportunity rule:** whenever anyone (the model, TaskFollow, any trigger) sees repetitive work that could be a workflow, it says so, shows the proposed workflow, and the owner approves or gives feedback. Nothing is created without a yes. The agent is never limited to a fixed set of workflows a developer wrote for the owner.
+  - **What exists today for observing:** "I noticed" (D148) is narrow. With watching on (opt-in, Claude Code only), TaskFollow looks once a day at the agent's own calls to the services the owner chose to watch; a service used on five or more of the last 28 days gets one message to one person, once, suggesting they describe that work; then the interview runs. It observes what the agent is used for, not the owner's day, and it never sees email or messages. The opportunity rule widens it: the model proposes in chat whenever it notices repetition in what it is asked to do or in what a workflow reads. Most of that widening is an operator rule (level A), not new machinery.
 - **Approval when no chat session is open** (open question 1), with no new build: the person's own terminal is the deciding surface (D61) and an item waits 24 hours (D62). A scheduled run pauses at the gate; at the owner's next session the agent shows what is pending (one new operator rule in INSTALL.md: "at session start, run `taskfollow approvals list` and present what is pending in plain words"); the owner approves in their own terminal, the same "open a new terminal window" pattern START-HERE already uses. Telegram, already built, stays the optional way to be told sooner.
 
 ### 9.5 Deliverable 3: skills
@@ -222,7 +227,7 @@ The point is not to move or control skills. It is to **remind the agent that rel
 
 Each ships as a general workflow file plus a skill folder (section 5) and keeps a few of the owner's real past items as test cases.
 
-**Workflows stay general; the agent picks the tools.** Unless the owner names a tool, the workflow describes the work and the agent chooses, from its own tool set, what fits best. The setup asks ("which CRM do you use now?") rather than assumes. When the owner says "for my daily work I use CRM 1, read email from 2, get messages from 3, and send decisions to my team by email", tools 1, 2 and 3 are written into that workflow as must-use.
+**Workflows stay general; the agent picks the tools.** Unless the owner names a tool, the workflow describes the work and the agent chooses, from its own tool set, what fits best. The setup asks ("which CRM do you use now?") rather than assumes. When the owner says "for my daily work I use CRM 1, read email from 2, get messages from 3, and send decisions to my team by email", tools 1, 2 and 3 are written into that workflow as must-use. Otherwise the choice is left to the model. The hard rules (9.2) apply to every workflow, general or specific.
 
 | Workflow | Input | The agent judges | Gated | Reported |
 |---|---|---|---|---|
@@ -238,7 +243,7 @@ For any of these, when the owner has no tool for the job, the agent says so; Goo
 
 The same for every agent: **levels A, B and C plus gap flags** (section 4). Level B on any agent follows the same pattern: TaskFollow states the rule, the agent sets it up in its own permission system, TaskFollow tests it; whether the agent has such a system is one of the abilities the probe tests and flags. Level D wherever the agent offers it (Claude Code today; others when their hooks prove to block, D150).
 
-What TaskFollow does for agents in v1: skills every agent reads, workflows, writing the agent-level files (`CLAUDE.md`, `AGENTS.md`, or the agent's equivalent), and saying every gap clearly. What it does not do: create new capabilities for an agent, or promise compatibility with every agent on the market. How far each agent gets depends on the agent and its model; TaskFollow says so in the report.
+What TaskFollow does for agents in v1: skills every agent reads, workflows, writing the agent-level files (`CLAUDE.md`, `AGENTS.md`, or the agent's equivalent), and saying every gap clearly. How far each agent gets depends on the agent and its model; TaskFollow says so in the report. (Context, not a rule: TaskFollow builds on the agent's existing abilities rather than adding new ones, and there is no capacity to be compatible with every agent on the market.)
 
 ### 9.8 Built extras
 
@@ -252,18 +257,25 @@ In the TaskFollow package: offline, tested, no account needed. A Skills Wiki pac
 
 - Systems administration (firewalls, servers, CVEs).
 - New channels, and customer-facing messaging beyond what is built.
-- Creating new capabilities for an agent; guaranteed compatibility with every agent.
 - Anything hosted by the owner of TaskFollow; any access to the owner's machine.
 - Removing built features.
 
 ### 9.11 Done means
 
-In the owner's words: *"I, as a non-technical user, can install, set up, run and use TaskFollow daily on my own, without step-by-step help, without bugs."* The owner is user 1; friends in other industries, the realtor team among them, come after (section 3, item 7).
+In the owner's words: *"I, as a non-technical user, can install, set up, run and use TaskFollow daily on my own, without step-by-step help, without bugs."*
+
+"Without step-by-step help" means without the development session: today the owner opens Claude Code, pastes a prompt or a test plan written here, and pastes the result back. Done means the owner uses TaskFollow as a normal user would, with only TaskFollow's own guidance (which stays step by step, for setup, workflows and everything else). The owner is user 1; friends in other industries, the realtor team among them, come after (section 3, item 7).
 
 ### 9.12 Build order
 
 1. **Spike:** does the agent's own skill loading work inside a scheduled, restricted run (`claude -p --restricted`)? Decides whether 9.5 needs the prompt fallback.
-2. Skills reminded, not controlled (9.5): Skills Wiki and local alike; workflow skills written to the agent's skills folder.
+2. Skills reminded, not controlled (9.5), in full:
+   - **Inventory.** At setup and whenever a workflow is added, TaskFollow lists the skills the agent has: the local skill folders the agent reads (for Claude Code, `.claude/skills/` in the install folder and `~/.claude/skills/`; for other agents, their documented folder) and, when Skills Wiki is connected, its active skills. It keeps names and descriptions only; it never copies, installs, updates, ranks or deletes a skill.
+   - **Matching by the model.** The agent reads the inventory and says which skills fit the workflow; the owner confirms. TaskFollow writes the chosen references into the workflow file, a local path or a `skillswiki:` reference alike. TaskFollow never chooses a skill itself.
+   - **Reminding at run time.** A run's prompt names the workflow's skills, and the agent loads them itself. If the spike (item 1) shows a restricted run does not load them, TaskFollow reads the file and puts it into the prompt, as D83 does for `skillswiki:` skills.
+   - **Reminding in chat.** One short section in the agent-level file (`CLAUDE.md`, `AGENTS.md`, or the agent's equivalent) lists the owner's workflows and the skills each uses. TaskFollow writes only that section and leaves the rest of the file alone.
+   - **Workflow skills.** `taskfollow workflow add` also writes the workflow's skill folder (section 5) into the agent's skills folder, with `references/my-rules.md` from the interview, and records the path.
+   - **D126 changes.** A workflow backed by a local skill is accepted without Skills Wiki; only `skillswiki:` references still need a connection.
 3. The level-B guided step and its test (9.3). To settle in the plan: a headless run cannot answer an "ask", so the test is either interactive or a settings check plus a headless probe where "ask" shows as refused.
 4. Inbox triage end to end; the owner uses it on their own mailbox.
 5. The other four workflows (9.6), the interview proposing from them, and the opportunity rule (9.4).
