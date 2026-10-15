@@ -60,7 +60,7 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
   if (!isRecord(words) || typeof words.description !== "string" || words.description.trim() === "") throw new InputError(`workflow add needs the person's description: ${PLAIN_WORDS}`);
   const { description, tools, trigger, max_turns: turns, steps } = words;
   // D142: fixed steps the agent wrote with the person (for example a task step that uses the person's own tools).
-  if (steps !== undefined) return { workflow: id, version: 1, mode: "typed", description, ...(trigger === undefined ? {} : { trigger }), steps };
+  if (steps !== undefined) return withLocalZone({ workflow: id, version: 1, mode: "typed", description, ...(trigger === undefined ? {} : { trigger }), steps });
   return { workflow: id, version: 1, mode: "agentic", description, instructions: description, tools, ...(trigger === undefined ? {} : { trigger }), ...(turns === undefined ? {} : { max_turns: turns }) };
 }
 
