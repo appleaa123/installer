@@ -148,6 +148,7 @@ Each task says why it is needed and what to do, step by step.
 3. If you use a Shopify MCP server or the claude.ai Shopify connector: `taskfollow watch add mcp:<its server name>` (the name in tool names, for example `claude_ai_Shopify`), ask for one read, and check `why direct` again.
 4. Tell Claude whether the session felt slower on watched calls.
 5. `taskfollow watch off`: the entry should be gone and the file otherwise as before.
+6. `taskfollow watch ask Bash(shopify store execute:*)`, then ask Claude (new session) to run a read: does Claude Code ask you first? Then try it when you had earlier chosen "always allow" for that command: does it still ask? `taskfollow watch unask Bash(shopify store execute:*)` afterwards.
 
 ## Optional
 

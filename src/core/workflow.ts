@@ -205,6 +205,9 @@ function parseAgent(value: unknown, registry: ToolRegistry, where: string, fail:
 const MCP_RULE = /^mcp__[A-Za-z0-9_-]+(__[A-Za-z0-9_.-]+\*?)?$/;
 const BASH_RULE = /^Bash\(([^;&|`<>$\n\r*]+)(:\*)?\)$/;
 
+/** A Claude Code permission rule for one tool or server: `mcp__<server>[__<tool>]` or `Bash(<command>[:*])`. */
+export const isToolRule = (rule: string): boolean => MCP_RULE.test(rule) || BASH_RULE.test(rule);
+
 function parseMayUse(value: unknown, where: string, fail: (message: string) => never): readonly string[] {
   if (!Array.isArray(value) || value.length === 0) return fail(`${where}.may_use must list the tools the agent may use`);
   return value.map((rule, index) => {

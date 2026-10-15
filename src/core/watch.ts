@@ -6,6 +6,7 @@ import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
 import { installerCliPath, shellQuote, winQuote } from "./register.js";
 import { REASON_NAME } from "./watch-record.js";
+import { isToolRule } from "./workflow.js";
 
 /**
  * `taskfollow watch` (D146): an opt-in hook in the person's own Claude Code settings, so calls their agent makes
@@ -30,6 +31,10 @@ const WRITE_ATTEMPTS = 3;
 interface WatchState {
   readonly on: boolean;
   readonly services: readonly string[];
+  /** D147: the `permissions.ask` rules TaskFollow added (never one the person had already). */
+  readonly ask: readonly string[];
+  /** D148: the member who asked for "I noticed" suggestions; only they get them. */
+  readonly suggest_to?: string;
 }
 
 export const settingsPath = (env: Env): string => env[SETTINGS_ENV] || join(homedir(), ".claude", "settings.json");
@@ -126,10 +131,11 @@ async function changeSettings(home: string, path: string, change: (settings: Raw
   throw new InputError(`${path} kept changing while TaskFollow tried to update it (Claude Code may be saving it): close Claude Code's settings and try again.`);
 }
 
-async function loadWatch(home: string): Promise<WatchState> {
+export async function loadWatch(home: string): Promise<WatchState> {
   const raw = await readConfig(home, WATCH_CONFIG);
-  if (!isRecord(raw)) return { on: false, services: [] };
-  return { on: raw.on === true, services: Array.isArray(raw.services) ? raw.services.filter((entry): entry is string => typeof entry === "string") : [] };
+  const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []);
+  if (!isRecord(raw)) return { on: false, services: [], ask: [] };
+  return { on: raw.on === true, services: strings(raw.services), ask: strings(raw.ask), ...(typeof raw.suggest_to === "string" ? { suggest_to: raw.suggest_to } : {}) };
 }
 
 function requireService(arg: string | undefined): string {
@@ -149,14 +155,64 @@ async function apply(home: string, state: WatchState, env: Env, now: string): Pr
   return { file: path, matcher, command };
 }
 
+const askRules = (settings: Raw): string[] => {
+  const permissions = isRecord(settings.permissions) ? settings.permissions : {};
+  return Array.isArray(permissions.ask) ? permissions.ask.filter((rule): rule is string => typeof rule === "string") : [];
+};
+
+/** D147: the person's always-ask rules, as Claude Code's own `permissions.ask`: these cannot fail open like a hook. */
+export function settingsWithAsk(settings: Raw, rules: readonly string[]): Raw {
+  const permissions = isRecord(settings.permissions) ? settings.permissions : {};
+  const current = askRules(settings);
+  return { ...settings, permissions: { ...permissions, ask: [...current, ...rules.filter((rule) => !current.includes(rule))] } };
+}
+
+export function settingsWithoutAsk(settings: Raw, rules: readonly string[]): Raw {
+  if (!isRecord(settings.permissions)) return settings;
+  const { ask: _ask, ...others } = settings.permissions;
+  const kept = askRules(settings).filter((rule) => !rules.includes(rule));
+  return { ...settings, permissions: kept.length > 0 ? { ...others, ask: kept } : others };
+}
+
+function requireRule(arg: string | undefined): string {
+  if (!arg || !isToolRule(arg)) throw new InputError("Name the tool to always ask about as mcp__<server>__<tool>, mcp__<server>, or Bash(<command>:*), for example: taskfollow watch ask mcp__shopify__create_refund");
+  return arg;
+}
+
+async function changeAsk(home: string, state: WatchState, sub: "ask" | "unask", rule: string, env: Env, now: string): Promise<WatchState> {
+  const path = settingsPath(env);
+  if (sub === "unask") {
+    if (state.ask.includes(rule)) await changeSettings(home, path, (settings) => settingsWithoutAsk(settings, [rule]), now);
+    return { ...state, ask: state.ask.filter((entry) => entry !== rule) };
+  }
+  if (askRules((await readSettings(path)).value).includes(rule)) return state;
+  await changeSettings(home, path, (settings) => settingsWithAsk(settings, [rule]), now);
+  return { ...state, ask: [...state.ask, rule] };
+}
+
 export async function watchCommand(home: string, request: { readonly sub: string | undefined; readonly arg?: string; readonly interactive: boolean }, now: () => string, env: Env = process.env): Promise<Raw> {
   const state = await loadWatch(home);
   const sub = request.sub ?? "list";
-  if (sub === "list") return { on: state.on, services: [...state.services] };
-  if (!["on", "off", "add", "remove"].includes(sub)) throw new InputError("watch takes: list, add <service>, remove <service>, on, off");
+  if (sub === "list") return { on: state.on, services: [...state.services], ask: [...state.ask], ...(state.suggest_to ? { suggest_to: state.suggest_to } : {}) };
+  if (!["on", "off", "add", "remove", "ask", "unask", "suggest"].includes(sub)) throw new InputError("watch takes: list, add <service>, remove <service>, on, off, ask <tool rule>, unask <tool rule>, suggest <your member name>|off");
   if (!request.interactive) {
     await appendAudit(home, { ts: now(), actor: "agent", event: "watch.refused", ref: "watch", payload: { sub } });
     throw new InputError("Watching the agent's direct calls is the person's choice: they run 'taskfollow watch " + sub + "' in their own terminal");
+  }
+  if (sub === "suggest") {
+    const name = request.arg?.trim();
+    if (!name) throw new InputError("Say who gets the suggestions: taskfollow watch suggest \"<your member name>\" (or off)");
+    const { suggest_to: _old, ...rest } = state;
+    const changed: WatchState = name === "off" ? rest : { ...rest, suggest_to: name };
+    await writeConfig(home, WATCH_CONFIG, changed);
+    await appendAudit(home, { ts: now(), actor: "human", event: "watch.suggest", ref: "watch", payload: { to: changed.suggest_to ?? null } });
+    return { on: changed.on, services: [...changed.services], ask: [...changed.ask], ...(changed.suggest_to ? { suggest_to: changed.suggest_to } : {}) };
+  }
+  if (sub === "ask" || sub === "unask") {
+    const changed = await changeAsk(home, state, sub, requireRule(request.arg), env, now());
+    await writeConfig(home, WATCH_CONFIG, changed);
+    await appendAudit(home, { ts: now(), actor: "human", event: `watch.${sub}`, ref: "watch", payload: { rule: request.arg, ask: changed.ask } });
+    return { on: changed.on, services: [...changed.services], ask: [...changed.ask], note: "Claude Code now asks the person before these tools run in their own sessions; restart open sessions." };
   }
   let next: WatchState = state;
   if (sub === "add") next = { ...state, services: [...new Set([...state.services, requireService(request.arg)])] };
@@ -178,9 +234,9 @@ export async function watchCommand(home: string, request: { readonly sub: string
 /** Uninstall (D146): the entry leaves the person's settings first, so nothing points at a removed program. */
 export async function stopWatching(home: string, env: Env, now: string): Promise<boolean> {
   const state = await loadWatch(home);
-  if (!state.on) return false;
-  await changeSettings(home, settingsPath(env), settingsWithout, now);
-  await writeConfig(home, WATCH_CONFIG, { ...state, on: false });
+  if (!state.on && state.ask.length === 0) return false;
+  await changeSettings(home, settingsPath(env), (settings) => settingsWithoutAsk(settingsWithout(settings), state.ask), now);
+  await writeConfig(home, WATCH_CONFIG, { ...state, on: false, ask: [] });
   return true;
 }
 
