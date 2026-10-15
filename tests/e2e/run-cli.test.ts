@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../helpers/cli.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -10,7 +10,7 @@ const NOTE = { workflow: "note", version: 1, description: "Adds one memo", steps
 /** A finished install of the one-step channels fixture, with one manual workflow. */
 async function home(): Promise<string> {
   const dir = await makeTempHome();
-  const started = runCli(["start", "--solution", "file:tests/fixtures/solution-channels.json"], { home: dir });
+  const started = runCli(["start", "--solution", `file:${resolve("tests/fixtures/solution-channels.json")}`], { home: dir });
   if (started.code !== 0) throw new Error(started.stderr);
   await writeWorkflow(dir, NOTE);
   return dir;
