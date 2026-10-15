@@ -37,6 +37,7 @@ import { startEmailPage } from "./core/email-page.js";
 import { renderWhy, whyCommand } from "./core/why.js";
 import { watchCommand } from "./core/watch.js";
 import { startSlackPage } from "./core/slack-page.js";
+import { startWhatsAppPage } from "./core/whatsapp-page.js";
 import { startOAuthPage } from "./core/oauth-page.js";
 import { pauseCommand, unpauseCommand } from "./core/pause.js";
 import { loadPinnedSolution, writePinnedSolution } from "./core/pin.js";
@@ -269,7 +270,7 @@ async function secretCommand(id: string): Promise<unknown> {
 async function secretServeCommand(id: string): Promise<number> {
   const store = (value: string): Promise<void> => setSecret(requirePageSecret(id), value);
   const def = await oauthConnectorFor(requireSecretId(id));
-  const page = id === "email" ? await startEmailPage({ store: (itemId, value) => setSecret(itemId, value) }) : id === "slack" ? await startSlackPage({ store: (itemId, value) => setSecret(itemId, value) }) : def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
+  const page = id === "email" ? await startEmailPage({ store: (itemId, value) => setSecret(itemId, value) }) : id === "slack" ? await startSlackPage({ store: (itemId, value) => setSecret(itemId, value) }) : id === "whatsapp" ? await startWhatsAppPage({ store: (itemId, value) => setSecret(itemId, value), existing: () => getSecret("whatsapp") }) : def ? await startOAuthPage({ def, store }) : await startSecretPage({ id, store });
   if (process.send) {
     process.send({ url: page.url });
     process.disconnect();
