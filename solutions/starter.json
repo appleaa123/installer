@@ -1,6 +1,6 @@
 {
   "id": "starter",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "data_contract": {
     "entities": {
       "contact": {
@@ -46,6 +46,8 @@
       "input": { "kind": "choice", "options": ["email", "none"] }, "default": "none" },
     { "step_id": "services.slack", "phase": "MODE", "type": "ask", "title": "Does your team use Slack? Your assistant can message members there.", "why": "Members send it a direct message in Slack to join and to talk to it. It reaches your own team only, never outside contacts. You can add it later.", "blocking": true,
       "input": { "kind": "choice", "options": ["slack", "none"] }, "default": "none" },
+    { "step_id": "services.whatsapp", "phase": "MODE", "type": "ask", "title": "Do your customers write to you on WhatsApp? Your assistant can read those messages and draft replies that you approve.", "why": "It needs a WhatsApp business number and two free accounts (Meta and Cloudflare); the setup page walks you through it. Your team keeps approving on your other channel. You can add it later.", "blocking": true,
+      "input": { "kind": "choice", "options": ["whatsapp", "none"] }, "default": "none" },
     { "step_id": "data.google", "phase": "DATA", "type": "human_action", "when": { "step": "services.records", "equals": "google-sheets" }, "title": "Sign in to Google Sheets", "why": "Your contacts stay in a Google Sheet in your own Google account; the installer reads and changes it only with this sign-in, and only after a person approves each change.", "blocking": true,
       "guide": "google-sheets",
       "instructions": ["Create your own Google app by following the guide the agent reads for you: an OAuth client of type Desktop app, and set the app to In production before you sign in", "Open the page that 'taskfollow secret google' printed (the agent runs that command for you), enter the client ID and secret, then allow access on Google's page", "Tell the agent when the page says Done"],
@@ -80,6 +82,13 @@
     { "step_id": "channels.slack", "phase": "CHANNELS", "type": "agent_action", "when": { "step": "services.slack", "equals": "slack" }, "title": "Check your Slack workspace", "why": "The installer checks the tokens and the live connection before anything goes through them.", "blocking": true,
       "intent": "Run 'taskfollow channel slack'. If it exits 2, tell the person what it says and run it again once they fixed it.", "verify": { "check": "channel_verified", "args": { "channel": "slack" } } },
     { "step_id": "channels.slack-gateway", "phase": "CHANNELS", "type": "auto", "when": { "step": "services.slack", "equals": "slack" }, "title": "Let the gateway read Slack too", "why": "The gateway reads each channel only when it starts, so it starts again to include Slack.", "blocking": true,
+      "auto": { "action": "restart_gateway" } },
+    { "step_id": "channels.whatsapp-key", "phase": "CHANNELS", "type": "human_action", "when": { "step": "services.whatsapp", "equals": "whatsapp" }, "title": "Connect your WhatsApp business number", "why": "Customers' messages reach your computer through a small relay in your own Cloudflare account; the tokens stay on this computer and never pass through the agent.", "blocking": true,
+      "instructions": ["The agent runs 'taskfollow secret whatsapp' and a page opens in your browser", "Follow its three steps: your relay (Cloudflare), your business number (Meta), and one test message from your phone", "Tell the agent when the page says Connected"],
+      "input": { "kind": "secret", "provider": "whatsapp" }, "verify": { "check": "secret_present", "args": { "id": "whatsapp" } } },
+    { "step_id": "channels.whatsapp", "phase": "CHANNELS", "type": "agent_action", "when": { "step": "services.whatsapp", "equals": "whatsapp" }, "title": "Check your WhatsApp number", "why": "The installer checks the number and the relay before any customer message goes through them.", "blocking": true,
+      "intent": "Run 'taskfollow channel whatsapp'. If it exits 2, tell the person what it says and run it again once they fixed it.", "verify": { "check": "channel_verified", "args": { "channel": "whatsapp" } } },
+    { "step_id": "channels.whatsapp-gateway", "phase": "CHANNELS", "type": "auto", "when": { "step": "services.whatsapp", "equals": "whatsapp" }, "title": "Let the gateway read WhatsApp too", "why": "The gateway reads each channel only when it starts, so it starts again to include WhatsApp.", "blocking": true,
       "auto": { "action": "restart_gateway" } },
     { "step_id": "channels.gateway", "phase": "CHANNELS", "type": "auto", "title": "Start the gateway", "why": "The gateway reads what arrives in Telegram, including the join code of the next step.", "blocking": true,
       "auto": { "action": "start_gateway" } },

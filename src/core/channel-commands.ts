@@ -1,12 +1,13 @@
 import { appendAudit } from "./audit.js";
 import { ActionFailure } from "./failure.js";
-import { CHANNEL_FACTS, channelSecret, listChannels, loadChannel, requireChannelId, saveChannel, saveCursor, type ChannelConfig, type ChannelId, type EmailConfig } from "./channels.js";
+import { CHANNEL_FACTS, channelSecret, listChannels, loadChannel, requireChannelId, saveChannel, saveCursor, type ChannelConfig, type ChannelId, type EmailConfig, type WhatsAppConfig } from "./channels.js";
 import { MAILBOX, startCursor } from "./email-channel.js";
 import { withImap } from "./imap.js";
 import { InputError } from "./inputs.js";
 import { deleteSecret, getSecret } from "./keychain.js";
 import { smtpVerify, type MailAccount } from "./smtp.js";
 import { parseSlackSecret, slackApi, type SlackIdentity } from "./slack.js";
+import { parseWhatsAppSecret, pullRelay, whatsappApi } from "./whatsapp.js";
 import { telegramApi } from "./telegram.js";
 import { MAIL_SECURITY, type MailSecurity } from "./wire.js";
 
@@ -114,6 +115,35 @@ async function verifySlack(settings: SlackSettings, now: string, env: Env): Prom
   return { channel: "slack", ...settings, team: who.team, verified_at: now };
 }
 
+/** The item the WhatsApp setup page leaves for this command: the relay address and the business number (D149). */
+export const WHATSAPP_HANDOFF = "whatsapp-settings";
+type WhatsAppSettings = Pick<WhatsAppConfig, "relay_url" | "phone_number_id" | "display_number">;
+
+async function whatsappHandoff(home: string, env: Env): Promise<{ readonly settings: WhatsAppSettings; readonly fromPage: boolean }> {
+  const stored = await getSecret(WHATSAPP_HANDOFF, env);
+  if (stored !== null) {
+    try {
+      const raw = JSON.parse(stored) as Record<string, unknown>;
+      if (typeof raw.relay_url === "string" && typeof raw.phone_number_id === "string" && typeof raw.display_number === "string") {
+        return { settings: { relay_url: raw.relay_url, phone_number_id: raw.phone_number_id, display_number: raw.display_number }, fromPage: true };
+      }
+    } catch {
+      // A damaged hand-off is treated as missing.
+    }
+  }
+  const saved = await loadChannel(home, "whatsapp");
+  if (saved?.channel === "whatsapp") return { settings: { relay_url: saved.relay_url, phone_number_id: saved.phone_number_id, display_number: saved.display_number }, fromPage: false };
+  throw new InputError("WhatsApp is not set up yet: run 'taskfollow secret whatsapp', let the person finish the page that opens, then run 'taskfollow channel whatsapp' again");
+}
+
+/** The token works for this business number, and the relay answers to the pull token. */
+async function verifyWhatsApp(settings: WhatsAppSettings, now: string, env: Env): Promise<ChannelConfig> {
+  const secrets = parseWhatsAppSecret(await channelSecret("whatsapp", env));
+  const info = await whatsappApi(secrets, settings.phone_number_id, env).phoneInfo();
+  await pullRelay(settings.relay_url, secrets.pull_token, 0, env);
+  return { channel: "whatsapp", ...settings, display_number: info.display_number || settings.display_number, verified_at: now };
+}
+
 /** `doctor` (§16.1, D103): the channel still answers with its stored secret; nothing is sent and nothing is saved. */
 export async function checkChannel(config: ChannelConfig, env: Env = process.env): Promise<string> {
   const secret = await channelSecret(config.channel, env);
@@ -130,6 +160,12 @@ export async function checkChannel(config: ChannelConfig, env: Env = process.env
       await api.connectionsOpen();
       return `the Slack app in ${config.team} answers`;
     }
+    case "whatsapp": {
+      const secrets = parseWhatsAppSecret(secret);
+      await whatsappApi(secrets, config.phone_number_id, env).phoneInfo();
+      await pullRelay(config.relay_url, secrets.pull_token, 0, env);
+      return `WhatsApp ${config.display_number} and its relay answer`;
+    }
     default:
       return config satisfies never;
   }
@@ -145,6 +181,8 @@ export function describeChannel(config: ChannelConfig) {
       return { ...base, address: config.address };
     case "slack":
       return { ...base, workspace: config.team };
+    case "whatsapp":
+      return { ...base, number: config.display_number };
     default:
       return config satisfies never;
   }
@@ -162,6 +200,7 @@ export async function channelCommand(home: string, id: string | undefined, value
   const channel: ChannelId = requireChannelId(id);
   if (channel === "telegram" && value !== undefined) throw new InputError("channel telegram takes no --value: it reads the bot token stored with 'taskfollow secret telegram'");
   if (channel === "slack" && value !== undefined) throw new InputError("channel slack takes no --value: it reads the tokens stored with 'taskfollow secret slack'");
+  if (channel === "whatsapp" && value !== undefined) throw new InputError("channel whatsapp takes no --value: it reads what 'taskfollow secret whatsapp' stored");
   if (channel === "email" && value !== undefined) await requireTerminal(home, interactive, now());
   let config: ChannelConfig;
   let consumed: string | undefined;
@@ -179,6 +218,12 @@ export async function channelCommand(home: string, id: string | undefined, value
       const handoff = await slackHandoff(home, env);
       config = await verifySlack(handoff.settings, now(), env);
       if (handoff.fromPage) consumed = SLACK_HANDOFF;
+      break;
+    }
+    case "whatsapp": {
+      const handoff = await whatsappHandoff(home, env);
+      config = await verifyWhatsApp(handoff.settings, now(), env);
+      if (handoff.fromPage) consumed = WHATSAPP_HANDOFF;
       break;
     }
     default:

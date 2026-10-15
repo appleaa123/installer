@@ -67,6 +67,6 @@ describe("taskfollow uninstall (§16.4, D109)", () => {
     await uninstall(home, { interactive: true }, () => AT, { ...OS, env });
     const again = await uninstall(home, { interactive: true }, () => AT, { ...OS, env });
     expect(again).toMatchObject({ status: "uninstalled", unregistered: { skillswiki: { unregistered: false }, installer: { unregistered: false } } });
-    expect(Object.values(again.secrets as Record<string, string>)).toEqual(["none", "none", "none", "none", "none", "none"]);
+    expect(Object.values(again.secrets as Record<string, string>)).toEqual(["none", "none", "none", "none", "none", "none", "none"]);
   });
 });

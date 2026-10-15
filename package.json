@@ -12,6 +12,7 @@
   },
   "files": [
     "dist",
+    "relay",
     "profiles",
     "connectors",
     "solutions",

@@ -143,9 +143,10 @@ describe("what a direct call leaves behind (D146)", () => {
 describe("taskfollow watch through the CLI", () => {
   it("refuses the agent (no terminal) in plain words", async () => {
     const home = await runnerHome();
-    await writePinnedSolution(home, await readFile("solutions/starter.json", "utf8"));
+    const starter = await readFile("solutions/starter.json", "utf8");
+    await writePinnedSolution(home, starter);
     const state = await loadState(home);
-    if (state) await saveState(home, { ...state, solution: { ref: "file:starter.json", id: "starter", version: "1.6.0" } });
+    if (state) await saveState(home, { ...state, solution: { ref: "file:starter.json", id: "starter", version: (JSON.parse(starter) as { version: string }).version } });
     const file = await settingsFile({});
     const refused = runCli(["watch", "on"], { home, env: env(file) });
     expect(refused.code).toBe(2);

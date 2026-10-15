@@ -4,6 +4,8 @@ import { CHANNEL_IDS, isInternalOnly, listChannels, requireChannelId, type Chann
 import { ATTACHMENT_REF, loadAttachment, readAttachment } from "./attachments.js";
 import { hasWrittenFirst, listInbox } from "./inbox.js";
 import { InputError } from "./inputs.js";
+import { appendAudit } from "./audit.js";
+import { isWhatsAppAddress } from "./whatsapp.js";
 import { listMembers } from "./members.js";
 import { deliver, outboundBlock } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
@@ -80,13 +82,31 @@ function parseSend(args: ToolArgs): ToolArgs {
   if (isInternalOnly(channel)) throw new InputError(`channel.send: ${channel} reaches your own team only; use channel.notify to message a member`);
   const raw = textArg(args, "to", "channel.send");
   if (channel === "telegram" && !TELEGRAM_CHAT.test(raw)) throw new InputError("channel.send: for telegram, 'to' is the chat id, a number (see channel.inbox, field 'thread')");
+  if (channel === "whatsapp" && !isWhatsAppAddress(raw)) throw new InputError("channel.send: for whatsapp, 'to' is the customer's phone number in digits with the country code, or their WhatsApp username id (see channel.inbox, field 'from')");
   const to = channel === "email" ? requireEmailAddress(raw, "channel.send: 'to'") : raw;
   return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel), ...attachmentsArg(args, channel), ...replyArg(args, channel) };
+}
+
+const WINDOW_MS = 24 * 3_600_000;
+/** A reply needs this much of the window left, so it is not sent just after it closed. */
+const WINDOW_MARGIN_MS = 10 * 60_000;
+
+/** WhatsApp's 24-hour window (D149), from the customer's newest message by Meta's clock; a plain refusal, else the deadline. */
+async function whatsappWindow(ctx: ToolContext, to: string): Promise<string> {
+  const wrote = (await listInbox(ctx.home)).filter((item) => item.channel === "whatsapp" && item.from === to).map((item) => item.sent_at ?? item.received_at).sort().at(-1);
+  if (!wrote) throw new InputError(`channel.send: ${to} has not written on WhatsApp, and WhatsApp only lets a business reply within 24 hours of the customer's last message. Ask them to write first, or use another channel.`);
+  const closes = Date.parse(wrote) + WINDOW_MS;
+  if (closes - Date.parse(ctx.now()) < WINDOW_MARGIN_MS) {
+    await appendAudit(ctx.home, { ts: ctx.now(), actor: "engine", event: "channel.window_closed", ref: "whatsapp", payload: { to, last_wrote: wrote } });
+    throw new InputError(`channel.send: the customer last wrote at ${wrote.slice(0, 16).replace("T", " ")} UTC, and WhatsApp only lets a business reply within 24 hours. Ask them to write again, or use another channel.`);
+  }
+  return new Date(closes).toISOString();
 }
 
 /** Opt-out and consent (§12.5): a refusal here happens before any approval is asked, or any token spent. */
 async function sendExpected(ctx: ToolContext, args: ToolArgs): Promise<ToolArgs> {
   const identity = { channel: args.channel as string, address: args.to as string };
+  if (identity.channel === "whatsapp") await whatsappWindow(ctx, identity.address);
   if (await isOptedOut(ctx.home, identity)) throw new InputError(`${identity.address} opted out of messages on ${identity.channel} (do-not-contact): nothing can be sent there`);
   const policy = await policyOf(ctx.home);
   if (policy.consent === "inbound_first" && !(await hasWrittenFirst(ctx.home, identity))) {
@@ -189,6 +209,8 @@ export const CHANNEL_TOOLS: readonly ToolDef[] = [
     fields: { channel: CHANNEL, to: { type: "string" }, text: TEXT, subject: { type: "string", maxLength: MAX_SUBJECT }, attachments: { type: "array", items: { type: "string" }, maxItems: MAX_SEND_FILES }, reply_to: { type: "string", description: "Email only: the message_id of the email this answers (see channel.inbox)" } }, required: ["channel", "to", "text"],
     parse: parseSend, expected: sendExpected, ready: sendReady, outbound: true,
     run: async (ctx, args) => {
+      // Checked again here: an approval can outlive the 24-hour window (D149).
+      if (args.channel === "whatsapp") await whatsappWindow(ctx, args.to as string);
       const refs = (args.attachments as string[] | undefined) ?? [];
       const files = await Promise.all(refs.map((ref) => loadAttachment(ctx.home, ref)));
       const reply = args.reply_to === undefined ? null : { in_reply_to: args.reply_to as string, subject: (args.subject as string | undefined) ?? replySubject((await replyTarget(ctx.home, args.to as string, args.reply_to as string)).subject) };
