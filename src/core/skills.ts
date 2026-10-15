@@ -2,6 +2,7 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { callTool, type McpTarget } from "./mcp.js";
 import { loadProfileById, type RuntimeProfile } from "./profile.js";
@@ -236,4 +237,23 @@ export function skillsBlock(sections: readonly { readonly ref: string; readonly 
     "The owner's skills for this workflow. Follow them for how to do the work. The task's rules above and the hard rules (a person is asked before sending to customers, paying, legal matters and deleting) always win over a skill.",
     ...sections.map(({ ref, text }) => `--- skill: ${ref} ---\n${text.trim()}\n--- end of skill ---`),
   ].join("\n\n");
+}
+
+/**
+ * A run's skills block (D153): each reference's text in the workflow's order, local folders checked again and read
+ * now, `skillswiki:` skills from their pinned copy (D107; `pinned` is packs.ts's pinnedSkill). A skill that cannot be
+ * read, or a block over the limit, fails the step in plain words.
+ */
+export async function runSkillsText(refs: readonly string[], roots: SkillRoots, pinned: (ref: string) => Promise<string>): Promise<string | null> {
+  const sections: { ref: string; text: string }[] = [];
+  for (const ref of refs) {
+    try {
+      sections.push({ ref, text: isSkillswikiRef(ref) ? await pinned(ref) : await localSkillText(ref, roots) });
+    } catch (error) {
+      throw new ActionFailure(`The skill '${ref}' could not be read: ${(error as Error).message}. Put the folder back, or add the workflow again under a new name without it (taskfollow workflow add)`);
+    }
+  }
+  const bytes = sections.reduce((total, section) => total + Buffer.byteLength(section.text), 0);
+  if (bytes > SKILL_TEXT_LIMIT) throw new ActionFailure(sizeMessage(bytes));
+  return skillsBlock(sections);
 }

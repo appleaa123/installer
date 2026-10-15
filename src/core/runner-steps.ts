@@ -26,6 +26,8 @@ export interface Exec {
   readonly state: InstallState | undefined;
   readonly contract: DataContract | null;
   readonly backend: () => Promise<JudgeBackend>;
+  /** The workflow's skills block for this run's prompts (9.12 item 2, D153), loaded once on first use; null without skills. */
+  readonly skills: () => Promise<string | null>;
   /** The environment a task step's agent starts from (narrowed further by agent-task.ts). */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -107,7 +109,7 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
     const itemScope = { ...scope, item };
     const input = stripFields(spec.input === undefined ? (item ?? null) : interpolate(spec.input, itemScope), hidden);
     const context = (await runContextTools(exec.ctx, spec, itemScope)).map((call) => ({ ...call, result: stripFields(call.result, hidden) as ContextCall["result"] }));
-    const outcome = await askJudge(backend, spec, input, context, skill);
+    const outcome = await askJudge(backend, spec, input, context, skill, await exec.skills());
     inputs.push(input);
     calls.push(...context);
     if (outcome.status === "ok") outputs.push(outcome.value);

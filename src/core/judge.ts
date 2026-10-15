@@ -43,11 +43,12 @@ export type JudgeOutcome =
 export const fenced = (value: unknown): string => `${UNTRUSTED_FENCE}\n${JSON.stringify(value ?? null, null, 2)}\n\`\`\``;
 
 /** JSON escapes every line break inside a value, so nothing in the input can close the fence. */
-export function judgePrompt(spec: JudgeSpec, input: unknown, context: readonly ContextCall[], skill: string | null, retry?: string): string {
+export function judgePrompt(spec: JudgeSpec, input: unknown, context: readonly ContextCall[], skill: string | null, retry?: string, skills: string | null = null): string {
   return [
     "You are a judge inside an automated workflow. You only judge: you call no tools and take no action.",
     spec.instructions,
     ...(skill === null ? [] : [`Use this skill (${spec.skill ?? "skill"}):\n--- skill ---\n${skill}\n--- end of skill ---`]),
+    ...(skills === null ? [] : [skills]),
     ...(context.length === 0 ? [] : [`Records the workflow read for you (also untrusted data):\n${fenced(context.map(({ tool, args, result }) => ({ tool, args, result })))}`]),
     `The input:\n${fenced(input)}`,
     `Answer with one JSON value only, no other text, that fits this JSON Schema:\n${JSON.stringify(spec.schema)}`,
@@ -84,10 +85,10 @@ function lowConfidence(spec: JudgeSpec, value: unknown): string | null {
 }
 
 /** D16 and §10.9: a schema failure gets one retry that names it; a second failure, or low confidence, needs a person. */
-export async function askJudge(backend: JudgeBackend, spec: JudgeSpec, input: unknown, context: readonly ContextCall[], skill: string | null): Promise<JudgeOutcome> {
+export async function askJudge(backend: JudgeBackend, spec: JudgeSpec, input: unknown, context: readonly ContextCall[], skill: string | null, skills: string | null = null): Promise<JudgeOutcome> {
   let problem: string | undefined;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const answer = await backend.ask(judgePrompt(spec, input, context, skill, problem), spec.schema);
+    const answer = await backend.ask(judgePrompt(spec, input, context, skill, problem, skills), spec.schema);
     const errors = answer.ok ? validateSchema(spec.schema, answer.value) : [answer.error];
     if (answer.ok && errors.length === 0) {
       const low = lowConfidence(spec, answer.value);
