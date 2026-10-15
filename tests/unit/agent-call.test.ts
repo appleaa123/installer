@@ -129,6 +129,20 @@ describe("making the approved call (D151)", () => {
     expect((await taskRun()).denied).toEqual([]);
   });
 
+  it("keeps the approval when the agent cannot run the call (too old), so nothing is spent for nothing", async () => {
+    const home = await runnerHome();
+    const run = await startRun(request(home));
+    await approveItem(home, 1, OWNER, LATER);
+    const { loadState, saveState } = await import("../../src/core/state.js");
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, agent_version: "8.0.0" } });
+    script([exact]);
+    expect(await resumeRun(request(home, workflow(), { now: () => LATER }), run)).toMatchObject({ status: "failed", reason: expect.stringContaining("older than") });
+    expect((await getApproval(home, 1, LATER)).status).toBe("approved");
+    expect(await agentRan()).toBe(false);
+  });
+
   it("never starts the agent when the call is rejected", async () => {
     const home = await runnerHome();
     const run = await startRun(request(home));

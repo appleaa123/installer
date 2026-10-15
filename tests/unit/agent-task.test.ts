@@ -25,8 +25,10 @@ describe("the command that hands a task to Claude Code (D139)", () => {
   it("blocks the call when the gate itself fails or times out (Claude Code lets it through otherwise)", async () => {
     const settings = JSON.parse(hookSettings("/h/hook.json", "/n/node", "/t/cli.js", "darwin")) as { hooks: Record<string, { hooks: { onFailure?: string }[] }[]> };
     expect(settings.hooks.PreToolUse?.[0]?.hooks[0]?.onFailure).toBe("block");
-    // onFailure needs Claude Code 2.1.295 or later; an older one must not be used for task steps.
-    expect((await loadProfileById("claude-code")).min_version).toBe("2.1.295");
+    // onFailure needs Claude Code 2.1.295 or later: the task command says so; the rest of TaskFollow works with older ones.
+    const claude = await loadProfileById("claude-code");
+    expect(claude.task?.min_version).toBe("2.1.295");
+    expect(claude.min_version).toBe("2.1.0");
   });
 
   it("runs restricted, with no prompts, no saved transcript, and only the step's tools plus the reason tool", async () => {

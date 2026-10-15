@@ -103,6 +103,17 @@ describe("running a task step (D139)", () => {
     expect(await loadStep(home2, run, "fix")).toMatchObject({ status: "done", output: null, skipped: true });
   });
 
+  it("fails the run before the agent starts when the agent is older than task steps need", async () => {
+    const home = await runnerHome();
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, agent_version: "8.0.0" } });
+    script({ order_found: true });
+    const run = await startRun(request(home));
+    expect(run).toMatchObject({ status: "failed", reason: expect.stringContaining("older than 9.0.0") });
+    expect(await agentRan()).toBe(false);
+  });
+
   it("fails the run in plain words when the person's agent cannot run task steps", async () => {
     const home = await runnerHome();
     const state = await loadState(home);

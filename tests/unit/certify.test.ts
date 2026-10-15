@@ -66,8 +66,8 @@ describe("taskfollow certify, the local certification (D116)", () => {
     ["a live key that is not set", { env: { ...ALL_KEYS, TELEGRAM_BOT_TOKEN: "" } }, ["the live checks lacked TELEGRAM_BOT_TOKEN"], "compatible"],
     ["no C6 rehearsal", { env: { ...ALL_KEYS, INSTALLER_LIVE_AGENT: "" } }, ["the live checks lacked INSTALLER_LIVE_AGENT=1"], "compatible"],
     ["an agent without session resume", { map: { ...CLAUDE, c5_resume: false } }, ["the agent did not pass C4, C4 schema and C5"], "compatible"],
-    ["an agent older than the profile's minimum", { map: { ...CLAUDE, agent_version: "2.0.1" } }, ["the agent's version is unknown or older than 2.1.295"], "unknown"],
-    ["no agent at all", { map: unknownRuntime("No known agent was found; fallbacks will apply") }, ["the agent did not pass C4, C4 schema and C5", "the agent's version is unknown or older than 2.1.295"], "unknown"],
+    ["an agent older than the profile's minimum", { map: { ...CLAUDE, agent_version: "2.0.1" } }, ["the agent's version is unknown or older than 2.1.0"], "unknown"],
+    ["no agent at all", { map: unknownRuntime("No known agent was found; fallbacks will apply") }, ["the agent did not pass C4, C4 schema and C5", "the agent's version is unknown or older than 2.1.0"], "unknown"],
     ["changes that are not committed", { checkout: async () => ({ commit: "abc1234", dirty: true }) }, ["the checkout has changes that are not committed"], "compatible"],
   ])("does not certify after %s, and says why", async (_name, over, reasons, tier) => {
     const deps = fakes(over as Parameters<typeof fakes>[0]);

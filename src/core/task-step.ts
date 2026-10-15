@@ -7,7 +7,7 @@ import { interpolate, type Scope } from "./expressions.js";
 import { ActionFailure } from "./failure.js";
 import { validateSchema } from "./json-schema.js";
 import { protectedFields, stripFields } from "./judge.js";
-import { loadProfileById } from "./profile.js";
+import { loadProfileById, versionAtLeast } from "./profile.js";
 import { auditRun, fingerprint, RUNS_DIR, saveStep, type RunRecord } from "./runs.js";
 import type { Exec, StepOutcome } from "./runner-steps.js";
 import type { WorkflowStep } from "./workflow.js";
@@ -40,6 +40,11 @@ export async function profileFor(exec: Exec) {
   if (!id) throw new ActionFailure("No agent was found on this computer ('taskfollow probe'), so a task step cannot run");
   const profile = await loadProfileById(id);
   if (!profile.task) throw new ActionFailure(`${profile.name} cannot run task steps yet: TaskFollow has not checked how to limit and record its tools`);
+  const version = exec.state?.runtime?.agent_version ?? null;
+  const needed = profile.task.min_version ?? profile.min_version;
+  if (version === null || !versionAtLeast(version, needed)) {
+    throw new ActionFailure(`${profile.name} ${version ?? "(unknown version)"} is older than ${needed}, which task steps need for their checks: update it, then run 'taskfollow probe'`);
+  }
   return profile;
 }
 
