@@ -26,7 +26,7 @@ describe("installer mcp-serve (D56)", () => {
     const server = await connect(home);
     const listed = (await server.request("tools/list")) as { result: { tools: { name: string }[] } };
     expect(listed.result.tools.map((tool) => tool.name)).toEqual([
-      "approvals.request", "approvals.list", "approvals.get", "memo.list", "memo.add", "memo.edit", "memo.delete",
+      "approvals.request", "approvals.list", "approvals.get", "actions.reason", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
       "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send",
     ]);

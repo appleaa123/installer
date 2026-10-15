@@ -11,6 +11,7 @@ import { checkApproval, runApprove, runJudge, runTool, type Exec, type StepOutco
 import { FINISHED, auditRun, claimRun, fingerprint, loadStep, runForKey, runIdFor, saveRun, saveStep, type RunRecord, type RunTrigger } from "./runs.js";
 import { PAUSED_REASON, isPaused } from "./pause.js";
 import { runsInSandbox } from "./sandbox.js";
+import { TASK_INTERRUPTED, runTaskStep } from "./task-step.js";
 import { loadState } from "./state.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { invokeTool, toolContext } from "./tools.js";
@@ -43,7 +44,7 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
   const ctx = { ...(await toolContext(request.home, "runner", DEFAULT_TOOLS, request.now)), sandbox: record.sandbox, run: `${record.workflow}/${record.run_id}` };
   const state = (await loadState(request.home)) ?? undefined;
   let backend: Promise<JudgeBackend> | undefined;
-  return { home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)) };
+  return { home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)), ...(request.env ? { env: request.env } : {}) };
 }
 
 /** The data a run starts from: `run`, and `event` (the inbox message, untrusted) for an event trigger. */
@@ -76,12 +77,16 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   const log = await loadStep(exec.home, record, step.id);
   if (log?.status === "waiting" && step.kind === "agent") return resumeAgent(agentRun(exec, record, step.id, step.agent, log.input, log.started_at), log);
   if (log?.status === "waiting") return checkApproval(exec, record, log);
+  if (step.kind === "task" && log?.status === "failed" && log.error === TASK_INTERRUPTED) {
+    return { kind: "stop", status: "failed", reason: `step '${step.id}': ${TASK_INTERRUPTED}, so the agent may already have acted. Check with 'taskfollow why --run ${record.run_id}' before running it again` };
+  }
   if (step.when !== undefined && !holds(step.when, scope)) {
     await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
     return { kind: "done", output: null, actions: 0, needs_human: 0 };
   }
   if (step.kind === "tool") return runTool(exec, record, step, scope, startedAt);
   if (step.kind === "judge") return runJudge(exec, record, step, scope, startedAt);
+  if (step.kind === "task") return runTaskStep(exec, record, step, scope, startedAt);
   if (step.kind === "agent") return continueAgent(agentRun(exec, record, step.id, step.agent, step.agent.input === undefined ? { ...scope } : interpolate(step.agent.input, scope), startedAt), []);
   return runApprove(exec, record, step, scope, startedAt);
 }
@@ -98,7 +103,7 @@ async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
     if (!(error instanceof InputError || error instanceof ToolRefusal || error instanceof ActionFailure)) throw error;
     const at = exec.ctx.now();
     await saveStep(exec.home, record, { step: step.id, status: "failed", started_at: at, finished_at: at, duration_ms: 0, input_fingerprint: fingerprint(null), error: error.message });
-    return { kind: "stop", status: "failed", reason: `step '${step.id}' failed: ${error.message}`, drift: step.kind !== "agent" };
+    return { kind: "stop", status: "failed", reason: `step '${step.id}' failed: ${error.message}`, drift: step.kind !== "agent" && step.kind !== "task" };
   }
 }
 

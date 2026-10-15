@@ -42,16 +42,16 @@ export interface ProcessResult {
 }
 
 /** Spawns argv with no shell (on Windows through `spawnable`, D115); stdin gets `input` (keychain values travel that way) and is closed at once. Never rejects. */
-export async function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
+export async function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
   const target = await spawnable(argv);
   if ("error" in target) return { stdout: "", code: null, error: target.error };
-  return spawnProcess(target.argv, cwd, timeoutMs, input);
+  return spawnProcess(target.argv, cwd, timeoutMs, input, env);
 }
 
-function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string): Promise<ProcessResult> {
+function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
   const [file = "", ...args] = argv;
   return new Promise((done) => {
-    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "ignore"] });
+    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "ignore"], ...(env ? { env } : {}) });
     let stdout = "";
     let failure: string | undefined;
     const timer = setTimeout(() => {
@@ -165,7 +165,16 @@ async function withSchemaFile<T>(profile: RuntimeProfile, request: HeadlessReque
 }
 
 export async function runHeadless(profile: RuntimeProfile, request: HeadlessRequest, options: HeadlessOptions): Promise<HeadlessResult> {
-  const { stdout, error } = await withSchemaFile(profile, request, (file) => runProcess(buildArgv(profile, request, file), options.cwd, options.timeoutMs ?? HEADLESS_TIMEOUT_MS));
+  return runProfileCommand(profile, request, (file) => buildArgv(profile, request, file), options);
+}
+
+/** Runs a command built from the profile (the headless call, or a task step's) and reads its answer the same way. */
+export async function runProfileCommand(profile: RuntimeProfile, request: HeadlessRequest, build: (schemaFile: string) => string[], options: HeadlessOptions & { readonly env?: NodeJS.ProcessEnv }): Promise<HeadlessResult> {
+  const { stdout, error } = await withSchemaFile(profile, request, (file) => runProcess(build(file), options.cwd, options.timeoutMs ?? HEADLESS_TIMEOUT_MS, undefined, options.env));
   if (error) return { ok: false, error };
   return readAnswer(profile, request, stdout);
 }
+
+/** The schema flag for a request, as buildArgv appends it. */
+export const schemaArgs = (profile: RuntimeProfile, schema: object | undefined, schemaFile: string): string[] =>
+  schema && profile.schema ? fillTemplate(profile.schema.flag, { schema_json: JSON.stringify(schema), schema_file: schemaFile }) : [];
