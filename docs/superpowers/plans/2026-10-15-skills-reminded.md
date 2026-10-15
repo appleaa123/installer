@@ -320,3 +320,47 @@ Record the result in `docs/human-tasks.md` (Done, "task 30, run by Claude") and 
 
 - [ ] `npm run typecheck`, full `npm test` (no edits while it runs); twice if a known flaky test fails once.
 - [ ] PR description, in plain words: what was built and why (9.5, 9.12 item 2, D153, D154); what the owner sees (`taskfollow skills`, the skill folder, the `CLAUDE.md` section, uninstall); the building blocks and their files and commands (the map row); how it was tested (unit, e2e, task 30 results). Merge on the owner's session authorization after the suite is green.
+
+---
+
+## Fable review of 2026-10-15, applied (this section overrides the tasks above where they differ)
+
+Measured against v1 (section 9). Six blocking findings, eight to fix in the same build, six minor. The three code claims checked by me against the source: `tests/e2e/run-cli.test.ts:13` uses a relative `file:` ref; `tests/e2e/install-doc.test.ts:122-125` forbids "Skills Wiki" before INSTALL.md section 11; `src/core/hardening.ts:165-171` rebuilds the next version from a fixed field list.
+
+**Task 1**
+- H1: change `tests/e2e/run-cli.test.ts:13` to `` `file:${resolve("tests/fixtures/solution-channels.json")}` ``. Prove the guard once: make the teardown throw, run one test file, see a non-zero exit, revert.
+- L4: the teardown also removes the `installer-cwd-*` folders it can find under `tmpdir()` that were made during the run (record the start time; only folders newer than it).
+
+**Task 2**
+- M4: `skillRoots` returns no `project` root when `work_dir` is the person's home folder or `realpath(project) === realpath(user)`; `inventory.notes` and `workflow add` then say: *"TaskFollow was started from your home folder, so it will not write a workflow skill or CLAUDE.md there; start it from the install folder (START-HERE step 4)."* Test: `work_dir = homedir()` → no project root, note present. Same rule for the instructions file (no `~/CLAUDE.md`).
+- M3: `localSkillText` reads `SKILL.md` and `references/*.md` only when each file's real path is inside the checked skill folder; a symlink to elsewhere is refused with the folder's message. Test.
+- M2: `SKILL_TEXT_LIMIT` (64 KB) is the limit of the **whole block** of a workflow (all its local skills together; `skillswiki:` text counted at run time). Checked at `workflow add` over all local references and again at run time. Message: `This workflow's skills come to <n> KB together; the limit is 64 KB (a run's prompt must stay small enough to start the agent)`.
+- L2: the inventory lists every pack `list_active_skills` returns (all active skills, combo or not, as 9.12 says "its active skills"); `not_mounted` packs go into `notes`.
+- M7: `tests/fixtures/profiles/fake-agent.json` gets `skills_dirs` and `instructions_file`; test homes that exercise writing get a temp `work_dir`.
+
+**Task 3**
+- H6: the owner's list is at most 9 (`MAX_OWNER_SKILLS = 9`); with the workflow's own folder first, the file holds at most 10 (`MAX_WORKFLOW_SKILLS = 10`, what `parseWorkflow` checks). `addWorkflow` parses the **final** raw (with the folder's path) before writing anything.
+- M6: `namesSkillswikiSkill` (`skillswiki.ts:58-69`) also treats a `skills` array with a `skillswiki:` entry as using Skills Wiki. Test.
+- M7: when `skills` is empty, the written file has no `skills` key (keeps `tests/unit/lifecycle.test.ts:53` exact).
+- H3: `hardenedFile` (`hardening.ts:165-171`) carries `skills` from `current`; after `harden` and `rollback`, `refreshAgentFile(home)` runs. Tests: a hardened version keeps `skills`; the section reflects the current version after harden and after rollback.
+
+**Task 4**
+- M1: the block goes **after** "Rules for this task" and before the input in `taskPrompt`, and its first line reads: *"The owner's skills for this workflow. Follow them for how to do the work. The task's rules above and the hard rules (a person is asked before sending to customers, paying, legal matters and deleting) always win over a skill."* The same line in the judge and agent prompts (there "the rules above" are the judge's and agent's own framing).
+- M5: `agentPrompt(run, turns, skills, retry?)` with `skills` awaited in `nextAnswer`; `judgePrompt(spec, input, context, skill, retry?, skills?)` keeps its first five positional parameters for the existing tests.
+- L1: the run-time failure says: *"The skill '<ref>' could not be read: <reason>. Put the folder back, or add the workflow again under a new name without it (taskfollow workflow add)."*
+
+**Task 6**
+- H4: the order is: parse and check everything, **including the agent file's markers** (read it; an unclosed marker refuses here) → write the skill folder → refresh the section (it lists the new workflow from the raw in memory) → write the workflow file → `saveWorkflowState(sandbox)` → record in `written.json` → audit. On any failure after the folder was written: remove the folder, restore the section to the bytes read at the start, write no workflow file, rethrow. Test: a disk error injected at the workflow-file write leaves no folder, the agent file byte-identical, no `written.json` entry.
+- H5: each `skill_folders` entry records `root` (the real path of the project skills folder at write time); Task 7 checks against it.
+- Scope (owner's call, decided to stay within section 9): **no `my_rules` field in the workflow file.** An agent with no known skills folder gets the gap note only: *"<agent> has no skills folder TaskFollow knows, so this workflow's own rules have nowhere to live yet; tell the person (9.7)."* `my_rules` given in that case is refused with the same words, so nothing is silently dropped.
+
+**Task 7**
+- L5: after removing, `written.json` is deleted. A second uninstall finds no record and reports `removed: { skill_folders: [], agent_file: "absent" }`.
+
+**Task 8**
+- H2: the INSTALL.md section 9 paragraph does not name Skills Wiki. It says *"(in the install folder, the person's own, and the online skills from section 11 when that is set up)"*. Run `tests/e2e/install-doc.test.ts` with the others.
+
+**Task 9**
+- M8: step 5 runs `claude -p "…" --tools "" --output-format json --no-session-persistence` (answer only, no tools) and passes only when the answer gives the **pairing**: `item2` uses `check-word`. The rules word is `OSPREY-6627` (not task 29's word).
+
+**Left as they are (owner's call, outside section 9):** L3, an audit entry when a local skill's text changes after `workflow add`; item 8 (learning) needs `my-rules.md` editable, and section 9 does not ask for pinning local skills. L6: `install-doc.test.ts`'s command-name regex still says `installer`; noted, not changed here (an unrelated pre-existing test).
