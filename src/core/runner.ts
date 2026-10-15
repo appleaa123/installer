@@ -78,7 +78,7 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   const log = await loadStep(exec.home, record, step.id);
   if (log?.status === "waiting" && step.kind === "agent") return resumeAgent(agentRun(exec, record, step.id, step.agent, log.input, log.started_at), log);
   if (log?.status === "waiting") return checkApproval(exec, record, log);
-  if (step.kind === "task" && log?.status === "failed" && log.error === TASK_INTERRUPTED) {
+  if (log?.status === "failed" && log.error === TASK_INTERRUPTED) {
     return { kind: "stop", status: "failed", reason: `step '${step.id}': ${TASK_INTERRUPTED}, so the agent may already have acted. Check with 'taskfollow why --run ${record.run_id}' before running it again` };
   }
   if (step.when !== undefined && !holds(step.when, scope)) {

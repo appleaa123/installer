@@ -30,6 +30,8 @@ export interface TaskRequest {
   readonly timeoutMs: number;
   /** The step's record file (JSON Lines), written by the hook. */
   readonly record: string;
+  /** D151: the one call a person approved; the hook allows nothing else, and that call once. */
+  readonly exact?: { readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
 }
 
 export interface TaskOptions {
@@ -92,7 +94,7 @@ export async function runTask(home: string, profile: RuntimeProfile, request: Ta
   await mkdir(dir, { recursive: true, mode: 0o700 });
   try {
     const configFile = join(dir, "hook.json");
-    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.may_use, changes: request.changes }), { mode: 0o600 });
+    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.may_use, changes: request.changes, ...(request.exact ? { exact: request.exact } : {}) }), { mode: 0o600 });
     const parts = {
       settingsJson: hookSettings(configFile, execPath, cliPath, options.platform ?? process.platform),
       mcpConfig: JSON.stringify({ mcpServers: { [TOOLS_MCP_NAME]: JSON.parse(toolsServerConfig(execPath, cliPath, home)) as unknown } }),

@@ -24,7 +24,7 @@ const MINUTE_MS = 60_000;
 
 export const callsFile = (record: RunRecord, step: string): string => join(RUNS_DIR, record.workflow, record.run_id, `${step}.calls.jsonl`);
 
-async function seal(exec: Exec, record: RunRecord, step: string, path: string): Promise<void> {
+export async function seal(exec: Exec, record: RunRecord, step: string, path: string): Promise<void> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -35,7 +35,7 @@ async function seal(exec: Exec, record: RunRecord, step: string, path: string): 
   await auditRun(exec.home, exec.ctx.now(), "run.task_calls", record, { step, file: callsFile(record, step), lines, sha256: createHash("sha256").update(text).digest("hex") });
 }
 
-async function profileFor(exec: Exec) {
+export async function profileFor(exec: Exec) {
   const id = exec.state?.runtime?.profile;
   if (!id) throw new ActionFailure("No agent was found on this computer ('taskfollow probe'), so a task step cannot run");
   const profile = await loadProfileById(id);

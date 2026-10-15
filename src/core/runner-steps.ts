@@ -1,4 +1,4 @@
-import { prepareAgentCall } from "./agent-call.js";
+import { isAgentCall, makeApprovedCall, prepareAgentCall } from "./agent-call.js";
 import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
 import { calculate } from "./calc.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
@@ -146,6 +146,7 @@ export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog)
   const id = log.approval ?? 0;
   const item = await getApproval(exec.home, id, now(exec));
   if (item.status === "pending") return { kind: "wait", approval: id };
+  if (item.status === "approved" && item.token && isAgentCall(item)) return makeApprovedCall(exec, record, log, item, item.token);
   if (item.status === "approved" && item.token) {
     const output = await invokeTool(exec.ctx, item.action.tool, { ...item.action.args, [TOKEN_ARG]: item.token });
     await save(exec, record, { ...log, status: "done", output });
