@@ -177,7 +177,7 @@ Settled by the owner on 2026-10-15, after the discussion above. The owner's answ
 
 ### 9.1 Two scopes side by side
 
-- **Current scope, finish as planned** (from `docs/next-steps.md`, nothing added): task 28 and PR #40 (approve-agent-call, D151), PR #39 (flaky tests), publish to npm, task 23 (a real-person install).
+- **Current scope, finish as planned** (from `docs/next-steps.md`, nothing added): task 28 and PR #40 (approve-agent-call, D151), PR #39 (flaky tests), publish to npm. Task 23 (a real-person install) moves to the end of v1: the owner and every other user try the product as it is after this adjustment, not before.
 - **v1 scope:** the rest of this section. From here on, every review says which of the two it measures against.
 
 ### 9.2 The goal, in the owner's words
@@ -210,6 +210,8 @@ The owner's version: *"I tell you my day, you tell me how to automate my day."*
   - the interview proposes workflows from the five shapes (9.6) and anything else the owner's day suggests; the owner picks; the owner's answers go into the workflow's skill (`references/my-rules.md`, section 5);
   - **the opportunity rule:** whenever anyone (the model, TaskFollow, any trigger) sees repetitive work that could be a workflow, it says so, shows the proposed workflow, and the owner approves or gives feedback. Nothing is created without a yes. The agent is never limited to a fixed set of workflows a developer wrote for the owner.
   - **What exists today for observing:** "I noticed" (D148) is narrow. With watching on (opt-in, Claude Code only), TaskFollow looks once a day at the agent's own calls to the services the owner chose to watch; a service used on five or more of the last 28 days gets one message to one person, once, suggesting they describe that work; then the interview runs. It observes what the agent is used for, not the owner's day, and it never sees email or messages. The opportunity rule widens it: the model proposes in chat whenever it notices repetition in what it is asked to do or in what a workflow reads. Most of that widening is an operator rule (level A), not new machinery.
+- **The bare minimum, and everything else optional.** Assume a real user is trying the product with no trust. They expect the bare minimum: *"just scan my email inbox daily and tell me here which property needs a visit"*, where "here" is the chat of their own agent. The install must work with nothing but the agent and the one service the workflow reads. Telegram, email reports, Slack and WhatsApp are optional, for a better experience, if the owner chooses them.
+  - **Build: the channel-less install.** Today Telegram is required: START-HERE lists it as a prerequisite, the starter sets it up first, and the twice-daily report, run notices and approval announcements all go through a channel (`channel.notify`; an undeliverable notice is the D122 case). v1 adds a local inbox in the engine home that holds reports, notices and pending approvals when no channel is set up, and the agent shows it at the start of every session (one operator rule). START-HERE and the starter make Telegram optional, offered as the faster way to be told.
 - **Approval when no chat session is open** (open question 1), with no new build: the person's own terminal is the deciding surface (D61) and an item waits 24 hours (D62). A scheduled run pauses at the gate; at the owner's next session the agent shows what is pending (one new operator rule in INSTALL.md: "at session start, run `taskfollow approvals list` and present what is pending in plain words"); the owner approves in their own terminal, the same "open a new terminal window" pattern START-HERE already uses. Telegram, already built, stays the optional way to be told sooner.
 
 ### 9.5 Deliverable 3: skills
@@ -276,11 +278,22 @@ In the owner's words: *"I, as a non-technical user, can install, set up, run and
    - **Reminding in chat.** One short section in the agent-level file (`CLAUDE.md`, `AGENTS.md`, or the agent's equivalent) lists the owner's workflows and the skills each uses. TaskFollow writes only that section and leaves the rest of the file alone.
    - **Workflow skills.** `taskfollow workflow add` also writes the workflow's skill folder (section 5) into the agent's skills folder, with `references/my-rules.md` from the interview, and records the path.
    - **D126 changes.** A workflow backed by a local skill is accepted without Skills Wiki; only `skillswiki:` references still need a connection.
-3. The level-B guided step and its test (9.3). To settle in the plan: a headless run cannot answer an "ask", so the test is either interactive or a settings check plus a headless probe where "ask" shows as refused.
-4. Inbox triage end to end; the owner uses it on their own mailbox.
-5. The other four workflows (9.6), the interview proposing from them, and the opportunity rule (9.4).
-6. Gap flagging (9.3, section 6).
-7. Learning into `my-rules.md` (9.5).
-8. Then 9.11: the owner's own daily use; task 23; npm publish.
+3. The bare-minimum install (9.4): the local inbox shown at session start; Telegram optional in START-HERE and the starter.
+4. The level-B guided step and its test (9.3). To settle in the plan: a headless run cannot answer an "ask", so the test is either interactive or a settings check plus a headless probe where "ask" shows as refused.
+5. Inbox triage end to end; the owner uses it on their own mailbox.
+6. The other four workflows (9.6), the interview proposing from them, and the opportunity rule (9.4).
+7. Gap flagging (9.3, section 6).
+8. Learning into `my-rules.md` (9.5).
+9. Then 9.11: the owner's own daily use; task 23; npm publish of the v1 build.
 
 Each item: plan first, Fable review, build test-first (the rule in `docs/next-steps.md`).
+
+### 9.13 Tasks of the strategy change itself
+
+This conversation is the product direction and vision correction. Every file in the project, README.md included, is subject to change to match it.
+
+1. **The product description.** README.md, START-HERE.md and the INSTALL.md introduction say the vision in 9.2 (today they say TaskFollow "deploys Skills Wiki solutions onto a client's own AI agent"). INSTALL.md's operator rules gain the new rules: show the inbox and pending approvals at session start, the opportunity rule, the skills reminder.
+2. **`docs/next-steps.md`** is rewritten from section 9 once the current scope (9.1) is finished; `docs/human-tasks.md` gains the new human tasks.
+3. **Human task: the spike** (9.12, item 1) needs the owner's real Claude Code, like tasks 25 and 26.
+4. **Where user 1's runs happen.** The owner decides at install time: a laptop (runs only while it is on and awake; missed runs are skipped, D38) or an always-on machine (Team host mode, exists). The report says plainly when runs happen and that they use the owner's own Claude plan.
+5. **Uninstall** removes everything TaskFollow wrote, the skill folders and the `CLAUDE.md`/`AGENTS.md` section included, and nothing else: no other setting of the owner's is touched (D109's rule, extended to the new files).
