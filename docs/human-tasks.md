@@ -151,8 +151,8 @@ Each task says why it is needed and what to do, step by step.
 2. The run should wait on an approval. `taskfollow approvals list`: the item shows the exact call (tool and every argument). Check the new text is what you want.
 3. Approve it in your own terminal: `taskfollow approvals approve <id> --as "<your name>"`, then let the run continue (Claude tells you the command). Expect the run to complete.
 4. Open the product in your Shopify admin: the description must be exactly the approved text, nothing else changed.
-5. `taskfollow why --run <run id>`: the approval and the one call should be there. Claude also compares the record with the approved arguments (does Claude Code pass them exactly as written?).
-6. Ask Claude to run it once more but tell the agent (in the prompt) to change the text slightly before calling: the call must be refused and the step fail with "did not make the approved call". Your store must be unchanged by this run.
+5. `taskfollow why --run <run id>`: the approval and the one call should be there. Claude also compares the record with the approved arguments (does Claude Code pass them exactly as written?), and, with a temporary debug hook in a scratch folder, captures what Claude Code sends after a failing MCP call (for example updating a product id that does not exist): TaskFollow assumes an error arrives as `isError: true`.
+6. A refused attempt on the real thing: Claude makes a temporary copy of TaskFollow in a scratch folder (never committed) whose instruction to the agent asks for a slightly different text, and runs one more approved call with it. The call must be refused and the step fail with "did not make the approved call". Your store must be unchanged by this run.
 7. Tell Claude whether Claude Code accepted the hook settings without complaint (`onFailure: "block"`, new in 2.1.295).
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

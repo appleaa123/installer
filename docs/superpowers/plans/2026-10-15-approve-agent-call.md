@@ -196,3 +196,24 @@ Slices:
 4. On-approval run and resume.
 5. Edit guards.
 6. Docs.
+
+## Fable's code review (2026-10-15), applied
+- **Must fix**
+  - **1. Results.** The result check now needs exactly one result in the whole record, for the approved tool, after
+    the marker. A result for another tool, a second result, or a result without the marker fails the run and is
+    audited.
+  - **2. Agent version.** The version is enforced where task steps run: the task command has its own
+    `task.min_version` (2.1.295), checked before the agent starts, so the approval is not spent. The profile's
+    general minimum went back to 2.1.0, so older agents keep their tier for everything else.
+- **Should fix**
+  - A damaged record is a plain failure.
+  - The record folder is made before the token is spent.
+  - Tests now cover the draft → `${draft.call}` → approve → call path end to end, a crash after the token is spent,
+    each failure case, and the version check.
+  - Human task 28 steps 5 and 6 are rewritten to be doable.
+  - The edit refusal moved into `editItem` and is audited.
+- **Minor**
+  - `AGENT_CALL_MAX_BYTES` is no longer exported.
+  - `madeMarker` is simplified.
+  - The size and type tests assert their reasons.
+  - D151 says that a dry run surfaces an oversized call.

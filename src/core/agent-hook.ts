@@ -55,7 +55,7 @@ export async function loadHookConfig(file: string): Promise<HookConfig> {
 }
 
 /** The file whose creation marks the approved call as made: next to the step's record, created at most once. */
-export const madeMarker = (record: string): string => (record.endsWith(".calls.jsonl") ? record.slice(0, -".calls.jsonl".length) : record) + ".made";
+export const madeMarker = (record: string): string => `${record.replace(/\.calls\.jsonl$/, "")}.made`;
 const APPROVED_SHOWN = 4000;
 
 /** D151: only the approved call, with exactly the approved arguments, and only the first time. */
