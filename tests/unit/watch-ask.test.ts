@@ -35,10 +35,10 @@ describe("the always-ask list, as Claude Code's own rules (D147)", () => {
     const home = await runnerHome();
     const file = await settingsFile({ permissions: { ask: ["WebFetch"] } });
     await expect(watchCommand(home, { sub: "ask", arg: REFUND, interactive: false }, NOW, env(file))).rejects.toThrow("own terminal");
-    expect(await watchCommand(home, { sub: "ask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [REFUND] });
+    expect(await watchCommand(home, { sub: "ask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [REFUND], note: expect.stringContaining("now asks") });
     expect((await read(file)).permissions).toEqual({ ask: ["WebFetch", REFUND] });
     expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toMatchObject({ ask: [REFUND] });
-    await watchCommand(home, { sub: "unask", arg: REFUND, interactive: true }, NOW, env(file));
+    expect(await watchCommand(home, { sub: "unask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [], note: expect.stringContaining("no longer asks") });
     expect((await read(file)).permissions).toEqual({ ask: ["WebFetch"] });
   });
 

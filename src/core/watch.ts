@@ -228,7 +228,7 @@ export async function watchCommand(home: string, request: { readonly sub: string
     const changed = await changeAsk(home, state, sub, requireRule(request.arg), env, now());
     await writeConfig(home, WATCH_CONFIG, changed);
     await appendAudit(home, { ts: now(), actor: "human", event: `watch.${sub}`, ref: "watch", payload: { rule: request.arg, ask: changed.ask } });
-    return { on: changed.on, services: [...changed.services], ask: [...changed.ask], note: "Claude Code now asks the person before these tools run in their own sessions; restart open sessions." };
+    return { on: changed.on, services: [...changed.services], ask: [...changed.ask], note: sub === "ask" ? "Claude Code now asks the person before these tools run in their own sessions; restart open sessions." : "Claude Code no longer asks about this tool because of TaskFollow; restart open sessions." };
   }
   let next: WatchState = state;
   if (sub === "add") next = { ...state, services: [...new Set([...state.services, requireService(request.arg)])] };
