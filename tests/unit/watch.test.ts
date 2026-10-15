@@ -68,6 +68,20 @@ describe("taskfollow watch (D146)", () => {
     }
   });
 
+  it("does not edit Claude Code's settings for a person whose agent is not Claude Code, but still lets them clean up", async () => {
+    const home = await runnerHome();
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, profile: "fake-codex" } });
+    const file = await settingsFile({ model: "opus" });
+    await watchCommand(home, { sub: "add", arg: "mcp:shopify", interactive: true }, NOW, env(file));
+    await expect(watchCommand(home, { sub: "on", interactive: true }, NOW, env(file))).rejects.toThrow("Fake Codex");
+    await expect(watchCommand(home, { sub: "ask", arg: "mcp__shopify__create_refund", interactive: true }, NOW, env(file))).rejects.toThrow("only with Claude Code");
+    expect(await read(file)).toEqual({ model: "opus" });
+    await expect(watchCommand(home, { sub: "off", interactive: true }, NOW, env(file))).resolves.toMatchObject({ on: false });
+    await expect(watchCommand(home, { sub: "unask", arg: "mcp__shopify__create_refund", interactive: true }, NOW, env(file))).resolves.toBeDefined();
+  });
+
   it("refuses a service that is not mcp:<server> or cli:<tool>", async () => {
     const home = await runnerHome();
     await expect(watchCommand(home, { sub: "add", arg: "shopify", interactive: true }, NOW, env(await settingsFile({})))).rejects.toThrow("mcp:<server> or cli:<tool>");

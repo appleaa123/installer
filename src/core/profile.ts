@@ -36,6 +36,8 @@ export interface RuntimeProfile {
   readonly mcp_remove?: { readonly cmd: readonly string[] };
   /** A task step's command (D139): the agent with its own tools, limited to `{may_use}`, under the hook in `{settings_json}`. */
   readonly task?: { readonly cmd: readonly string[] };
+  /** The person's own settings TaskFollow knows how to edit for watching and always-ask (D146, D147); none for other agents. */
+  readonly personal_settings?: "claude";
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -135,6 +137,12 @@ function optionalParts(raw: Raw): Pick<RuntimeProfile, "schema" | "resume"> {
   };
 }
 
+function personalPart(raw: Raw): Pick<RuntimeProfile, "personal_settings"> {
+  if (raw.personal_settings === undefined) return {};
+  if (raw.personal_settings !== "claude") throw new ProfileError("Profile personal_settings must be claude");
+  return { personal_settings: "claude" };
+}
+
 export function parseProfile(value: unknown, dir: string): RuntimeProfile {
   const raw = obj(value, "file");
   const id = str(raw.id, "id");
@@ -151,6 +159,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     ...optionalParts(raw),
     ...mcpParts(raw),
     ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
+    ...personalPart(raw),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };

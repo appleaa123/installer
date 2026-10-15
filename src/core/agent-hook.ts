@@ -76,10 +76,13 @@ export function decide(event: Raw, config: HookConfig): Decision {
   return { allow: true };
 }
 
+/** A constant such as `CREATED_AT` after a name like `sortKey` is not a secret (task 25). */
+const CONSTANT = /^[A-Z]+(_[A-Z]+)+$/;
+
 /** At most 200 characters of the input, with values that look like keys or tokens masked. */
 export function summarize(input: unknown): string {
   const text = (typeof input === "string" ? input : JSON.stringify(input) ?? "")
-    .replace(/(bearer|token|key|secret|password|authorization)(["':=\s]+)[^\s"',}]{8,}/gi, "$1$2[masked]")
+    .replace(/(bearer|token|key|secret|password|authorization)(["':=\s]+)([^\s"',}]{8,})/gi, (whole, name: string, gap: string, value: string) => (CONSTANT.test(value) ? whole : `${name}${gap}[masked]`))
     .replace(/\b(shpat|shpca|shppa|xox[abp]|xapp|sk|ghp|glpat)[-_][A-Za-z0-9_-]{8,}/g, "[masked]");
   return text.length > SUMMARY_MAX ? `${text.slice(0, SUMMARY_MAX - 1)}…` : text;
 }

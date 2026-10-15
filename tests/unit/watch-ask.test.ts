@@ -26,7 +26,8 @@ describe("the always-ask list, as Claude Code's own rules (D147)", () => {
 
   it("removes only the rules it was given", () => {
     expect(settingsWithoutAsk({ permissions: { ask: ["WebFetch", REFUND] } }, [REFUND])).toEqual({ permissions: { ask: ["WebFetch"] } });
-    expect(settingsWithoutAsk({ permissions: { ask: [REFUND] }, model: "x" }, [REFUND])).toEqual({ permissions: {}, model: "x" });
+    expect(settingsWithoutAsk({ permissions: { ask: [REFUND] }, model: "x" }, [REFUND])).toEqual({ model: "x" });
+    expect(settingsWithoutAsk({ permissions: { ask: [REFUND], allow: ["WebFetch"] } }, [REFUND])).toEqual({ permissions: { allow: ["WebFetch"] } });
     expect(settingsWithoutAsk({ model: "x" }, [REFUND])).toEqual({ model: "x" });
   });
 
@@ -34,10 +35,10 @@ describe("the always-ask list, as Claude Code's own rules (D147)", () => {
     const home = await runnerHome();
     const file = await settingsFile({ permissions: { ask: ["WebFetch"] } });
     await expect(watchCommand(home, { sub: "ask", arg: REFUND, interactive: false }, NOW, env(file))).rejects.toThrow("own terminal");
-    expect(await watchCommand(home, { sub: "ask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [REFUND] });
+    expect(await watchCommand(home, { sub: "ask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [REFUND], note: expect.stringContaining("now asks") });
     expect((await read(file)).permissions).toEqual({ ask: ["WebFetch", REFUND] });
     expect(await watchCommand(home, { sub: "list", interactive: false }, NOW, env(file))).toMatchObject({ ask: [REFUND] });
-    await watchCommand(home, { sub: "unask", arg: REFUND, interactive: true }, NOW, env(file));
+    expect(await watchCommand(home, { sub: "unask", arg: REFUND, interactive: true }, NOW, env(file))).toMatchObject({ ask: [], note: expect.stringContaining("no longer asks") });
     expect((await read(file)).permissions).toEqual({ ask: ["WebFetch"] });
   });
 
@@ -63,6 +64,6 @@ describe("the always-ask list, as Claude Code's own rules (D147)", () => {
     const file = await settingsFile({ model: "opus" });
     await watchCommand(home, { sub: "ask", arg: REFUND, interactive: true }, NOW, env(file));
     await uninstall(home, { interactive: true }, NOW, { platform: "darwin", node: "/usr/local/bin/node", cli: "/opt/installer/dist/cli.js", user: "installer-engine", env: { ...process.env, ...env(file) } as Record<string, string> });
-    expect(await read(file)).toEqual({ model: "opus", permissions: {} });
+    expect(await read(file)).toEqual({ model: "opus" });
   });
 });

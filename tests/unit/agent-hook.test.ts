@@ -119,6 +119,14 @@ describe("the record of a task step's calls (D137)", () => {
     expect(masked).not.toContain("shpat_0123456789abcdef");
   });
 
+  it("keeps constant names after a secret-like word, but still masks real secrets (task 25)", () => {
+    const query = summarize({ command: "shopify store execute --query 'orders(first: 1, sortKey: CREATED_AT, reverse: true)'" });
+    expect(query).toContain("sortKey: CREATED_AT");
+    for (const [name, value] of [["apiKey", "abcd1234efgh5678"], ["api_key", "abcd1234efgh5678"], ["password", "correcthorsebattery"], ["token", "ABCDEFGHIJKLMNOPQRST"]]) {
+      expect(summarize({ [name]: value })).not.toContain(value);
+    }
+  });
+
   it("reads its settings from the file the run wrote", async () => {
     const dir = await makeTempHome();
     const file = join(dir, "hook.json");
