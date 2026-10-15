@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REASON_TOOL, decide, handleHook, matchesRule, summarize, type HookConfig } from "../../src/core/agent-hook.js";
+import { ANSWER_TOOL, REASON_TOOL, decide, handleHook, matchesRule, summarize, type HookConfig } from "../../src/core/agent-hook.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const pre = (tool_name: string, tool_input: unknown) => ({ hook_event_name: "PreToolUse", session_id: "s1", tool_use_id: "t1", tool_name, tool_input });
@@ -29,6 +29,10 @@ describe("which calls a task step may make (D137)", () => {
   it("allows a listed call, and TaskFollow's own reason tool", () => {
     expect(decide(pre("mcp__shopify__get_order", { id: 1 }), READ_ONLY)).toEqual({ allow: true });
     expect(decide(pre(REASON_TOOL, { tool: "mcp__shopify__get_order", why: "the customer asked where order 1001 is" }), READ_ONLY)).toEqual({ allow: true });
+  });
+
+  it("allows Claude Code's own answer tool, which returns the step's output (--json-schema)", () => {
+    expect(decide(pre(ANSWER_TOOL, { order_found: true }), READ_ONLY)).toEqual({ allow: true });
   });
 
   it("refuses anything not listed, and says what the step allows", () => {
@@ -86,6 +90,13 @@ describe("the record of a task step's calls (D137)", () => {
     expect(ok).toMatchObject({ tool: "mcp__shopify__get_order", outcome: "ok", ms: 420, input: '{"id":1001}' });
     expect(failed).toMatchObject({ outcome: "failed", ms: 80 });
     expect(JSON.stringify(ok)).not.toContain("sam@example.com");
+  });
+
+  it("does not record the agent's answer: it is the step's output, not a call", async () => {
+    const cfg = await config();
+    const out = await handleHook("post", JSON.stringify({ ...pre(ANSWER_TOOL, { order: "#1022" }), hook_event_name: "PostToolUse", duration_ms: 0 }), cfg, NOW);
+    expect(out).toEqual({ exit: 0, stdout: "" });
+    await expect(readFile(cfg.record, "utf8")).rejects.toThrow();
   });
 
   it("records the agent's stated reason as its own line", async () => {
