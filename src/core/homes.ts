@@ -18,7 +18,7 @@ import { WORKFLOWS_DIR, WORKFLOW_FILE, type Workflow } from "./workflow.js";
 export const SHAPES: Readonly<Record<string, { readonly needs: readonly Need[]; readonly hardRule: boolean | "ask" }>> = {
   "inbox-triage": { needs: ["answers", "reads:email", "skills"], hardRule: false },
   "inbox-triage-replies": { needs: ["answers", "reads:email", "skills", "tools"], hardRule: true },
-  "lead-qualification": { needs: ["answers", "reads:messages", "skills", "writes:records", "tools"], hardRule: true },
+  "lead-qualification": { needs: ["answers", "reads:email", "skills", "writes:records", "tools"], hardRule: true },
   "crm-update": { needs: ["answers", "reads:messages", "skills", "writes:records", "tools"], hardRule: true },
   "invoice-processing": { needs: ["answers", "reads:email-attachment", "skills", "writes:records", "tools"], hardRule: true },
   "meeting-follow-up": { needs: ["answers", "reads:files", "skills"], hardRule: "ask" },
