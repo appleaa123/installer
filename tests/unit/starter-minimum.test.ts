@@ -71,6 +71,23 @@ describe("taskfollow add telegram for a team", () => {
   });
 });
 
+describe("taskfollow add telegram for a person on their own (PR #45 review)", () => {
+  it("asks to finish the install first while it is not known yet whether this is a team", async () => {
+    const { addService } = await import("../../src/core/services.js");
+    await expect(addService({ solution: STARTER } as never, state({ "services.records": "none" }), "telegram")).rejects.toThrow("Finish the install first");
+  });
+
+  it("after email was set up, comes next with the Telegram key, then the gateway restart that makes the running gateway read Telegram", async () => {
+    const { currentStep } = await import("../../src/core/engine.js");
+    const emailInstall = { ...SOLO, "services.email": "email" };
+    const finished = Object.fromEntries(visibleSteps(STARTER, state(emailInstall)).map((step) => [step.step_id, (emailInstall as Record<string, unknown>)[step.step_id] ?? "done"]));
+    const added = state({ ...finished, "services.telegram": "telegram" });
+    expect(currentStep(STARTER, added)?.step_id).toBe("channels.telegram-key");
+    const remaining = visibleSteps(STARTER, added).map((step) => step.step_id).filter((id) => !(id in finished));
+    expect(remaining).toEqual(["channels.telegram-key", "channels.telegram", "channels.telegram-gateway"]);
+  });
+});
+
 describe("the starter's suggested workflows", () => {
   it("end with their result when nobody joined a channel", () => {
     for (const flow of STARTER.workflows ?? []) expect(String(flow.instructions)).toContain("finish with the note as your summary");
