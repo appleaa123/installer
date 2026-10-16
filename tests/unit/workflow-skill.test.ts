@@ -189,6 +189,10 @@ describe("workflow add: the shipped skill of a shape (item 5)", () => {
     expect(await shipped(id)).toContain("since you last did this (or in the last 24 hours");
   });
 
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills say how many messages wait (%s)", async (id) => {
+    expect(await shipped(id)).toContain("When the input says more messages wait, end the list with how many.");
+  });
+
   it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills keep the rules heading with the pointer on its own line (%s)", async (id) => {
     const lines = (await shipped(id)).split("\n");
     expect(lines).toContain("## The owner's own rules");

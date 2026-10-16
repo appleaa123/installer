@@ -110,6 +110,16 @@ describe("the starter's suggested workflows", () => {
     expect(STARTER.version).toBe("2.1.0");
   });
 
+  it("the inbox shapes leave the time to the trigger, name their own skill, and say how many messages wait (PR #59 review)", () => {
+    const flow = (id: string) => (STARTER.workflows ?? []).find((entry) => entry.workflow === id) as { description: string; steps: { id: string; agent?: { instructions: string } }[] };
+    for (const id of ["inbox-triage", "inbox-triage-replies"]) {
+      expect(flow(id).description).not.toMatch(/\bat 8\b/);
+      const triage = flow(id).steps.find((step) => step.id === "triage")?.agent?.instructions ?? "";
+      expect(triage).toContain(`Use the ${id} skill`);
+      expect(triage).toContain("when the input says more messages wait, end the list with how many");
+    }
+  });
+
   it("inbox-triage-replies makes its list before any reply, and only the reply step can send (item 5)", () => {
     const replies = (STARTER.workflows ?? []).find((flow) => flow.workflow === "inbox-triage-replies") as { steps: { id: string; tool?: string; args?: Record<string, unknown>; agent?: { tools: string[] } }[] };
     expect(replies.steps.map((step) => step.id)).toEqual(["mail", "triage", "reply"]);
