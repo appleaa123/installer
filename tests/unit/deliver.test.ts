@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { writeConfig } from "../../src/core/data-source.js";
 import { deliverToCowork, scheduleWords } from "../../src/core/deliver.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -86,6 +87,26 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
     const failed = deliver(home, description);
     await expect(failed).rejects.toThrow(/remove it from the workflow's description or rules/);
     await expect(failed).rejects.not.toThrow(/tg-real-secret|ghp_abc/);
+  });
+
+  it.each([
+    ["a bot's name", "Ask owner_private_bot for help each morning."],
+    ["a mail server", "Connect to imap.mailhost-example.com first."],
+  ])("refuses %s nested in a channel's settings (review H3)", async (_kind, description) => {
+    const { home } = await install();
+    await writeConfig(home, join("config", "channels", "telegram.json"), { channel: "telegram", verified_at: AT, bot: { username: "owner_private_bot", id: 42 } });
+    await writeConfig(home, join("config", "channels", "email.json"), { channel: "email", verified_at: AT, address: "me@example.com", imap: { host: "imap.mailhost-example.com", port: 993 } });
+    await readyForCowork(home, description);
+    const failed = deliver(home, description);
+    await expect(failed).rejects.toThrow(/a key or a channel setting from this computer/);
+    await expect(failed).rejects.not.toThrow(/owner_private_bot|mailhost-example/);
+  });
+
+  it("still allows the person's own address in the delivered text (review H3)", async () => {
+    const { home } = await install();
+    await writeConfig(home, join("config", "channels", "email.json"), { channel: "email", verified_at: AT, address: "me@example.com", imap: { host: "imap.mailhost-example.com", port: 993 } });
+    await readyForCowork(home, "Read my inbox at me@example.com and list what matters.");
+    await expect(deliver(home, "Read my inbox at me@example.com and list what matters.")).resolves.toMatchObject({ skill: "morning-brief" });
   });
 
   it("refuses to deliver work nobody confirmed as report-only, naming why (review B2)", async () => {

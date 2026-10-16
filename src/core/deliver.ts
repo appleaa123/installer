@@ -51,9 +51,20 @@ async function forbiddenValues(home: string): Promise<string[]> {
     if (secret && secret.length >= 8) values.push(secret);
   }
   for (const config of await listChannels(home).catch(() => [])) {
-    for (const [key, value] of Object.entries(config)) if (key !== "address" && typeof value === "string" && value.length >= 8 && !/^\d{4}-\d{2}-\d{2}T/.test(value)) values.push(value);
+    const own = typeof (config as { address?: unknown }).address === "string" ? (config as { address: string }).address : undefined;
+    values.push(...settingValues(config).filter((value) => value !== own));
   }
   return values;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
+
+/** Every string of 8 or more characters in a channel's settings, nested ones included (a bot's name, a mail server), dates aside (review H3). */
+function settingValues(value: unknown): string[] {
+  if (typeof value === "string") return value.length >= 8 && !ISO_DATE.test(value) ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(settingValues);
+  if (typeof value === "object" && value !== null) return Object.values(value).flatMap(settingValues);
+  return [];
 }
 
 /** Refuses text that holds anything that must stay on this computer, naming only the kind, never the value. */
