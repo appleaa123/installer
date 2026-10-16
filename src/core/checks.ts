@@ -141,8 +141,8 @@ export async function recordResult(home: string, result: CheckResult): Promise<S
 export const abilities = (home: string): Promise<StoredResult[]> => listRecords(home, ABILITIES_DIR, isResult);
 
 /** Spec 8: the newest result for this need and agent (and workflow), unless the agent's version changed or it is over 30 days old. */
-export async function freshResult(home: string, need: Need, agent: string, agentVersion: string | null, now: string, workflow?: string): Promise<StoredResult | null> {
-  const matching = (await abilities(home)).filter((entry) => entry.need === need && entry.agent === agent && (entry.workflow ?? null) === (workflow ?? null));
+export async function freshResult(home: string, need: Need, agent: string, agentVersion: string | null, now: string, workflow?: string, exceptTests: readonly string[] = []): Promise<StoredResult | null> {
+  const matching = (await abilities(home)).filter((entry) => entry.need === need && entry.agent === agent && (entry.workflow ?? null) === (workflow ?? null) && !exceptTests.includes(entry.test));
   const newest = matching.sort((a, b) => a.at.localeCompare(b.at) || a.id - b.id).at(-1);
   if (!newest) return null;
   if (newest.agent_version !== null && agentVersion !== null && newest.agent_version !== agentVersion) return null;
@@ -182,7 +182,7 @@ export type Answerer = "agent" | "terminal" | "person";
 const READ_BACK: readonly string[] = ["t3f", "t3r"];
 
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
-const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r"];
+const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r", "t4"];
 
 /** A refusal that records nothing and leaves the challenge open with its tries untouched. */
 const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
@@ -222,6 +222,7 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
   if (challenge.test === "t8") return resultsFor(home, challenge, "yes-you-told-us", "A job on this computer marked it at or after the set time; whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell", now, via, through);
+  if (challenge.test === "t4") return resultsFor(home, challenge, "yes-tested", "The skill's text reached the agent: it gave the word only the test skill held. Whether through its skill system or by reading the file, TaskFollow cannot tell", now, via, through);
   if (READ_BACK.includes(challenge.test)) return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: it read the word back from the place it named. Writing never decides where a workflow runs", now, via, through);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }

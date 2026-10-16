@@ -29,7 +29,9 @@ const HOME_WORDS: Readonly<Record<string, (agent?: string) => string>> = {
 
 async function line(home: string, need: Need, who: AgentRef | undefined, workflow: string, now: string): Promise<string> {
   let found: StoredResult | null = null;
-  if (who) found = (await freshResult(home, need, who.agent, who.version, now, workflow)) ?? (await freshResult(home, need, who.agent, who.version, now));
+  // A chat skill check (T4) never stands in for the home's own run (T7 or T8) on this page (item 7a, RF6).
+  const except = need === "skills" ? ["t4"] : [];
+  if (who) found = (await freshResult(home, need, who.agent, who.version, now, workflow, except)) ?? (await freshResult(home, need, who.agent, who.version, now, undefined, except));
   const label = (LABELS[need] ?? need).padEnd(26);
   if (!found) return `  ⚠️ ${label} ${WORDS["not-checked"]}`;
   return `  ${ICON[found.result]} ${label} ${WORDS[found.result]}, ${found.at.slice(0, 10)}: ${found.reason}`;
