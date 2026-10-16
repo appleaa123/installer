@@ -62,6 +62,17 @@ describe("consult: the report and the clean-up (item 7 Task 8)", () => {
     expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **brief**");
   });
 
+  it("says which workflow's folder it could not put back, instead of skipping it silently (review L2)", async () => {
+    const { home, work } = await consultHome();
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    const { mkdir: mk } = await import("node:fs/promises");
+    await mk(join(work, ".claude", "skills", "brief"), { recursive: true });
+    await writeFile(join(work, ".claude", "skills", "brief", "SKILL.md"), "the person's own skill");
+    const restored = await restoreAfterConsult(home);
+    expect(restored.skipped).toEqual([{ workflow: "brief", why: expect.stringContaining("already has a skill folder named 'brief'") }]);
+    expect(await readFile(join(work, ".claude", "skills", "brief", "SKILL.md"), "utf8")).toBe("the person's own skill");
+  });
+
   it("removes the scheduled-job test's zip and the empty test folders, and keeps delivered workflows", async () => {
     const { home, work } = await consultHome();
     const { mkdir: mk } = await import("node:fs/promises");

@@ -98,12 +98,20 @@ export async function consultReportPath(home: string): Promise<string | undefine
 }
 
 /** After a consult, `taskfollow add install`: each workflow's skill folder comes back with its own rules, and the CLAUDE.md section. */
-export async function restoreAfterConsult(home: string): Promise<{ readonly skill_folders: readonly string[]; readonly agent_file: string | null }> {
+export async function restoreAfterConsult(home: string): Promise<{ readonly skill_folders: readonly string[]; readonly skipped: readonly { readonly workflow: string; readonly why: string }[]; readonly agent_file: string | null }> {
   const saved = await loadConsult(home);
   const { roots } = await installTargets(home);
   const restored: string[] = [];
+  const skipped: { workflow: string; why: string }[] = [];
   for (const id of await workflowIds(home)) {
-    const folder = await plannedSkillFolder(roots, id).catch(() => null);
+    let folder: string | null;
+    try {
+      folder = await plannedSkillFolder(roots, id);
+    } catch (error) {
+      // Review L2: never overwrite the person's own folder, and never skip in silence.
+      skipped.push({ workflow: id, why: (error as Error).message });
+      continue;
+    }
     if (!folder || !roots.project) continue;
     const workflow = await loadWorkflow(home, id, DEFAULT_TOOLS);
     const rules = saved.rules[id]?.replace(RULES_HEADING, "").trim();
@@ -113,5 +121,5 @@ export async function restoreAfterConsult(home: string): Promise<{ readonly skil
     restored.push(folder);
   }
   const agentFile = await refreshAgentFile(home);
-  return { skill_folders: restored, agent_file: agentFile };
+  return { skill_folders: restored, skipped, agent_file: agentFile };
 }

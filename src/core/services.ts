@@ -46,11 +46,14 @@ async function continueAfterConsult(deps: EngineDeps, state: InstallState): Prom
   if (state.steps[PURPOSE]?.value !== "consult") throw new InputError("This setup is not a consultation, so there is nothing to switch: it already sets TaskFollow up to run your work");
   const { readConfig } = await import("./data-source.js");
   const { CONSULT_FILE, restoreAfterConsult } = await import("./consult.js");
+  let note: string | undefined;
   if ((await readConfig(deps.home, CONSULT_FILE)) !== null) {
     await (await import("./actions.js")).runAction(deps.home, { action: "register_tools_mcp" }, state);
-    await restoreAfterConsult(deps.home);
+    const { skipped } = await restoreAfterConsult(deps.home);
+    if (skipped.length > 0) note = `Not put back: ${skipped.map((entry) => `${entry.workflow} (${entry.why})`).join("; ")}. Tell the person; their own folder was left as it is.`;
   }
-  return revise(deps, state, PURPOSE, "install", "agent");
+  const advanced = await revise(deps, state, PURPOSE, "install", "agent");
+  return note ? { ...advanced, note } : advanced;
 }
 
 const PURPOSE = "mode.purpose";

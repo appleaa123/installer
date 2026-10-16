@@ -385,7 +385,10 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
 const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   next: async ({ state, deps }) => (await advance(deps, state)).result,
   /** D134: add a service the person did not choose during the install; its steps then appear. */
-  add: async ({ state, deps }, _flags, arg) => (await addService(deps, state, requireArg(arg, "add"))).result,
+  add: async ({ state, deps }, _flags, arg) => {
+    const added = await addService(deps, state, requireArg(arg, "add"));
+    return added.note ? { ...added.result, note: added.note } : added.result;
+  },
   submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
   verify: async ({ state, deps }, _flags, arg) => {
     const verified = await verifyStep(deps, state, requireArg(arg, "verify"));
