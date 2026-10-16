@@ -33,7 +33,7 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 | 1, spike | #43 | D153 | `docs/testing/task29-spike.sh` | (test only) |
 | 2, skills | #44 | D154 | `src/core/skills.ts`, `workflow-skill.ts`, `agent-file.ts`, `lifecycle.ts` (workflow add), `runner.ts` + `agent-task.ts`/`judge.ts`/`agentic.ts` (prompts), `uninstall.ts` | `taskfollow skills`; `.claude/skills/<workflow>/` and a "TaskFollow workflows" section in `CLAUDE.md` in the install folder; "The skill '…' could not be read" when a run fails on a skill |
 | 3, bare minimum | #45 | D155 | `solutions/starter.json` 1.9.0, `src/core/solution.ts` + `visibility.ts` (`any`), `services.ts`, `why.ts`, `report.ts`, `profiles/claude-code.json` (`push`), INSTALL.md, START-HERE.md, README.md | the Telegram question; "💬 Told" and "🕒 Runs" in `taskfollow report`; "result:" and "(nobody was told: no channel)" in `taskfollow why` |
-| 4a, doability core | (this branch, `feat/doability-core`) | D159 | `src/core/words.ts`, `checks.ts`, `check-page.ts`, `check-commands.ts`, `check-runner.ts`, `check-tools.ts`, `homes.ts` | `taskfollow check start t1|t5|t7|describe`, `check home`, `check list`; a page in your browser with a word shown once; "🔎 Checked" in the report |
+| 4a, doability core | (this branch, `feat/doability-core`) | D159 | `src/core/words.ts`, `checks.ts`, `check-page.ts`, `check-commands.ts`, `check-runner.ts`, `check-tools.ts`, `homes.ts` | `taskfollow check start` (t1, t5, t7, describe), `check home`, `check list`; a page in your browser with a word shown once; "🔎 Checked" in the report |
 
 4. **Waiting on you:** merge #42 (section 9.14); say when task 28 is ready, so #40 can be brought up to date and merged (9.14 steps 1–3); item 5 (inbox triage) waits for #40.
 
