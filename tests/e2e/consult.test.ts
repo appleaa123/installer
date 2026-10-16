@@ -19,6 +19,12 @@ async function pinnedStarter(): Promise<string> {
 
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
 
+/** Every file under a folder (relative paths), for before/after snapshots; a missing folder has none. */
+async function filesUnder(root: string): Promise<string[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1)).sort();
+}
+
 describe("the consult mode, end to end (D163)", () => {
   it("leaves only its results and the report, and removes the tool registration it made", async () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
@@ -32,6 +38,9 @@ describe("the consult mode, end to end (D163)", () => {
       if (runCli(["check", "mark", started.id, word], { home, env }).code !== 0) throw new Error("check mark failed");
     };
     const home = await makeTempHome();
+    const settingsFile = process.env.INSTALLER_CLAUDE_SETTINGS ?? "";
+    const settingsBefore = await readFile(settingsFile, "utf8").catch(() => null);
+    const agentBefore = await filesUnder(agentHome);
     const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script: { answers: { "mode.purpose": "consult", "consult.names": "Marisol Okafor, Okafor Realty" }, perform: { "consult.choose": add } }, startArgs: [], env });
     expect(run.final.status).toBe("complete");
     const shown = JSON.stringify(run.calls.map((call) => call.stdout));
@@ -41,9 +50,15 @@ describe("the consult mode, end to end (D163)", () => {
     expect(await exists(join(work, ".claude", "skills", "brief"))).toBe(false);
     expect(await exists(join(work, "CLAUDE.md"))).toBe(false);
     expect(await exists(join(agentHome, "mcp", "installer.json"))).toBe(false);
+    // Snapshot: the install folder holds no file at all, the agent's MCP registrations are as before, and the
+    // agent's own settings file is untouched (PR #55 review M3).
+    expect(await filesUnder(work)).toEqual([]);
+    expect((await filesUnder(agentHome)).filter((path) => path.startsWith("mcp"))).toEqual(agentBefore.filter((path) => path.startsWith("mcp")));
+    expect(await readFile(settingsFile, "utf8").catch(() => null)).toBe(settingsBefore);
     const reports = await readdir(join(home, "exports"));
     expect(reports.some((name) => name.startsWith("consult-report-"))).toBe(true);
     expect(await readFile(join(home, "exports", reports.find((name) => name.startsWith("consult-report-")) ?? ""), "utf8")).toContain("Read it before forwarding");
+    expect(runCli(["report"], { home, env }).stdout).toContain("consult-report-");
     expect(await readdir(join(home, "state", "abilities"))).not.toEqual([]);
 
     const switched = runCli(["add", "install"], { home, env });

@@ -61,4 +61,21 @@ describe("consult: the report and the clean-up (item 7 Task 8)", () => {
     expect(await readFile(join(work, ".claude", "skills", "brief", "references", "my-rules.md"), "utf8")).toContain("Flag every repair.");
     expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **brief**");
   });
+
+  it("removes the scheduled-job test's zip and the empty test folders, and keeps delivered workflows", async () => {
+    const { home, work } = await consultHome();
+    const { mkdir: mk } = await import("node:fs/promises");
+    await mk(join(work, "taskfollow-deliver"), { recursive: true });
+    await mk(join(work, "taskfollow-check"), { recursive: true });
+    await writeFile(join(work, "taskfollow-deliver", "taskfollow-check-skill.zip"), "zip");
+    await writeFile(join(work, "taskfollow-deliver", "brief.zip"), "a delivered workflow");
+    await writeFile(join(work, "taskfollow-check", "probe.txt"), "word");
+    const { startChallenge, saveChallenge } = await import("../../src/core/checks.js");
+    const { challenge } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 60_000 }, AT);
+    await saveChallenge(home, { ...challenge, details: { zip: join(work, "taskfollow-deliver", "taskfollow-check-skill.zip"), file: join(work, "taskfollow-check", "probe.txt") } });
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    expect(await readdir(join(work, "taskfollow-deliver"))).toEqual(["brief.zip"]);
+    await expect(readdir(join(work, "taskfollow-check"))).rejects.toThrow();
+  });
 });
+

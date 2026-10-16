@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, rmdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
@@ -117,11 +117,18 @@ export async function loadChallenge(home: string, id: string): Promise<Challenge
  * removed once it is answered, cancelled or expired. Only paths inside a `taskfollow-check` folder or named
  * `taskfollow-check-…` are ever removed, whatever the challenge file says.
  */
+/** Folders a check writes into; each is removed once it is empty, never with anything else in it. */
+const CHECK_FOLDERS = ["taskfollow-check", "taskfollow-deliver"];
+
 export async function removeArtifacts(challenge: Challenge): Promise<void> {
-  for (const path of [challenge.details?.file, challenge.details?.skill_dir]) {
-    if (!path) continue;
-    const ours = basename(dirname(path)) === "taskfollow-check" || basename(path).startsWith("taskfollow-check-");
-    if (ours) await rm(path, { recursive: true, force: true });
+  for (const path of [challenge.details?.file, challenge.details?.skill_dir, challenge.details?.zip]) {
+    if (typeof path !== "string" || path === "") continue;
+    const parent = basename(dirname(path));
+    const ours = CHECK_FOLDERS.includes(parent) ? parent === "taskfollow-check" || basename(path).startsWith("taskfollow-check-") : basename(path).startsWith("taskfollow-check-");
+    if (!ours) continue;
+    await rm(path, { recursive: true, force: true });
+    // The folder goes too once nothing else is in it (a delivered workflow's zip keeps taskfollow-deliver/).
+    if (CHECK_FOLDERS.includes(parent)) await rmdir(dirname(path)).catch(() => undefined);
   }
 }
 
