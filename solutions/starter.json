@@ -520,6 +520,115 @@
           }
         }
       ]
+    },
+    {
+      "workflow": "invoice-processing",
+      "when": {
+        "all": [
+          {
+            "step": "services.email",
+            "equals": "email"
+          },
+          {
+            "step": "services.records",
+            "equals": "google-sheets"
+          }
+        ]
+      },
+      "description": "When an invoice arrives by email, reads the vendor, the amount and the due date, and records it where you choose once you approve. It never pays anything.",
+      "mode": "typed",
+      "trigger": {
+        "event": "message.received",
+        "from": "external",
+        "channel": "email"
+      },
+      "steps": [
+        {
+          "id": "read",
+          "task": {
+            "prompt": "Use the invoice-processing skill: read the attached files listed in files and say whether one is an invoice. If it is, give the vendor, the invoice number, the amount (digits only, for example 120.50), the currency, the due date (YYYY-MM-DD, or empty when none is written) and the file's name. Copy every number exactly as written; never calculate one.",
+            "input": {
+              "from": "${event.from}",
+              "message": "${event.text}",
+              "attachments": "${event.attachments}"
+            },
+            "may_use": [
+              "Read"
+            ],
+            "read_from": "attachments",
+            "output": {
+              "type": "object",
+              "properties": {
+                "is_invoice": {
+                  "type": "boolean"
+                },
+                "vendor": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "due": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "is_invoice",
+                "vendor",
+                "number",
+                "amount",
+                "currency",
+                "due",
+                "file"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "id": "save",
+          "when": "read.is_invoice == true",
+          "approve": {
+            "tool": "records.create",
+            "args": {
+              "entity": "invoice",
+              "values": {
+                "id": "${read.vendor} ${read.number}",
+                "vendor": "${read.vendor}",
+                "amount": "${read.amount}",
+                "currency": "${read.currency}",
+                "due": "${read.due}",
+                "status": "to check",
+                "file": "${read.file}"
+              }
+            },
+            "why": "Record the invoice that arrived by email"
+          }
+        },
+        {
+          "id": "report",
+          "agent": {
+            "instructions": "Use the invoice-processing skill: the result is one line naming the invoice, its vendor, its amount and its due date, or saying the email held no invoice. Never pay anything and never say an invoice was paid. Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
+            "input": {
+              "from": "${event.from}",
+              "invoice": "${read}"
+            },
+            "tools": [
+              "channel.list",
+              "channel.notify"
+            ]
+          }
+        }
+      ]
     }
   ],
   "steps": [

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -171,5 +171,50 @@ describe("CRM update (Task 3)", () => {
 
   it("report is the only agent step and says finish with the note as your summary", () => {
     expectReportEnding("crm-update");
+  });
+});
+
+describe("invoice processing (Task 5)", () => {
+  const REF = "data/inbox-files/0123456789abcdef/invoice.txt";
+
+  it("invoice-processing loads and records its shape, offered only with email and Google Sheets", async () => {
+    const home = await shapesHome(["invoice-processing"]);
+    expect((await added(home, "invoice-processing")).mode).toBe("typed");
+    expect((await loadWorkflowState(home, "invoice-processing"))?.shape).toBe("invoice-processing");
+    expect(offered({ ...SOLO, "services.email": "email", "services.records": "google-sheets" })).toContain("invoice-processing");
+    expect(offered({ ...SOLO, "services.email": "email" })).not.toContain("invoice-processing");
+  });
+
+  it("read may use only Read, from attachments, and its input carries the attachment references", () => {
+    expect(shape("invoice-processing").trigger).toMatchObject({ kind: "event", from: "external", channel: "email" });
+    expect(step("invoice-processing", "read")).toMatchObject({ kind: "task", task: { may_use: ["Read"], read_from: "attachments", changes: false, input: { attachments: "${event.attachments}" } } });
+  });
+
+  it("an invoice record is L3 and waits for the decision maker", () => {
+    const save = step("invoice-processing", "save");
+    expect(save).toMatchObject({ kind: "approve", tool: "records.create", when: "read.is_invoice == true", args: { entity: "invoice", values: { amount: "${read.amount}", status: "to check" } } });
+    const writes = Object.keys(((save as { args: { values: object } }).args.values)).map((field) => ({ entity: "invoice", field }));
+    expect(deriveLevel({ tool: "records.create", level: "L2", categories: [], writes }, contractTags(CONTRACT), {}).level).toBe("L3");
+  });
+
+  it("with is_invoice false the save step does not run, and the agent read exactly the saved attachment", async () => {
+    const home = await shapesHome(["invoice-processing"]);
+    const workflow = await added(home, "invoice-processing");
+    await mkdir(join(home, "data", "inbox-files", "0123456789abcdef"), { recursive: true });
+    await writeFile(join(home, REF), "Not an invoice, just a menu.");
+    const file = await realpath(join(home, REF));
+    const answer = { is_invoice: false, vendor: "", number: "", amount: "", currency: "", due: "", file: "" };
+    vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [{ tool: "Read", input: { file_path: file } }, { tool: "Read", input: { file_path: join(home, "state", "install-state.json") } }], answer }));
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "The email from cafe@example.com held no invoice." }]));
+    const event = { channel: "email", from: "cafe@example.com", text: "Our menu", attachments: [REF], message_id: "<m1@example.com>", untrusted: true, synthetic: true };
+    const run = await startRun({ home, workflow, key: `invoice-processing:${AT}`, trigger: { kind: "manual", sample_event: event }, now: () => AT, sandbox: true });
+    expect(run.status).toBe("completed");
+    expect((await loadStep(home, run, "save"))?.skipped).toBe(true);
+    const calls = (await readFile(join(home, "runs", "invoice-processing", run.run_id, "read.calls.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { tool: string; outcome: string });
+    expect(calls.filter((call) => call.tool === "Read").map((call) => call.outcome)).toEqual(["ok", "refused"]);
+  });
+
+  it("report is the only agent step and says finish with the note as your summary", () => {
+    expectReportEnding("invoice-processing");
   });
 });
