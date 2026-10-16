@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REASON_TOOL } from "../../src/core/agent-hook.js";
@@ -10,6 +10,7 @@ import { resumeRun, startRun, type RunRequest } from "../../src/core/runner.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { NOTICE_FILE } from "../../src/core/watch-notice.js";
+import { recordDirectCall } from "../../src/core/watch-record.js";
 import { whyCommand } from "../../src/core/why.js";
 import { parseWorkflow } from "../../src/core/workflow.js";
 import { runnerHome } from "../helpers/runner-home.js";
@@ -76,8 +77,10 @@ describe("why.show, the why command as a tool (D169)", () => {
 
   it("why.show with direct gives that day's direct calls, exactly as taskfollow why direct <day> does", async () => {
     const home = await runnerHome();
-    const expected = await whyCommand(home, "direct", () => LATER, "2026-10-14");
-    expect(await show(home, { direct: "2026-10-14" })).toEqual(expected);
+    await recordDirectCall(home, JSON.stringify({ session_id: "s", tool_name: "mcp__shopify__get_order", tool_input: { id: 1 } }), ["mcp:shopify"], "2026-10-13T09:00:00.000Z");
+    const expected = await whyCommand(home, "direct", () => LATER, "2026-10-13");
+    expect(expected.timeline).toHaveLength(1);
+    expect(await show(home, { direct: "2026-10-13" })).toEqual(expected);
   });
 
   it("why.show refuses two of run, since and direct at once", async () => {
@@ -92,15 +95,19 @@ describe("why.show, the why command as a tool (D169)", () => {
     expect((await whyCommand(home, undefined, () => LATER)).suggestions).toEqual([SUGGESTION]);
   });
 
-  it("why.show refuses a run id given as since", async () => {
+  it("why.show refuses a run id given as since, and clears no suggestion", async () => {
     const home = await runnerHome();
+    await waitSuggestion(home);
     await expect(show(home, { since: "2026-10-14-1a2b3c4d" })).rejects.toThrow("why.show: since must be a date, for example 2026-10-13");
+    expect((await whyCommand(home, undefined, () => LATER)).suggestions).toEqual([SUGGESTION]);
   });
 
-  it("why.show refuses run: \"direct\"", async () => {
+  it("why.show refuses run: \"direct\" and a direct that is no day, and clears no suggestion", async () => {
     const home = await runnerHome();
+    await waitSuggestion(home);
     await expect(show(home, { run: "direct" })).rejects.toThrow("why.show: run must be a run id");
     await expect(show(home, { direct: "today" })).rejects.toThrow("why.show: direct must be a day, for example 2026-10-14");
+    expect((await whyCommand(home, undefined, () => LATER)).suggestions).toEqual([SUGGESTION]);
   });
 
   it("why.show puts waiting suggestions first in its answer", async () => {
@@ -109,6 +116,15 @@ describe("why.show, the why command as a tool (D169)", () => {
     const shown = await show(home, {});
     expect(Object.keys(shown)[0]).toBe("suggestions");
     expect(shown.suggestions).toEqual([SUGGESTION]);
+  });
+
+  it("why.show puts a damaged suggestion file's message first too", async () => {
+    const { home } = await finishedRun();
+    await waitSuggestion(home);
+    await writeFile(join(home, NOTICE_FILE), "{ not json");
+    const shown = await show(home, {});
+    expect(Object.keys(shown)[0]).toBe("suggestions_damaged");
+    expect(shown.suggestions_damaged).toContain("config/watch-notice.json is not valid JSON");
   });
 
   it("a large why.show answer keeps the suggestions whole when a client cuts it from the end", async () => {
