@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TOKEN_PATTERN } from "./agent-hook.js";
 import { listChannels } from "./channels.js";
+import { decideHome, type AgentRef } from "./homes.js";
 import { InputError } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { loadState } from "./state.js";
@@ -90,7 +91,13 @@ export async function writeSkillZip(home: string, name: string, skill: string): 
 export const coworkCleanUp = (task: string, skill: string): string =>
   `To remove it later: delete the task "${task}" in your Scheduled list, and the skill "${skill}" in Settings, then Skills (Cowork cannot delete them from a chat)`;
 
-export async function deliverToCowork(home: string, workflow: Workflow, _options: { readonly now: string }): Promise<Delivery> {
+/**
+ * Delivery is the routing step, so it follows the home decided by code (review B2): only work whose home is the named
+ * agent's own scheduler is handed over. Hard-rule or unconfirmed work stays in TaskFollow's runner or draft-only.
+ */
+export async function deliverToCowork(home: string, workflow: Workflow, options: { readonly now: string; readonly agent: AgentRef; readonly runner: AgentRef }): Promise<Delivery> {
+  const decided = await decideHome(home, workflow, { whileAway: true, runner: options.runner, homeAgent: options.agent }, options.now);
+  if (decided.home.home !== "agent-scheduler" || decided.home.agent !== options.agent.agent) throw new InputError(`Not delivered: ${decided.why}`);
   const skill = await skillText(home, workflow);
   const schedule = `Set a scheduled task ${scheduleWords(workflow.trigger)}: use the skill ${workflow.id} and do this: ${workflow.description.trim()} Send me a short brief of the result with SendUserMessage, to me only. End the brief with: Sent by your scheduled TaskFollow workflow ${workflow.id}.`;
   await checkDelivered(home, `${skill}\n${schedule}`);

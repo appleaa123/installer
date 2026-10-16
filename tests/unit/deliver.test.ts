@@ -8,11 +8,18 @@ import { readZip, storedZip } from "../../src/core/zip.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { parseWorkflow } from "../../src/core/workflow.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+import { writeWorkflow } from "../helpers/workflow-home.js";
+import { recordResult } from "../../src/core/checks.js";
+import { confirmDescribed, descriptionHash, workflowHash } from "../../src/core/homes.js";
 import { runnerHome } from "../helpers/runner-home.js";
 
 /** Plan Task 9 (spec section 10, D158): a workflow for Claude Cowork as a skill zip plus schedule text, checked first. */
 const AT = "2026-10-16T12:00:00.000Z";
 const brief = (description: string, extra: Record<string, unknown> = {}) => parseWorkflow({ workflow: "morning-brief", version: 1, description, mode: "agentic", instructions: description, tools: ["channel.inbox"], trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, ...extra }, "morning-brief", DEFAULT_TOOLS);
+
+const COWORK = { agent: "Claude Cowork", version: null };
+const RUNNER = { agent: "fake-agent", version: "9.9.9" };
+const raw = (description: string, extra: Record<string, unknown> = {}) => ({ workflow: "morning-brief", version: 1, description, mode: "agentic", instructions: description, tools: ["channel.inbox"], trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, ...extra });
 
 async function install() {
   const home = await runnerHome();
@@ -21,6 +28,14 @@ async function install() {
   if (state) await saveState(home, { ...state, work_dir: work });
   return { home, work };
 }
+
+/** Review B2: delivery follows the home decision, so the tests set up a confirmed report-only workflow with a fresh T8 on Cowork. */
+async function readyForCowork(home: string, description: string): Promise<void> {
+  await writeWorkflow(home, raw(description));
+  await confirmDescribed(home, "morning-brief", descriptionHash(description), workflowHash(raw(description)), { sendsToOthers: false, writesOrDeletes: false }, AT);
+  await recordResult(home, { need: "scheduler", workflow: "morning-brief", result: "yes-you-told-us", reason: "you told us", at: AT, agent: "Claude Cowork", agent_version: null, test: "t8", while_away: true });
+}
+const deliver = (home: string, description: string) => deliverToCowork(home, brief(description), { now: AT, agent: COWORK, runner: RUNNER });
 
 describe("zip: a small stored zip with a real central directory (plan review 11)", () => {
   it("round-trips names and bytes, with CRCs that a reader checks", () => {
@@ -36,7 +51,8 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
     await mkdir(rules, { recursive: true });
     await writeFile(join(work, ".claude", "skills", "morning-brief", "SKILL.md"), "---\nname: morning-brief\ndescription: Use for the owner's morning brief.\n---\n\nRead my inbox and tell me what needs a visit.\n");
     await writeFile(join(rules, "my-rules.md"), "# My rules\n\nFlag repairs first.\n");
-    const out = await deliverToCowork(home, brief("Read my inbox each morning and tell me what needs a visit."), { now: AT });
+    await readyForCowork(home, "Read my inbox each morning and tell me what needs a visit.");
+    const out = await deliver(home, "Read my inbox each morning and tell me what needs a visit.");
     const entries = readZip(await readFile(out.zip));
     const names = entries.map((entry) => entry.name);
     expect(names).toEqual(["morning-brief/", "morning-brief/SKILL.md"]);
@@ -53,7 +69,8 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
 
   it("generates the skill from the description when the install folder has none", async () => {
     const { home } = await install();
-    const out = await deliverToCowork(home, brief("Read my inbox and list what matters."), { now: AT });
+    await readyForCowork(home, "Read my inbox and list what matters.");
+    const out = await deliver(home, "Read my inbox and list what matters.");
     expect(readZip(await readFile(out.zip))[1]?.data.toString("utf8")).toContain("Read my inbox and list what matters.");
   });
 
@@ -65,9 +82,26 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
   ])("refuses %s in the delivered text, without repeating it", async (_kind, description) => {
     const { home } = await install();
     await setSecret("telegram", "tg-real-secret-123456");
-    const failed = deliverToCowork(home, brief(description), { now: AT });
+    await readyForCowork(home, description);
+    const failed = deliver(home, description);
     await expect(failed).rejects.toThrow(/remove it from the workflow's description or rules/);
     await expect(failed).rejects.not.toThrow(/tg-real-secret|ghp_abc/);
+  });
+
+  it("refuses to deliver work nobody confirmed as report-only, naming why (review B2)", async () => {
+    const { home } = await install();
+    await writeWorkflow(home, raw("Read my inbox and list what matters."));
+    await expect(deliver(home, "Read my inbox and list what matters.")).rejects.toThrow(/Not delivered: .*nobody has confirmed yet/);
+  });
+
+  it("refuses to deliver hard-rule work even with every check passed (review B2)", async () => {
+    const { home } = await install();
+    const description = "Reply to each customer in my inbox.";
+    const hard = raw(description, { tools: ["channel.inbox", "channel.send"] });
+    await writeWorkflow(home, hard);
+    await confirmDescribed(home, "morning-brief", descriptionHash(description), workflowHash(hard), { sendsToOthers: false, writesOrDeletes: false }, AT);
+    await recordResult(home, { need: "scheduler", workflow: "morning-brief", result: "yes-you-told-us", reason: "you told us", at: AT, agent: "Claude Cowork", agent_version: null, test: "t8", while_away: true });
+    await expect(deliverToCowork(home, brief(description, { tools: ["channel.inbox", "channel.send"] }), { now: AT, agent: COWORK, runner: RUNNER })).rejects.toThrow(/Not delivered: Draft-only/);
   });
 
   it("says schedules in plain words", () => {

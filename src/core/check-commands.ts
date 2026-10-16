@@ -116,7 +116,10 @@ export async function checkCommand(home: string, state: InstallState | undefined
   if (sub === "cannot") return (await import("./check-email.js")).cannotCommand(home, first, context.now());
   if (sub === "deliver") {
     const workflow = await loadWorkflow(home, requireWorkflowId(first), DEFAULT_TOOLS);
-    return (await import("./deliver.js")).deliverToCowork(home, workflow, { now: context.now() });
+    if (typeof flags.value !== "string" || !/"agent"/.test(flags.value)) throw new InputError(`check deliver needs the assistant whose schedule would run it: --value '{"agent":"Claude Cowork"}'`);
+    const target = agentOf(state, flags.value);
+    const runner = state?.runtime?.profile ? agentOf(state, undefined) : { agent: "no runner agent", version: null };
+    return (await import("./deliver.js")).deliverToCowork(home, workflow, { now: context.now(), agent: { agent: target.agent, version: target.version }, runner: { agent: runner.agent, version: runner.version } });
   }
   if (sub === "missed") return (await import("./check-summary.js")).missedCommand(home, state, first, flags, context);
   if (sub === "summary") return (await import("./check-summary.js")).summaryCommand(home, state, first, flags, context);

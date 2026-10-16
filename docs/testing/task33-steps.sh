@@ -33,7 +33,7 @@ case "${1:-}" in
            echo "== a run by hand"; "${TF[@]}" run morning-brief --sandbox | tail -c 400; echo
            echo "== why"; "${TF[@]}" why ;;
   t8)      cd "$DIR" && "${TF[@]}" check start t8 --workflow morning-brief --value "$COWORK" ;;
-  deliver) cd "$DIR" && "${TF[@]}" check deliver morning-brief ;;
+  deliver) cd "$DIR" && "${TF[@]}" check deliver morning-brief --value '{"agent":"Claude Cowork"}' ;;
   home2)   cd "$DIR" && "${TF[@]}" check summary morning-brief --value "$AWAY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).text))' ;;
   clean)   cd "$DIR" && "${TF[@]}" gateway stop
            claude mcp remove -s user installer

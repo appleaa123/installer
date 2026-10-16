@@ -31,6 +31,8 @@ export interface CheckResult {
   readonly via?: string;
   /** What carried the word back: the tool `check.ping`, the command `check mark`, or `check answer` (review B2). */
   readonly through?: Through;
+  /** T8 only: whether it ran while the person was away (around the set time, window closed), not "well after" (review H2). */
+  readonly while_away?: boolean;
 }
 export type Through = "ping" | "mark" | "answer";
 export type StoredResult = CheckResult & NumberedRecord;
