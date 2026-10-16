@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { runTask } from "./agent-task.js";
 import { listChannels } from "./channels.js";
-import { CHECKS_DIR, cancelChallenge, loadChallenge, recordResult, startChallenge, type Need } from "./checks.js";
+import { CHECKS_DIR, abilities, cancelChallenge, loadChallenge, recordResult, startChallenge, type Need } from "./checks.js";
 import { loadProfileById } from "./profile.js";
 import { skillsBlock } from "./skills.js";
 import type { InstallState } from "./types.js";
@@ -62,15 +62,18 @@ export async function runnerCheck(home: string, state: InstallState | undefined,
   const after = await loadChallenge(home, challenge.id);
   const hooked = await pingUnderHook(record);
   const now = options.now();
-  if (after?.status === "open") {
-    await cancelChallenge(home, after, "the task did not make the test call", now);
-    for (const need of needs) await recordResult(home, { need, ...(workflow ? { workflow: workflow.id } : {}), result: "not-checked", reason: "The agent's task ran but did not make the test call, so TaskFollow saw nothing", at: now, agent, agent_version: version, test: "t7", challenge: challenge.id });
-    return { test: "t7", passed: false, why: "the task did not make the test call" };
-  }
-  if (!hooked) {
-    for (const need of needs) await recordResult(home, { need, ...(workflow ? { workflow: workflow.id } : {}), result: "not-checked", reason: "The test call arrived, but not from the task under TaskFollow's hook", at: now, agent, agent_version: version, test: "t7", challenge: challenge.id });
-    return { test: "t7", passed: false, why: "the test call did not come from the task" };
-  }
+  // Review B3: a pass needs all of it: the challenge closed by a right word that came through the tool over MCP, and
+  // the task's own call record showing that call under the hook. A wrong word, a command, or a call from elsewhere is not.
+  const throughTool = (await abilities(home)).some((entry) => entry.challenge === challenge.id && entry.result === "yes-tested" && entry.via === "mcp" && entry.through === "ping");
+  const fail = async (reason: string, why: string): Promise<Record<string, unknown>> => {
+    if (after?.status === "open") await cancelChallenge(home, after, why, now);
+    for (const need of needs) await recordResult(home, { need, ...(workflow ? { workflow: workflow.id } : {}), result: "not-checked", reason, at: now, agent, agent_version: version, test: "t7", challenge: challenge.id });
+    return { test: "t7", passed: false, why };
+  };
+  if (after?.status === "open") return fail("The agent's task ran but did not make the test call, so TaskFollow saw nothing", "the task did not make the test call");
+  if (!throughTool) return fail("The check was answered, but not with the right word through TaskFollow's tool, so it does not show the runner works", "the right word did not come through the tool");
+  if (after?.status !== "done") return fail("The check was cancelled before it was answered", "the check was cancelled");
+  if (!hooked) return fail("The test call arrived, but not from the task under TaskFollow's hook", "the test call did not come from the task");
   if (workflow && usesTool(workflow, "channel.inbox")) {
     const channels = (await listChannels(home)).filter((config) => config.channel === "email");
     for (const config of channels) await recordResult(home, { need: `reads:${config.channel}`, workflow: workflow.id, result: "yes-tested", reason: "Met by construction: on TaskFollow's own runner, the workflow reads TaskFollow's own email channel, which TaskFollow checked when it was connected", at: now, agent, agent_version: version, test: "t7" });

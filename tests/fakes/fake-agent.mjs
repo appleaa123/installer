@@ -154,6 +154,10 @@ function inputFor(call, prompt) {
     const word = /TaskFollow check word: (\S+)/.exec(prompt);
     return { id: id ? id[1] : "", word: word ? word[1] : "" };
   }
+  if (call.input === "wrong-word") {
+    const id = /check\.ping with id (\S+?)[.,]?(\s|$)/.exec(prompt);
+    return { id: id ? id[1] : "", word: "WRONG-ZZZZ" };
+  }
   if (call.input !== "from-prompt") return call.input;
   const match = /check\.ping with id (\S+) and word (\S+?)[.,]?(\s|$)/.exec(prompt);
   return match ? { id: match[1], word: match[2] } : {};
@@ -167,6 +171,17 @@ function task() {
   const prompt = valueOf("-p") ?? "";
   script.calls.forEach((raw, index) => {
     const call = { ...raw, input: inputFor(raw, prompt) };
+    // Review B3: someone on this computer answers the check by command, outside the task and its hook
+    // (the word is visible in the task's arguments). FAKE_AGENT_CLI and FAKE_AGENT_MARK_HOME name the CLI and home.
+    if (raw.tool === "__outside_mark") {
+      const found = inputFor({ input: "from-prompt" }, prompt);
+      try {
+        execFileSync(process.execPath, [process.env.FAKE_AGENT_CLI, "--home", process.env.FAKE_AGENT_MARK_HOME, "check", "mark", found.id ?? "", found.word ?? ""], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      } catch (error) {
+        run.outputs.push(String(error.message));
+      }
+      return;
+    }
     const payload = { session_id: session, tool_use_id: `toolu_${index}`, tool_name: call.tool, tool_input: call.input };
     if (refusedBy(runHooks(settings, "PreToolUse", payload))) return run.denied.push(call.tool);
     const started = Date.now();

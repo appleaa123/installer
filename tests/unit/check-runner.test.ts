@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runnerCheck } from "../../src/core/check-runner.js";
 import { saveChannel } from "../../src/core/channels.js";
@@ -38,6 +39,25 @@ describe("T7: TaskFollow's own runner as a home", () => {
     const workflow = parseWorkflow({ workflow: "brief", version: 1, mode: "agentic", instructions: "Read the inbox and brief me.", tools: ["channel.inbox", "channel.notify"] }, "brief", DEFAULT_TOOLS);
     await runnerCheck(home, (await loadState(home)) ?? undefined, { now: () => AT, workflow });
     expect(await freshResult(home, "reads:email", "fake-agent", "9.9.9", AT, "brief")).toBeNull();
+  }, 60_000);
+
+  it("does not pass when the task pings with the wrong word, though the calls succeed under the hook (review B3)", async () => {
+    const home = await runnerHome();
+    script([{ tool: "mcp__installer__check_ping", input: "wrong-word" }, { tool: "mcp__installer__check_ping", input: "wrong-word" }]);
+    const out = await runnerCheck(home, (await loadState(home)) ?? undefined, { now: () => AT });
+    expect(out).toMatchObject({ passed: false });
+    expect(await freshResult(home, "runner", "fake-agent", "9.9.9", AT)).toMatchObject({ result: "not-checked" });
+  }, 60_000);
+
+  it("does not pass when the word is answered by command outside the task (review B3)", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_CLI", resolve("dist/cli.js"));
+    vi.stubEnv("FAKE_AGENT_MARK_HOME", home);
+    script([{ tool: "__outside_mark" }, { tool: "mcp__installer__check_ping", input: "from-prompt" }]);
+    const out = await runnerCheck(home, (await loadState(home)) ?? undefined, { now: () => AT });
+    expect((await abilities(home)).some((entry) => entry.test === "t7" && entry.through === "mark")).toBe(true);
+    expect(out).toMatchObject({ passed: false });
+    expect(await freshResult(home, "runner", "fake-agent", "9.9.9", AT)).toMatchObject({ result: "not-checked" });
   }, 60_000);
 
   it("says plainly when the agent cannot be run unattended here", async () => {
