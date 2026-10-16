@@ -64,6 +64,13 @@ describe("T3 writing (writes:files, writes:records)", () => {
     expect(tabs.size).toBe(0);
   });
 
+  it("records not checked when no sheet is connected, like the reads variant (review 8 of PR #54)", async () => {
+    const home = await runnerHome();
+    const out = await checkCommand(home, (await loadState(home)) ?? undefined, ["start", "t3r"], {}, { ...ctx, sheets: async () => null });
+    expect(out).toMatchObject({ need: "writes:records", result: "not checked" });
+    expect((await abilities(home)).at(-1)).toMatchObject({ need: "writes:records", result: "not-checked", test: "t3r" });
+  });
+
   it("never tests a target TaskFollow did not make, and says how such writes are gated", async () => {
     const { home } = await install();
     expect(await run(home, ["start", "t3f"], { value: '{"target":"/Users/me/crm.csv"}' })).toMatchObject({ result: "not checked", why: expect.stringContaining("approve-agent-call") });

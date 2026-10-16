@@ -41,7 +41,14 @@ export async function startWritesFiles(home: string, state: InstallState | undef
 
 export async function startWritesRecords(home: string, state: InstallState | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
   const target = await (context.sheets ?? connectedSheet)(home);
-  if (!target?.client.addTab) return { need: "writes:records", result: "not checked", why: "Not checked: TaskFollow can only test writing into a sheet tab it made, through its own Google Sheets connection, and none is connected" };
+  if (!target?.client.addTab) {
+    // Review 8 of PR #54: recorded like the reads variant, so the summary and the report show it.
+    const why = "Not checked: TaskFollow can only test writing into a sheet tab it made, through its own Google Sheets connection, and none is connected";
+    const { agent, version } = agentOf(state, typeof flags.value === "string" ? flags.value : undefined);
+    const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
+    await recordResult(home, { need: "writes:records", ...(workflow ? { workflow } : {}), result: "not-checked", reason: why, at: context.now(), agent, agent_version: version, test: "t3r" });
+    return { need: "writes:records", result: "not checked", why };
+  }
   const begun = await begin(home, state, flags, context, "t3r", "writes:records");
   if (!("challenge" in begun)) return begun;
   const { challenge, word } = begun as { challenge: Challenge; word: string };
