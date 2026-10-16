@@ -165,3 +165,33 @@ export async function decideHome(home: string, workflow: Workflow, wish: { while
 
 - **Human task 33 (the owner):** the email-brief example end to end. On Claude Code: the work done once, T7 per workflow, Home 1 decided, a scheduled run of the brief by TaskFollow's runner. On Claude Cowork: T8 with the delivered skill zip, Home 2 decided, the real brief scheduled from the delivered schedule text, arriving on the phone. The owner judges whether it felt worth it (spec section 11: the test of the whole idea).
 - [ ] Docs tests, typecheck, full suite twice, Fable code review, fix, PR in plain words, merge.
+
+---
+
+## Fable review of 2026-10-16, applied (overrides the tasks above where they differ)
+
+Verdict: ready after six blocking fixes; all applied below.
+
+**Blocking**
+1. **Slow hash** (Task 1). The word has about 25 bits; sha256 is reversible in under a second by the same-user agent. `wordHash` → `scryptSync(normalize(word), salt, 32, { N: 2**15 })` with a per-challenge random salt stored beside it; `normalize` = what `sameWord` ignores (case, spaces, dashes), applied on both sides. `abilities.json` stores the challenge id, not a hash of the word.
+2. **The shape is not read from a file the agent writes** (Tasks 5, 3). `workflow add <suggested id>` records `{ shape, content_hash }` in the workflow's *state* (`saveWorkflowState`), never in `workflow.json`; `decideHome` honours the shape only while sha256 of the current file's canonical JSON equals `content_hash` (a hardened or edited workflow is treated as described until reconfirmed). **Code floor**: any tool step or approve step whose level needs approval (`needsApproval`, `levels.ts`), any task step with `changes: true`, makes it hard-rule work, whatever the shape or the person's answers. Review Focus 3's test is rewritten: a `"shape"` written into `workflow.json` is ignored; a hard-rule workflow with a forged state shape but a different content hash is hard-rule.
+3. **The page child gets the home and the word** (Task 2). `launchCheckPage(home, id, word?)` spawns `[cli, "--home", home, "check-serve", id]`; after the child reports its pid over IPC, the parent sends `{ word }` over the same IPC channel (never argv, a file or the environment). `check-serve` has **no stdout fallback**: without IPC it exits with an error. A restart during the word page cancels that challenge; the confirmation page needs no word and reopens from disk.
+4. **The fake agent really calls TaskFollow's tools** (Task 4). Extend `task()` in `tests/fakes/fake-agent.mjs`: a tool named `mcp__installer__<x>` parses `--mcp-config`, spawns the stdio server (pattern of `tests/helpers/stdio-mcp.ts`), does initialize + tools/call, and uses the real result. T7 calls `runTask` directly with a `TaskRequest` (`parseMayUse` refuses `mcp__installer*` in workflows); its pass needs both the result recorded with `ctx.via === "mcp"` and a `mcp__installer__check_ping` line with `outcome: ok` in the step's calls record.
+5. **Planting email** (Task 8, recorded in D159/D160). The plant calls the email connector's `send` directly (`email-channel.ts`), only ever to the configured address itself, audited `check.planted` without the word; it is not a message to anyone else, so it is not routed through `deliver` (D79 covers messages to people; this is a self-addressed test). TaskFollow's inbound filter drops mail from the mailbox's own address, so TaskFollow's own channel never sees a plant: that is fine, because a TaskFollow-channel source is met by construction for Home 1 only (spec 4).
+6. **Home 1 reads through TaskFollow's email channel** (decided). The owner's email brief on Claude Code is an agentic workflow with `channel.inbox` and `channel.notify` (the starter's pattern), needing TaskFollow's email channel and its gateway. Per-workflow T7 proves `runner`, `tools` and `skills`; `reads:email` on Home 1 is met by construction. Human task 33 sets up the email channel with the owner's test Gmail (app password).
+
+**High**
+7. **Review Focus 1's test** (Task 3): `systemOpener(platform, env)` is unit-tested as a pure function (ignores the environment except `none`, ignores PATH, absolute paths). The e2e runs `check start` with `INSTALLER_BROWSER=none`, `SSH_CONNECTION` set and a fake `open` first in PATH, and asserts no `127.0.0.1:<port>` or page path in stdout, stderr, JSON or any file under the home, and an empty fake-`open` log. `headlessHint` is not reused.
+8. **CLI arguments** (Task 3): `check mark <id> <word>` and `check answer <id> <text>` need a fourth positional; add it to the parser, and add `--workflow` and an agent name for a profile-less home agent (`--value '{"agent":"Claude Cowork"}'`, or asked on the page), stored with `agent_version: null` (only the 30-day rule applies, said on the page).
+9. **Report** (Task 6): abilities reach `buildReport` through its extras (the `pushNote` pattern), from the callers that have them; `buildReport` stays synchronous.
+10. **No write races** (Task 1): results are numbered records (`state/abilities/<n>.json`, `numbered.ts`), not one shared file; `abilities()` reads them all.
+11. **Zip writer** (Task 9): a small stored-entries zip writer with `zlib.crc32` (Node 22), no OS command; the test parses the central directory: one top folder, `SKILL.md` at its top, no `.claude-plugin`.
+
+**Medium**
+12. **The T8 checklist is a third page state** (Task 10): *I see the task in its list* → (manual plant) the subject shown → *I closed the window* → the page process plants the email (it is the only process alive then). D160 records that this page kind writes `state/checks` and the audit (D47's page writes only the keychain), through `appendAudit`.
+13. **`check mark` from this computer's own scheduler** (OpenClaw/Hermes cron): at or after the scheduled time, not from a terminal → yes-tested; included in Task 10. Two wrong words cancel a challenge (`mark` as `answer`).
+14. **Parent chain**: a best-effort `ps -o ppid=` walk by absolute path on POSIX, empty on Windows; it only annotates the reason.
+15. **The two-question confirmation for described workflows** is part of Task 5's confirmation page in 4a; until a workflow is confirmed it is hard-rule work, Home 1 or draft-only.
+16. **`answers`** is derived in `decideHome` from any fresh acting result (T1, T2, T7, T8, the work done once), not only T1.
+
+**Split**: Task 2 becomes 2a (opener and launch) and 2b (the pages).
