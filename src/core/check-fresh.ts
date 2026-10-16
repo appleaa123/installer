@@ -18,19 +18,23 @@ const newestOf = (entries: readonly StoredResult[]): StoredResult | undefined =>
 const stale = (entry: StoredResult, version: string | null, now: string): boolean =>
   (entry.agent_version !== null && version !== null && entry.agent_version !== version) || Date.parse(now) - Date.parse(entry.at) > FRESH_DAYS * DAY_MS;
 
-/** Why this need's newest result no longer holds, or null: stale after a pass, a no, or a not-checked that followed a pass. */
-function problem(entries: readonly StoredResult[], version: string | null, now: string): string | null {
+/**
+ * Why this need's newest result no longer holds, or null: stale after a pass, a no, or a not-checked that followed a
+ * pass. `passedBefore` covers both scopes, so a run that contradicts an agent-wide pass still stops the workflow.
+ */
+function problem(entries: readonly StoredResult[], version: string | null, now: string, passedBefore = entries.some((entry) => entry.result === "yes-tested")): string | null {
   const newest = newestOf(entries);
   if (!newest) return null;
   if (newest.result === "no-tested") return `it failed on ${newest.at.slice(0, 10)}`;
   if (newest.result === "yes-tested") return stale(newest, version, now) ? `it was last tested on ${newest.at.slice(0, 10)}, with ${newest.agent_version === version ? "this" : "another"} version of the agent` : null;
-  return entries.some((entry) => entry.result === "yes-tested") ? `a run went wrong on ${newest.at.slice(0, 10)}` : null;
+  return passedBefore ? `a run went wrong on ${newest.at.slice(0, 10)}` : null;
 }
 
-/** The workflow's own results for a need, else the agent-wide ones (the scope fall-through of homes.ts `passed`). */
-function scoped(all: readonly StoredResult[], need: Need, agent: string, workflow: string): StoredResult[] {
+/** The workflow's own results for a need, else the agent-wide ones (the scope fall-through of homes.ts `passed`), and whether either scope ever passed. */
+function scoped(all: readonly StoredResult[], need: Need, agent: string, workflow: string): { entries: StoredResult[]; passedBefore: boolean } {
   const mine = all.filter((entry) => entry.need === need && entry.agent === agent && entry.workflow === workflow);
-  return mine.length > 0 ? mine : all.filter((entry) => entry.need === need && entry.agent === agent && entry.workflow === undefined);
+  const wide = all.filter((entry) => entry.need === need && entry.agent === agent && entry.workflow === undefined);
+  return { entries: mine.length > 0 ? mine : wide, passedBefore: [...mine, ...wide].some((entry) => entry.result === "yes-tested") };
 }
 
 export async function runnerStopReason(home: string, workflow: string, state: InstallState | undefined, now: string): Promise<string | null> {
@@ -40,7 +44,8 @@ export async function runnerStopReason(home: string, workflow: string, state: In
   if (!agent) return null;
   const all = await abilities(home);
   for (const need of ["runner", "tools"] as const) {
-    const why = problem(scoped(all, need, agent, workflow), state?.runtime?.agent_version ?? null, now);
+    const { entries, passedBefore } = scoped(all, need, agent, workflow);
+    const why = problem(entries, state?.runtime?.agent_version ?? null, now, passedBefore);
     if (why) return `Not run: this workflow's check of TaskFollow's runner no longer holds (${why}). ${RECHECK(workflow)}`;
   }
   return null;

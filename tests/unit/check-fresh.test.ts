@@ -27,6 +27,18 @@ async function shaped(home: string) {
 }
 
 describe("the runner's stop rule (review B6)", () => {
+  it("stops a workflow when a run contradicts an agent-wide pass (review 2 of PR #54)", async () => {
+    const home = await runnerHome();
+    await shaped(home);
+    await pass(home, "runner", NOW);
+    await pass(home, "tools", NOW);
+    const state = (await loadState(home)) ?? undefined;
+    expect(await runnerStopReason(home, "brief", state, NOW)).toBeNull();
+    const { noteContradiction } = await import("../../src/core/check-fresh.js");
+    await noteContradiction(home, "brief", state, "2026-10-16T13:00:00.000Z");
+    expect(await runnerStopReason(home, "brief", state, "2026-10-16T13:00:00.000Z")).toContain("a run went wrong");
+  });
+
   it("never stops a workflow from before item 4 (no shape, no answers)", async () => {
     const home = await runnerHome();
     await writeWorkflow(home, BRIEF);
