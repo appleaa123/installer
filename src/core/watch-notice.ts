@@ -3,9 +3,7 @@ import { join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
-import { ActionFailure } from "./failure.js";
-import { InputError } from "./inputs.js";
-import { ToolRefusal } from "./approvals.js";
+import { isCustomersOnly, listChannels } from "./channels.js";
 import { loadWatch } from "./watch.js";
 import { CALLS_DIR, REASON_NAME } from "./watch-record.js";
 
@@ -72,7 +70,8 @@ export interface WaitingSuggestion {
   readonly text: string;
 }
 
-const isDomainError = (error: unknown): boolean => error instanceof InputError || error instanceof ActionFailure || error instanceof ToolRefusal;
+/** No channel reaches the person (D155): the same rule `taskfollow why` uses; WhatsApp reaches customers, not them. */
+const noChannel = async (home: string): Promise<boolean> => (await listChannels(home)).every((config) => isCustomersOnly(config.channel));
 
 function waitingOf(notice: Raw): WaitingSuggestion[] {
   const list = Array.isArray(notice.waiting) ? notice.waiting : [];
@@ -101,20 +100,27 @@ export async function noticeHabits(home: string, now: () => string, notify: (mem
   const suggested = Array.isArray(notice.suggested) ? notice.suggested.filter((entry): entry is string => typeof entry === "string") : [];
   const counts = await habits(home, watch.services, at);
   const fresh = Object.entries(counts).filter(([service, days]) => days >= MIN_DAYS && !suggested.includes(service)).map(([service]) => service);
-  const waiting = waitingOf(notice);
+  const keep = await noChannel(home);
+  const kept: WaitingSuggestion[] = [];
   for (const service of fresh) {
     const days = counts[service] ?? 0;
     const text = `I noticed your agent used ${plainName(service)} on ${days} of the last ${WINDOW_DAYS} days. If it is the same work each time, tell your assistant what you do there: it can propose a workflow that runs by itself and asks you before anything that matters. Nothing changes unless you say so.`;
-    let delivered = true;
-    try {
-      await notify(watch.suggest_to, text);
-    } catch (error) {
-      if (!isDomainError(error)) throw error;
-      delivered = false;
-      waiting.push({ at, text });
+    if (keep) {
+      // Nobody can be reached now: kept for the next session (D164), never tried and lost.
+      kept.push({ at, text });
+      await appendAudit(home, { ts: at, actor: "engine", event: "watch.noticed_waiting", ref: "watch", payload: { service, days, to: watch.suggest_to } });
+      continue;
     }
-    await appendAudit(home, { ts: at, actor: "engine", event: "watch.noticed", ref: "watch", payload: { service, days, to: watch.suggest_to, delivered } });
+    // A person with a channel: any failure surfaces to the tick as before (D148), so it is retried, not queued.
+    await notify(watch.suggest_to, text);
+    await appendAudit(home, { ts: at, actor: "engine", event: "watch.noticed", ref: "watch", payload: { service, days, to: watch.suggest_to } });
   }
-  await writeConfig(home, NOTICE_FILE, { checked: at.slice(0, 10), suggested: [...suggested, ...fresh], waiting });
+  // Read again right before writing, so what another process wrote meanwhile (a suggestion `why` cleared, or one kept)
+  // is merged rather than overwritten; the remaining window is the few milliseconds of this read and write (D164).
+  const latestRaw = await readConfig(home, NOTICE_FILE);
+  const latest = isRecord(latestRaw) ? latestRaw : {};
+  const latestSuggested = Array.isArray(latest.suggested) ? latest.suggested.filter((entry): entry is string => typeof entry === "string") : [];
+  const allSuggested = [...new Set([...suggested, ...latestSuggested, ...fresh])];
+  await writeConfig(home, NOTICE_FILE, { ...latest, checked: at.slice(0, 10), suggested: allSuggested, waiting: [...waitingOf(latest), ...kept] });
   return fresh;
 }

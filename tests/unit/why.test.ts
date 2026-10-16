@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REASON_TOOL } from "../../src/core/agent-hook.js";
 import { approveItem } from "../../src/core/approvals.js";
@@ -100,6 +101,18 @@ describe("taskfollow why shows a suggestion no channel delivered, once (D164)", 
     expect(renderWhy(first)).toContain("I noticed your agent used shopify");
     const again = await whyCommand(home, undefined, () => LATER);
     expect(again).not.toHaveProperty("suggestions");
+  });
+
+  it("still lists the runs when the suggestion file is damaged, and says how to fix it", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await mkdir(join(home, "config"), { recursive: true });
+    await writeFile(join(home, "config", "watch-notice.json"), "{ not json");
+    const listed = await whyCommand(home, undefined, () => LATER);
+    expect(listed).toHaveProperty("runs");
+    expect(listed.suggestions_damaged).toContain("config/watch-notice.json is not valid JSON");
+    expect(renderWhy(listed)).toContain("config/watch-notice.json is not valid JSON");
   });
 });
 
