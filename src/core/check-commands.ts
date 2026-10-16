@@ -14,7 +14,7 @@ import type { SheetTarget } from "./check-reads.js";
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t2|t2a|t2f|t2r|t3f|t3r|t4|t5|t7|t8|t11|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, cannot <id>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
+const SUBCOMMANDS = "start <t1|t2|t2a|t2f|t2r|t3f|t3r|t4|t5|t6|t6b|t7|t8|t11|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, cannot <id>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;
@@ -27,6 +27,8 @@ export interface CheckContext {
   readonly canPlant?: (home: string) => Promise<boolean>;
   /** TaskFollow's own connected spreadsheet (records tests); tests inject a fake; null when none is connected. */
   readonly sheets?: (home: string) => Promise<SheetTarget | null>;
+  /** Runs the agent's `asks` command (T6b) and returns its standard output; tests inject it. */
+  readonly asks?: (argv: readonly string[], cwd: string) => Promise<string>;
 }
 
 const RESULT_WORDS: Readonly<Record<ResultKind, string>> = {
@@ -66,6 +68,8 @@ async function start(home: string, state: InstallState | undefined, test: string
   if (test === "t3f") return (await import("./check-write.js")).startWritesFiles(home, state, flags, context);
   if (test === "t3r") return (await import("./check-write.js")).startWritesRecords(home, state, flags, context);
   if (test === "t4") return (await import("./check-skill.js")).startSkillCheck(home, state, flags, context);
+  if (test === "t6") return (await import("./check-asks.js")).startAsks(home, state, flags, context);
+  if (test === "t6b") return (await import("./check-asks.js")).startAsksUnattended(home, state, flags, context);
   if (test === "t11") return (await import("./check-runner.js")).hooksCheck(home, state, { now: context.now });
   if (test === "t7") {
     const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
@@ -73,7 +77,7 @@ async function start(home: string, state: InstallState | undefined, test: string
     return runnerCheck(home, state, { now: context.now, ...(workflow ? { workflow } : {}) });
   }
   const spec = test ? TESTS[test] : undefined;
-  if (!spec) throw new InputError("check start takes one of: t1, t2, t2a, t2f, t2r, t3f, t3r, t4, t5, t7, t8, t11, describe");
+  if (!spec) throw new InputError("check start takes one of: t1, t2, t2a, t2f, t2r, t3f, t3r, t4, t5, t6, t6b, t7, t8, t11, describe");
   const { agent, version } = agentOf(state, flags.value as string | undefined);
   // Review S4: a result names only a workflow that exists, checked the way `describe` and `t7` check it.
   const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;

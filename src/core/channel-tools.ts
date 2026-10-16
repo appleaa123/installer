@@ -84,6 +84,8 @@ function parseSend(args: ToolArgs): ToolArgs {
   if (channel === "telegram" && !TELEGRAM_CHAT.test(raw)) throw new InputError("channel.send: for telegram, 'to' is the chat id, a number (see channel.inbox, field 'thread')");
   if (channel === "whatsapp" && !isWhatsAppAddress(raw)) throw new InputError("channel.send: for whatsapp, 'to' is the customer's phone number in digits with the country code, or their WhatsApp username id (see channel.inbox, field 'from')");
   const to = channel === "email" ? requireEmailAddress(raw, "channel.send: 'to'") : raw;
+  // Item 7a (review B1): a check's test email is sent with the agent's own email tool, never through TaskFollow's gate.
+  if (typeof args.subject === "string" && args.subject.trim().toUpperCase().startsWith("TASKFOLLOW-CHECK")) throw new InputError("channel.send: a subject starting with TASKFOLLOW-CHECK is for TaskFollow's own checks; send that test with your own email tool");
   return { channel, to, text: textArg(args, "text", "channel.send"), ...subjectArg(args, channel), ...attachmentsArg(args, channel), ...replyArg(args, channel) };
 }
 

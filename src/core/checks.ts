@@ -181,6 +181,9 @@ export type Answerer = "agent" | "terminal" | "person";
 /** Writing tests (T3): what counts is what TaskFollow reads back from the target, never a word sent back. */
 const READ_BACK: readonly string[] = ["t3f", "t3r"];
 
+/** Asking first (T6, T6b, item 7a review B1): settled only by the person's answers on their page, never by a word sent back. */
+const PERSON_ONLY: readonly string[] = ["t6", "t6b"];
+
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
 const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r", "t4", "t11"];
 
@@ -196,6 +199,7 @@ function scheduleRefusal(challenge: Challenge, through: Through | undefined): st
 }
 
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
+  if (PERSON_ONLY.includes(challenge.test)) return stillOpen(challenge, "This check is answered only on the person's page, with what arrived in their inbox", now);
   if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
     return stillOpen(challenge, "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", now);
   }
