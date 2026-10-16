@@ -57,6 +57,17 @@ describe("the Sheets API v4 client (D67)", () => {
     expect((await tabsOf("s-batch")).Sheet1).toEqual([["name"], ["A"], ["b"], ["c"], ["D"]]);
   });
 
+  it("adds a check tab at the end, writes to it, and deletes it again (item 7a)", async () => {
+    const created = await sheets.createSpreadsheet("Source", "Contacts", ["name"]);
+    const id = await sheets.addTab?.(created.spreadsheet_id, "taskfollow-check-c0000001");
+    expect(typeof id).toBe("number");
+    await sheets.writeRow({ spreadsheet_id: created.spreadsheet_id, tab: "taskfollow-check-c0000001" }, 1, ["WORD"]);
+    expect(await sheets.readRows({ spreadsheet_id: created.spreadsheet_id, tab: "taskfollow-check-c0000001" })).toEqual([["WORD"]]);
+    expect(await sheets.readRows({ spreadsheet_id: created.spreadsheet_id })).toEqual([["name"]]);
+    await sheets.deleteTab?.(created.spreadsheet_id, id ?? 0);
+    await expect(sheets.readRows({ spreadsheet_id: created.spreadsheet_id, tab: "taskfollow-check-c0000001" })).rejects.toThrow();
+  });
+
   it("creates a spreadsheet with one tab and its header row", async () => {
     const created = await sheets.createSpreadsheet("Contacts", "Contacts", ["name", "email", "notes"]);
     expect(created.spreadsheet_id).toMatch(/^sheet-\d+$/);

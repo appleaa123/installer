@@ -6,13 +6,15 @@ import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
 import type { InstallState } from "./types.js";
+import type { OutboundFile } from "./channels.js";
+import type { SheetTarget } from "./check-reads.js";
 
 /**
  * `taskfollow check …` (spec 5, D159): starts a check, takes the agent's answer, opens the confirmation page for a
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, cannot <id>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
+const SUBCOMMANDS = "start <t1|t2|t2a|t2f|t2r|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, cannot <id>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;
@@ -20,9 +22,11 @@ export interface CheckContext {
   /** Starts the person's page process (launchCheckPage); injected so tests do not leave a page running. */
   readonly launch: (home: string, id: string, word: string | undefined) => Promise<{ pid: number; opened: boolean }>;
   /** Plants a self-addressed test email through TaskFollow's own email channel; false when it has none (tests inject it). */
-  readonly plant?: (home: string, subject: string, text: string) => Promise<boolean>;
+  readonly plant?: (home: string, subject: string, text: string, files?: readonly OutboundFile[]) => Promise<boolean>;
   /** Whether TaskFollow could plant a test email (it has its own email channel); decided before the person closes the window. */
   readonly canPlant?: (home: string) => Promise<boolean>;
+  /** TaskFollow's own connected spreadsheet (records tests); tests inject a fake; null when none is connected. */
+  readonly sheets?: (home: string) => Promise<SheetTarget | null>;
 }
 
 const RESULT_WORDS: Readonly<Record<ResultKind, string>> = {
@@ -56,13 +60,16 @@ async function start(home: string, state: InstallState | undefined, test: string
   if (test === "describe") return describe(home, flags, context);
   if (test === "t8") return (await import("./check-schedule.js")).startScheduled(home, state, flags, context);
   if (test === "t2") return (await import("./check-email.js")).startReadsEmail(home, state, flags, context);
+  if (test === "t2f") return (await import("./check-reads.js")).startReadsFiles(home, state, flags, context);
+  if (test === "t2a") return (await import("./check-reads.js")).startReadsAttachment(home, state, flags, context);
+  if (test === "t2r") return (await import("./check-reads.js")).startReadsRecords(home, state, flags, context);
   if (test === "t7") {
     const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
     const workflow = id ? await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS) : undefined;
     return runnerCheck(home, state, { now: context.now, ...(workflow ? { workflow } : {}) });
   }
   const spec = test ? TESTS[test] : undefined;
-  if (!spec) throw new InputError("check start takes one of: t1, t2, t5, t7, t8, describe");
+  if (!spec) throw new InputError("check start takes one of: t1, t2, t2a, t2f, t2r, t5, t7, t8, describe");
   const { agent, version } = agentOf(state, flags.value as string | undefined);
   // Review S4: a result names only a workflow that exists, checked the way `describe` and `t7` check it.
   const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
@@ -111,7 +118,11 @@ export async function checkCommand(home: string, state: InstallState | undefined
   const [sub, first, second] = args;
   if (sub === "start") return start(home, state, first, flags, context);
   if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
-  if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now(), { interactive: context.interactive }).then(view);
+  if (sub === "answer") {
+    const answered = await answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now(), { interactive: context.interactive });
+    await (await import("./check-reads.js")).removeTab(home, first ?? "", context);
+    return view(answered);
+  }
   if (sub === "page") return page(home, first, context);
   if (sub === "cannot") return (await import("./check-email.js")).cannotCommand(home, first, context.now());
   if (sub === "deliver") {

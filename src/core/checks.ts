@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
@@ -111,7 +112,23 @@ export async function loadChallenge(home: string, id: string): Promise<Challenge
   return isRecord(raw) && raw.id === id ? (raw as unknown as Challenge) : null;
 }
 
-export const saveChallenge = (home: string, challenge: Challenge): Promise<void> => writeConfig(home, challengeFile(challenge.id), challenge);
+/**
+ * Item 7: files and skill folders a test made are listed in its challenge (`details.file`, `details.skill_dir`) and
+ * removed once it is answered, cancelled or expired. Only paths inside a `taskfollow-check` folder or named
+ * `taskfollow-check-…` are ever removed, whatever the challenge file says.
+ */
+export async function removeArtifacts(challenge: Challenge): Promise<void> {
+  for (const path of [challenge.details?.file, challenge.details?.skill_dir]) {
+    if (!path) continue;
+    const ours = basename(dirname(path)) === "taskfollow-check" || basename(path).startsWith("taskfollow-check-");
+    if (ours) await rm(path, { recursive: true, force: true });
+  }
+}
+
+export async function saveChallenge(home: string, challenge: Challenge): Promise<void> {
+  await writeConfig(home, challengeFile(challenge.id), challenge);
+  if (challenge.status !== "open") await removeArtifacts(challenge);
+}
 
 const isResult = (value: unknown): value is StoredResult => isRecord(value) && typeof value.id === "number" && typeof value.need === "string" && typeof value.result === "string";
 

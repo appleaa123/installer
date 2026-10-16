@@ -34,6 +34,10 @@ export interface SheetsClient {
   readonly writeRows: (location: SheetLocation, updates: readonly RowUpdate[]) => Promise<void>;
   /** `spreadsheets.create` in the signed-in account, then the header row on its one tab (§9.1 default store). */
   readonly createSpreadsheet: (title: string, tab: string, header: readonly string[]) => Promise<CreatedSheet>;
+  /** Adds a tab at the end of the spreadsheet (never first: a source without a tab reads the first sheet); its numeric id. */
+  readonly addTab?: (spreadsheetId: string, title: string) => Promise<number>;
+  /** Deletes a tab by its numeric id (only TaskFollow's own check tabs). */
+  readonly deleteTab?: (spreadsheetId: string, sheetId: number) => Promise<void>;
 }
 
 const SHEETS_TIMEOUT_MS = 30_000;
@@ -109,6 +113,18 @@ export function sheetsClient(def: ConnectorDef, tokens: AccessTokenSource, env: 
     writeRows: async (location, updates) => {
       const data = updates.map((update) => ({ range: rowRange(location, update), values: [update.cells] }));
       await call({ method: "POST", path: `/spreadsheets/${encodeURIComponent(location.spreadsheet_id)}/values:batchUpdate`, body: { valueInputOption: "RAW", data }, location });
+    },
+    addTab: async (spreadsheetId, title) => {
+      const location = { spreadsheet_id: spreadsheetId };
+      const answer = await call({ method: "POST", path: `/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`, body: { requests: [{ addSheet: { properties: { title } } }] }, location });
+      const replies = Array.isArray(answer.replies) ? answer.replies : [];
+      const added = replies.find((reply): reply is Raw => isRecord(reply) && isRecord(reply.addSheet));
+      const id = added && isRecord(added.addSheet) && isRecord(added.addSheet.properties) ? added.addSheet.properties.sheetId : undefined;
+      if (typeof id !== "number") throw new ActionFailure("Google Sheets added no tab id");
+      return id;
+    },
+    deleteTab: async (spreadsheetId, sheetId) => {
+      await call({ method: "POST", path: `/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`, body: { requests: [{ deleteSheet: { sheetId } }] }, location: { spreadsheet_id: spreadsheetId } });
     },
     createSpreadsheet: async (title, tab, header) => {
       const created = await call({ method: "POST", path: "/spreadsheets", body: { properties: { title }, sheets: [{ properties: { title: tab } }] }, location: null });
