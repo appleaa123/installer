@@ -49,6 +49,9 @@ import { nodeTooOld } from "./core/node-version.js";
 import { addService } from "./core/services.js";
 import { installerVersion } from "./core/version.js";
 import { inventory } from "./core/skills.js";
+import { checkCommand } from "./core/check-commands.js";
+import { launchCheckPage, openWithSystem, serveCheckPage } from "./core/check-page.js";
+import { latestByNeed, loadChallenge } from "./core/checks.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -67,7 +70,7 @@ export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
 const SKILLS_NEXT = 'Tell the person which of these fit the workflow and why; add only the ones they confirm, as "skills":[<ref>,…] in the --value of taskfollow workflow add';
-const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, why, skills, watch, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, why, skills, check, watch, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -98,7 +101,7 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
 const OPTIONS = {
   home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, "value-file": { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
   profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" }, sheet: { type: "string" },
-  sandbox: { type: "boolean" },
+  sandbox: { type: "boolean" }, workflow: { type: "string" },
 } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
@@ -283,6 +286,26 @@ async function secretServeCommand(id: string): Promise<number> {
   return EXIT.OK;
 }
 
+/**
+ * The detached check page process (D159). It runs only with an IPC channel to the `taskfollow check` command that
+ * started it: it reports that it is ready, gets the word over that channel, opens the browser itself and serves the
+ * page until the check ends. It never prints its address: an agent running `taskfollow check-serve` itself gets an error.
+ */
+async function checkServeCommand(home: string, id: string): Promise<number> {
+  const send = process.send?.bind(process);
+  if (!send) throw new InputError("check-serve is started by 'taskfollow check' only");
+  const challenge = await loadChallenge(home, id);
+  if (!challenge) throw new InputError(`No check '${id}' is waiting`);
+  send({ ready: true });
+  const word = await new Promise<string | undefined>((done) => process.once("message", (message) => done(typeof (message as { word?: unknown }).word === "string" ? ((message as { word: string }).word) : undefined)));
+  const ttl = Math.max(60_000, Date.parse(challenge.expires_at) - Date.now());
+  const page = await serveCheckPage(home, id, { ...(word ? { word } : {}), now: () => new Date().toISOString(), ttlMs: ttl });
+  send({ opened: openWithSystem(page.url) });
+  process.disconnect();
+  await page.done;
+  return EXIT.OK;
+}
+
 /** Run by the agent for every Skills Wiki request (D52): the header line, or exit 1 and no output when the key is missing. */
 async function headersCommand(id: string): Promise<number> {
   const key = await getSecret(requireSecretId(id));
@@ -371,7 +394,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   resume: async ({ state, deps }) => (await resume(deps, state)).result,
   report: async ({ state, deps }, flags) => {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
-    const report = buildReport(deps.solution, state, profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {});
+    const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },
@@ -430,6 +454,11 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "mcp-serve") return mcpServeCommand(home);
   if (command === "agent-hook") return agentHookCommand(arg ?? "", extra ?? "");
   if (command === "gateway-serve") return serveGateway(home);
+  if (command === "check-serve") return checkServeCommand(home, requireArg(arg, command));
+  if (command === "check") {
+    emit(process.stdout, await checkCommand(home, (await loadState(home)) ?? undefined, positionals.slice(1), { ...flags }, { interactive: process.stdin.isTTY === true, now: () => new Date().toISOString(), launch: (pageHome, id, word) => launchCheckPage(pageHome, id, word) }));
+    return EXIT.OK;
+  }
   if (Object.hasOwn(STANDALONE, command)) {
     emit(process.stdout, await STANDALONE[command](home, flags, arg));
     return EXIT.OK;

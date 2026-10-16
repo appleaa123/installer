@@ -40,7 +40,7 @@ describe("WORKFLOWS: a workflow v1 from a suggestion or from plain words (§6.2,
     expect(await workflowCommand(at, "suggestions", undefined, undefined, () => AT)).toEqual({ suggestions: [{ workflow: "note", description: "Adds a memo each weekday morning", mode: "typed", trigger: NOTE.trigger }] });
     expect(await check(at, "workflows_present")).toMatchObject({ ok: false, hint: expect.stringContaining("taskfollow workflow suggestions") });
     expect(await workflowCommand(at, "add", "note", undefined, () => AT)).toMatchObject({ status: "added", workflow: "note", version: 1, mode: "typed", sandbox: true });
-    expect(await loadWorkflowState(at, "note")).toEqual({ workflow: "note", sandbox: true });
+    expect(await loadWorkflowState(at, "note")).toEqual({ workflow: "note", sandbox: true, shape: "note", content_hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(await check(at, "workflows_present")).toEqual({ ok: true });
     await expect(workflowCommand(at, "add", "note", undefined, () => AT)).rejects.toThrow("exists already");
     await expect(workflowCommand(at, "add", "other", undefined, () => AT)).rejects.toThrow("No suggested workflow 'other' (note)");

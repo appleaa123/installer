@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { WORD_ALPHABET } from "./words.js";
 import { join } from "node:path";
 import { deciderFor } from "./approvals.js";
 import { appendAudit } from "./audit.js";
@@ -19,7 +20,7 @@ export const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 export const MEMBER_STATUSES = ["invited", "joined", "expired", "removed"] as const;
 export type MemberStatus = (typeof MEMBER_STATUSES)[number];
 /** No 0/O or 1/I: a code is read off a screen and typed on a phone. */
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ALPHABET = WORD_ALPHABET;
 const MAX_NAME = 80;
 
 export interface Identity {
