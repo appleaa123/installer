@@ -6,6 +6,7 @@ import { AUDIT_FILE } from "../../src/core/audit.js";
 import { inQuietHours, parseChannelPolicy, recordOptOut } from "../../src/core/channel-policy.js";
 import { normalizeInbound } from "../../src/core/envelope.js";
 import { storeInbound } from "../../src/core/inbox.js";
+import { CHANNEL_TOOLS } from "../../src/core/channel-tools.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
 import { SolutionError, parseSolution } from "../../src/core/solution.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
@@ -193,7 +194,16 @@ describe("channel.inbox after: only what is new since the last run (item 5)", ()
   it("channel.inbox after with more than limit sets more and newest_id to the last returned", async () => {
     const result = await invokeTool(await context(await mixed()), "channel.inbox", { after: null, limit: 2 });
     expect(texts(result)).toEqual(["one", "two"]);
-    expect(result).toMatchObject({ newest_id: 2, more: true });
+    expect(result).toMatchObject({ newest_id: 2, more: true, remaining: 1 });
+  });
+
+  it("says how many wait only when some do", async () => {
+    expect(await invokeTool(await context(await mixed()), "channel.inbox", { after: null })).not.toHaveProperty("remaining");
+  });
+
+  it("explains after in the tool's description, for an agent that reads it", () => {
+    const tool = CHANNEL_TOOLS.find((entry) => entry.name === "channel.inbox");
+    expect(tool?.description).toContain("with `after` (an inbox id, or null for the start) only outside senders' messages newer than it, oldest first, with `newest_id`, `more` and `remaining`");
   });
 
   it("after lists no member or command messages", async () => {
