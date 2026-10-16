@@ -4,7 +4,9 @@ import { confinedPath } from "./actions.js";
 import { REASON_TOOL, summarize } from "./agent-hook.js";
 import { CALLS_DIR, REASON_NAME } from "./watch-record.js";
 import { listApprovals, type ApprovalItem } from "./approvals.js";
+import { isCustomersOnly, listChannels } from "./channels.js";
 import { InputError } from "./inputs.js";
+import { StateCorruptError } from "./state.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
 
@@ -151,12 +153,46 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
   if (arg !== undefined && !DATE.test(arg)) throw new InputError("why takes a run id (for example 2026-10-14-1a2b3c4d), or a date to list the runs since (for example 2026-10-13)");
   const since = arg ?? new Date(Date.parse(now()) - DAY_MS).toISOString();
   const runs = (await listRuns(home, undefined, skipDamaged)).filter((run) => run.started_at >= since).sort((a, b) => a.started_at.localeCompare(b.started_at));
+  const rows = [];
+  for (const run of runs) {
+    const result = await resultOf(home, run);
+    rows.push({ run_id: run.run_id, workflow: run.workflow, started_at: run.started_at, status: run.status, ...(run.reason ? { reason: run.reason } : {}), ...(result ? { result } : {}) });
+  }
   return {
     since,
-    runs: runs.map((run) => ({ run_id: run.run_id, workflow: run.workflow, started_at: run.started_at, status: run.status, ...(run.reason ? { reason: run.reason } : {}) })),
+    runs: rows,
+    // 9.12 item 3: with no channel, a run's result waits here; nobody was told about a run that failed or was missed.
+    // WhatsApp reaches customers, not the person (as in the report), so it does not count as telling them.
+    no_channel: (await listChannels(home)).every((config) => isCustomersOnly(config.channel)),
     next: "Run 'taskfollow why <run>' with a run id to see who did what in that run, and why",
   };
 }
+
+/** The result of one run by id (the work done once, plan Task 7), or undefined. */
+export async function runResult(home: string, runId: string): Promise<string | undefined> {
+  const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === runId);
+  return record ? resultOf(home, record) : undefined;
+}
+
+/** A run's result, for level 1 (9.4): an agent's summary, or the last done step's output; at most 300 characters. */
+async function resultOf(home: string, run: RunRecord): Promise<string | undefined> {
+  let steps: StepLog[];
+  try {
+    steps = await listSteps(home, run);
+  } catch (error) {
+    if (!(error instanceof StateCorruptError)) throw error;
+    return undefined;
+  }
+  const last = steps.filter((step) => step.status === "done" && !step.skipped && step.output !== null && step.output !== undefined).sort((a, b) => a.finished_at.localeCompare(b.finished_at)).at(-1);
+  if (!last) return undefined;
+  const output = last.output as unknown;
+  const summary = typeof output === "object" && output !== null && "summary" in output && typeof (output as { summary: unknown }).summary === "string" ? (output as { summary: string }).summary : undefined;
+  const text = summary ?? JSON.stringify(output);
+  return text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT - 1)}…` : text;
+}
+
+const RESULT_LIMIT = 300;
+const UNTOLD = new Set(["failed", "partial", "missed"]);
 
 /** For a person at a terminal: one line per entry (time, who, what, why), or one line per run. */
 export function renderWhy(why: Raw): string {
@@ -165,5 +201,10 @@ export function renderWhy(why: Raw): string {
   }
   const runs = Array.isArray(why.runs) ? (why.runs as Raw[]) : [];
   if (runs.length === 0) return `No runs since ${str(why.since)}.`;
-  return [...runs.map((run) => `${str(run.started_at).slice(0, 16).replace("T", " ")}  ${str(run.run_id)}  ${str(run.workflow)}: ${str(run.status)}${run.reason ? ` (${str(run.reason)})` : ""}`), "", str(why.next)].join("\n");
+  const untold = why.no_channel === true;
+  const lines = runs.map((run) => {
+    const head = `${str(run.started_at).slice(0, 16).replace("T", " ")}  ${str(run.run_id)}  ${str(run.workflow)}: ${str(run.status)}${run.reason ? ` (${str(run.reason)})` : ""}${untold && UNTOLD.has(str(run.status)) ? " (nobody was told: no channel)" : ""}`;
+    return run.result ? `${head}\n    result: ${str(run.result)}` : head;
+  });
+  return [...lines, "", str(why.next)].join("\n");
 }

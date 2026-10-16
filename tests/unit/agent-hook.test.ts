@@ -215,3 +215,10 @@ describe("a tool that answers with an error (D151)", () => {
     expect(JSON.parse((await readFile(cfg.record, "utf8")).trim())).toMatchObject({ tool: "mcp__shopify__productUpdate", outcome: "failed" });
   });
 });
+
+describe("agent hook: a check word never stays in the call record (review S3)", () => {
+  it("masks the word of a check.ping call, however short", () => {
+    expect(summarize({ id: "c1234abcd", word: "OWL-7K3P" })).toBe('{"id":"c1234abcd","word":"[masked]"}');
+    expect(summarize({ id: "c1234abcd", word: "HERON-7K3P" })).not.toContain("HERON");
+  });
+});

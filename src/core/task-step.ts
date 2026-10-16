@@ -68,7 +68,8 @@ export async function runTaskStep(exec: Exec, record: RunRecord, step: WorkflowS
   const path = await confinedPath(exec.home, callsFile(record, step.id));
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await saveStep(exec.home, record, { step: step.id, status: "failed", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(input), error: TASK_INTERRUPTED });
-  const result = await runTask(exec.home, profile, { prompt: spec.prompt, input, may_use: spec.may_use, changes: spec.changes, output: spec.output, timeoutMs: spec.timeout_minutes * MINUTE_MS, record: path }, {
+  const skills = await exec.skills();
+  const result = await runTask(exec.home, profile, { prompt: spec.prompt, input, may_use: spec.may_use, changes: spec.changes, output: spec.output, timeoutMs: spec.timeout_minutes * MINUTE_MS, record: path, skills }, {
     env: { ...(exec.env ?? process.env) },
   });
   await seal(exec, record, step.id, path);

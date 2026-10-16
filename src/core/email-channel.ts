@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ChannelConnector, Cursor, EmailConfig } from "./channels.js";
-import type { RawInbound } from "./envelope.js";
+import { joinCodeIn, type RawInbound } from "./envelope.js";
 import { MAX_MESSAGE_BYTES, withImap, type ImapSession, type MailboxStatus } from "./imap.js";
 import { parseMail } from "./mime.js";
 import { smtpSend } from "./smtp.js";
@@ -27,7 +27,9 @@ async function readOne(session: ImapSession, config: EmailConfig, uid: number): 
   if (size === null) return null;
   const tooLarge = size > MAX_MESSAGE_BYTES;
   const mail = parseMail(tooLarge ? await session.headers(uid) : await session.fetch(uid));
-  if (mail.from === "" || mail.from === config.address.toLowerCase()) return null;
+  // The mailbox's own mail is dropped (TaskFollow's own sends come back here), except a JOIN line: a person on their own
+  // whose only channel is their own mailbox links it that way (D155, D160). The one-time code is the secret, not the sender.
+  if (mail.from === "" || (mail.from === config.address.toLowerCase() && joinCodeIn(mail.text) === null)) return null;
   const body = tooLarge ? `(Not read: this email is ${size} bytes, over the limit of ${MAX_MESSAGE_BYTES} bytes; open it in the mailbox)` : mail.text || mail.subject;
   const text = mail.skipped.length > 0 ? `${body}\n(Not kept: ${mail.skipped.join("; ")})` : body;
   const files = mail.attachments.map((attachment) => ({ name: attachment.filename, type: attachment.type, bytes: attachment.bytes }));

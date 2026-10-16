@@ -148,6 +148,17 @@ describe("reply codes (§11.9, D78)", () => {
     expect((await getApproval(ctx.home, 2, NOW)).status).toBe("pending");
   });
 
+  it("welcomes someone who joined by email without promising approval requests there (PR #45 review)", async () => {
+    const ctx = await gateway(false);
+    const account = { host: "127.0.0.1", port: 993, security: "ssl" as const, user: "desk@example.com" };
+    await saveChannel(ctx.home, { channel: "email", address: "desk@example.com", imap: account, smtp: account, verified_at: NOW });
+    const { code } = await createInvite(ctx.home, "Ada", ROLES, NOW);
+    expect(await handleInbound(ctx, { channel: "email", from: "ada@example.com", thread: "<t0>", text: `JOIN ${code}`, message_id: "<e0@example.com>" })).toBe("joined");
+    const welcome = JSON.parse(await readFile(join(ctx.home, OUTBOX_DIR, "1.json"), "utf8")) as { text: string };
+    expect(welcome.text).toContain("Approval requests are not sent by email: they wait in your terminal");
+    expect(welcome.text).not.toContain("answer A<number>");
+  });
+
   it("a reply code by email decides nothing, because an email's sender can be forged (D78)", async () => {
     const ctx = await gateway(false);
     const account = { host: "127.0.0.1", port: 993, security: "ssl" as const, user: "desk@example.com" };

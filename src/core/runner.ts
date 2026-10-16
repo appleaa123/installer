@@ -1,4 +1,7 @@
 import { continueAgent, resumeAgent, type AgentRun } from "./agentic.js";
+import { pinnedSkill } from "./packs.js";
+import { loadProfileById } from "./profile.js";
+import { runSkillsText, skillRoots } from "./skills.js";
 import { ToolRefusal, getApproval } from "./approvals.js";
 import { holds, interpolate, type Scope } from "./expressions.js";
 import { ActionFailure } from "./failure.js";
@@ -44,7 +47,17 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
   const ctx = { ...(await toolContext(request.home, "runner", DEFAULT_TOOLS, request.now)), sandbox: record.sandbox, run: `${record.workflow}/${record.run_id}` };
   const state = (await loadState(request.home)) ?? undefined;
   let backend: Promise<JudgeBackend> | undefined;
-  return { home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)), ...(request.env ? { env: request.env } : {}) };
+  let skills: Promise<string | null> | undefined;
+  const loadSkills = async (): Promise<string | null> => {
+    if (request.workflow.skills.length === 0) return null;
+    const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
+    const roots = profile ? skillRoots(profile, state?.work_dir, request.env ?? process.env) : {};
+    return runSkillsText(request.workflow.skills, roots, (ref) => pinnedSkill(request.home, state?.skillswiki?.url, ref, request.now(), record.shadow));
+  };
+  return {
+    home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)),
+    skills: () => (skills ??= loadSkills()), ...(request.env ? { env: request.env } : {}),
+  };
 }
 
 /** The data a run starts from: `run`, and `event` (the inbox message, untrusted) for an event trigger. */

@@ -48,6 +48,9 @@ export const CHANNEL_FACTS: Readonly<Record<ChannelId, { readonly capabilities: 
   whatsapp: { capabilities: { buttons: false, attachments: [], reply_window: "24h", inbound: "relay_poll" }, risk: { official_api: true, outbound_external: true, sender_verified: true, customers_only: true } },
 };
 
+/** Email cannot prove who sent a reply (D78), so approval requests never go there (PR #45 review). */
+export const NO_APPROVALS_BY_EMAIL = "Approval requests are not sent by email: they wait in your terminal, and your agent tells you about them at the start of each session.";
+
 /** A channel only customers write on (WhatsApp, D149): no joining, reply codes or kill switch there. */
 export const isCustomersOnly = (id: string): boolean => (CHANNEL_IDS as readonly string[]).includes(id) && CHANNEL_FACTS[id as ChannelId].risk.customers_only === true;
 

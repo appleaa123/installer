@@ -130,3 +130,64 @@ describe("runtime line", () => {
     expect(renderReport(report)).not.toContain("Agent");
   });
 });
+
+describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 4)", () => {
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const STARTER = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
+  const answer = (value: unknown): StepRecord => ({ status: "done", at: AT, by: "human", value });
+  const starterState = (records: Record<string, StepRecord>): InstallState => ({ schema: 1, solution: { ref: "file:starter.json", id: "starter", version: STARTER.version }, started_at: AT, steps: records });
+  const SOLO = { "mode.who": answer("me"), "mode.always-on": answer("no"), "services.telegram": answer("none"), "services.email": answer("none") };
+  const PUSH = { pushNote: "Claude Code Channels is a research preview: it needs --channels, an approved plugin and an open chat window", pushRead: "2026-10-16" };
+
+  it("says level 1 in the agent's chat, and that speaking first was not checked, with the source", () => {
+    const report = buildReport(STARTER, starterState(SOLO), PUSH);
+    expect(report.told).toMatchObject({ level: 1, how: expect.stringContaining("the next time you talk to it") });
+    expect(report.told.next_level).toContain("TaskFollow has not checked whether your agent can start a conversation");
+    expect(report.told.next_level).toContain("read 2026-10-16");
+    expect(report.told.next_level).toContain("taskfollow add telegram");
+    expect(report.told.next_level).not.toMatch(/cannot start/);
+    expect(renderReport(report)).toContain("💬 Told");
+  });
+
+  it("says 'not checked for this agent' when the agent's profile has no note", () => {
+    expect(buildReport(STARTER, starterState(SOLO)).told.next_level).toContain("not checked for this agent");
+  });
+
+  it("says level 3 once a channel for the person is checked, and keeps approvals in the terminal for email", () => {
+    const telegram = buildReport(STARTER, starterState({ ...SOLO, "services.telegram": answer("telegram"), "channels.telegram": { status: "done", at: AT } }), PUSH);
+    expect(telegram.told).toMatchObject({ level: 3, how: expect.stringContaining("Telegram") });
+    const email = buildReport(STARTER, starterState({ ...SOLO, "services.email": answer("email"), "channels.email": { status: "done", at: AT } }), PUSH);
+    expect(email.told.how).toContain("Approval requests are not sent by email: they wait in your terminal, and your agent tells you about them at the start of each session.");
+  });
+
+  it("does not count WhatsApp, which reaches customers, as a way to tell the person", () => {
+    const report = buildReport(STARTER, starterState({ ...SOLO, "services.whatsapp": answer("whatsapp"), "channels.whatsapp": { status: "done", at: AT } }), PUSH);
+    expect(report.told.level).toBe(1);
+  });
+
+  it("says where runs happen, honestly for 'yes', and nothing for an install that was never asked", () => {
+    expect(buildReport(STARTER, starterState(SOLO)).runs).toContain("on this computer while it is on and awake");
+    const yes = buildReport(STARTER, starterState({ ...SOLO, "mode.always-on": answer("yes") })).runs ?? "";
+    expect(yes).toContain("Until a computer that stays on is set up");
+    expect(yes).toContain("your own Claude plan");
+    expect(buildReport(STARTER, starterState({ "mode.who": answer("me") })).runs).toBeUndefined();
+  });
+
+  it("does not lower the overall verdict for an install with no channel", () => {
+    expect(buildReport(STARTER, starterState(SOLO)).runtime_limits).toEqual([]);
+  });
+});
+
+describe("report: what the doability check found (D159)", () => {
+  it("lists the newest result per need, and counts a failed test as a limit", async () => {
+    const { buildReport, renderReport } = await import("../../src/core/report.js");
+    const { loadSolutionSource } = await import("../../src/core/solution.js");
+    const { solution } = await loadSolutionSource("file:" + (await import("node:path")).resolve("solutions/starter.json"));
+    const state = { schema: 1 as const, solution: { ref: "file:x", id: solution.id, version: solution.version }, started_at: "2026-10-16T00:00:00.000Z", steps: {} };
+    const report = buildReport(solution, state, { checks: [{ need: "runner", result: "yes-tested", at: "2026-10-16T09:00:00.000Z" }, { need: "tools", result: "no-tested", at: "2026-10-16T09:00:00.000Z" }] });
+    expect(report.checked).toBe("runner: yes, tested (2026-10-16) · tools: no, tested (2026-10-16)");
+    expect(report.runtime_limits).toContain("tools: failed its test");
+    expect(renderReport(report)).toContain("🔎 Checked    runner: yes, tested");
+  });
+});
+

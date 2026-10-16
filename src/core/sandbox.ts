@@ -36,6 +36,11 @@ export interface WorkflowState {
   /** True until a person confirmed a dry run of the workflow's current version. */
   readonly sandbox: boolean;
   readonly dry_run?: DryRun;
+  /** A shipped shape (D159): recorded by `workflow add`, honoured only while the file still has this content hash. */
+  readonly shape?: string;
+  readonly content_hash?: string;
+  /** The person's answers on their check page about a described workflow, bound to its description and its whole file (D159). */
+  readonly described?: { readonly description_hash: string; readonly content_hash?: string; readonly sends_to_others: boolean; readonly writes_or_deletes: boolean; readonly at: string };
 }
 
 type Raw = Record<string, unknown>;

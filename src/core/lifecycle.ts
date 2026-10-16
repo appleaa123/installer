@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
+import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
@@ -13,7 +14,12 @@ import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
+import { rm } from "node:fs/promises";
+import { workflowHash } from "./homes.js";
+import { restoreFile } from "./agent-file.js";
+import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
+import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, writeWorkflowSkill } from "./workflow-skill.js";
+import { MAX_WORKFLOW_SKILLS, WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
 
 /**
  * Install phases 5–7 (spec §6.2, §10.8, §16.2, D98). WORKFLOWS: a workflow v1 comes from a recipe suggestion
@@ -43,37 +49,92 @@ function withLocalZone(raw: Raw): Raw {
   return { ...raw, trigger: { ...trigger, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } };
 }
 
-/** A suggestion by id, or the person's description turned into an agentic v1 (§10.8: describe → v1 agentic). */
-function newWorkflow(id: string, value: string | undefined, suggested: readonly Raw[]): Raw {
-  if (value === undefined) {
-    const found = suggested.find((entry) => entry.workflow === id);
-    if (!found) throw new InputError(`No suggested workflow '${id}' (${suggested.map((entry) => String(entry.workflow)).join(", ") || "the recipe suggests none"}); describe a new one with ${PLAIN_WORDS}`);
-    const { when: _when, ...suggestion } = found;
-    return { ...withLocalZone(suggestion), version: 1 };
-  }
+/** The skills the person confirmed (9.12 item 2): at most 9, so the workflow's own skill folder fits in front of them. */
+export const MAX_OWNER_SKILLS = MAX_WORKFLOW_SKILLS - 1;
+
+function ownerSkills(words: Raw): Raw {
+  if (words.skills === undefined) return {};
+  if (Array.isArray(words.skills) && words.skills.length > MAX_OWNER_SKILLS) throw new InputError(`workflow add: "skills" may name at most ${MAX_OWNER_SKILLS} skills; the workflow's own skill takes the tenth place`);
+  return Array.isArray(words.skills) && words.skills.length === 0 ? {} : { skills: words.skills };
+}
+
+function parseWords(value: string): Raw {
   let words: unknown;
   try {
     words = JSON.parse(value);
   } catch {
     throw new InputError(`workflow add: --value must be JSON, ${PLAIN_WORDS}`);
   }
-  if (!isRecord(words) || typeof words.description !== "string" || words.description.trim() === "") throw new InputError(`workflow add needs the person's description: ${PLAIN_WORDS}`);
+  if (!isRecord(words)) throw new InputError(`workflow add needs the person's description: ${PLAIN_WORDS}`);
+  return words;
+}
+
+/**
+ * A suggestion by id (with the skills the person confirmed, when `--value` carries no description), or the person's
+ * description turned into an agentic v1 (§10.8: describe → v1 agentic).
+ */
+function newWorkflow(id: string, value: string | undefined, suggested: readonly Raw[]): Raw {
+  const words = value === undefined ? undefined : parseWords(value);
+  const found = suggested.find((entry) => entry.workflow === id);
+  if (words === undefined || (words.description === undefined && found)) {
+    if (!found) throw new InputError(`No suggested workflow '${id}' (${suggested.map((entry) => String(entry.workflow)).join(", ") || "the recipe suggests none"}); describe a new one with ${PLAIN_WORDS}`);
+    const { when: _when, ...suggestion } = found;
+    return { ...withLocalZone(suggestion), version: 1, ...(words ? ownerSkills(words) : {}) };
+  }
+  if (typeof words.description !== "string" || words.description.trim() === "") throw new InputError(`workflow add needs the person's description: ${PLAIN_WORDS}`);
   const { description, tools, trigger, max_turns: turns, steps } = words;
+  const skills = ownerSkills(words);
   // D142: fixed steps the agent wrote with the person (for example a task step that uses the person's own tools).
-  if (steps !== undefined) return withLocalZone({ workflow: id, version: 1, mode: "typed", description, ...(trigger === undefined ? {} : { trigger }), steps });
-  return { workflow: id, version: 1, mode: "agentic", description, instructions: description, tools, ...(trigger === undefined ? {} : { trigger }), ...(turns === undefined ? {} : { max_turns: turns }) };
+  if (steps !== undefined) return withLocalZone({ workflow: id, version: 1, mode: "typed", description, ...(trigger === undefined ? {} : { trigger }), steps, ...skills });
+  return { workflow: id, version: 1, mode: "agentic", description, instructions: description, tools, ...(trigger === undefined ? {} : { trigger }), ...(turns === undefined ? {} : { max_turns: turns }), ...skills };
+}
+
+/** What the person must hear when the workflow's own skill cannot be written (9.7: say every gap clearly). */
+function noFolderNote(profile: { name: string; skills_dirs?: { project?: string } } | undefined, roots: SkillRoots, workDirKnown: boolean): string {
+  if (roots.home_folder) return HOME_FOLDER_NOTE;
+  if (!workDirKnown && profile?.skills_dirs?.project) return "TaskFollow does not know which folder this install was started from, so the workflow's own skill and the CLAUDE.md section are not written; tell the person";
+  return `${profile?.name ?? "This agent"} has no skills folder TaskFollow knows, so this workflow's own rules have nowhere to live yet; tell the person`;
 }
 
 async function addWorkflow(home: string, id: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
   if ((await workflowIds(home)).includes(id)) throw new InputError(`Workflow '${id}' exists already; a change to it is a new version (taskfollow harden), never an overwrite`);
   const raw = newWorkflow(id, value, await suggestions(home));
-  const workflow = parseWorkflow(raw, id, DEFAULT_TOOLS);
-  const needsSkill = workflow.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined);
+  const rules = value === undefined ? undefined : parseWords(value).my_rules;
+  if (rules !== undefined && typeof rules !== "string") throw new InputError('workflow add: "my_rules" must be text, the person\'s own rules from the interview');
+  const owner = parseWorkflow(raw, id, DEFAULT_TOOLS);
+  // D126 changed (9.12 item 2): only a skillswiki: reference needs a Skills Wiki connection; a local skill does not.
+  const needsSkill = owner.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || owner.skills.some(isSkillswikiRef);
   if (needsSkill && !(await loadState(home))?.skillswiki) throw new InputError("This workflow uses a Skills Wiki skill. Connect Skills Wiki first (INSTALL.md, section 11) or choose another workflow.");
-  await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), raw);
-  await saveWorkflowState(home, { workflow: id, sandbox: true });
-  await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description" } });
-  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
+  const { profile, roots, agentFile } = await installTargets(home);
+  const workDirKnown = (await loadState(home))?.work_dir !== undefined;
+  await checkLocalSkills(owner.skills.filter((ref) => !isSkillswikiRef(ref)), roots);
+  // Everything that can refuse does so before anything is written (H4): the folder name and the agent file's section.
+  const folder = await plannedSkillFolder(roots, id);
+  if (folder === null && rules !== undefined) throw new InputError(noFolderNote(profile, roots, workDirKnown));
+  const final = folder === null ? raw : { ...raw, skills: [folder, ...owner.skills] };
+  // D159: a suggestion's shape lives in the workflow state with the file's hash, never in the file the agent writes.
+  const fromSuggestion = (await suggestions(home)).some((entry) => entry.workflow === id) && (value === undefined || parseWords(value).description === undefined);
+  const workflow = parseWorkflow(final, id, DEFAULT_TOOLS);
+  const before = await agentFileBefore(agentFile);
+  const writtenBefore = await loadWritten(home);
+  try {
+    if (folder) await writeWorkflowSkill(folder, id, workflow.description, rules);
+    await refreshAgentFile(home, { workflow: id, description: workflow.description, skills: workflow.skills });
+    await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), final);
+    await saveWorkflowState(home, { workflow: id, sandbox: true, ...(fromSuggestion ? { shape: id, content_hash: workflowHash(final) } : {}) });
+    const written = await loadWritten(home);
+    if (folder && roots.project) await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: id, path: folder, root: roots.project }] });
+  } catch (error) {
+    if (folder) await rm(folder, { recursive: true, force: true });
+    if (agentFile) await restoreFile(agentFile, before).catch(() => undefined);
+    await rm(join(home, WORKFLOWS_DIR, id), { recursive: true, force: true }).catch(() => undefined);
+    await saveWritten(home, writtenBefore).catch(() => undefined);
+    if (error instanceof InputError || error instanceof ActionFailure) throw error;
+    throw new ActionFailure(`TaskFollow could not write the workflow's files (${folder ?? join(home, WORKFLOWS_DIR, id)}): ${(error as Error).message}. Nothing was added; check that the folder can be written, then try again`);
+  }
+  const note = folder === null ? { note: noFolderNote(profile, roots, workDirKnown) } : {};
+  await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description", skills: workflow.skills, skill_folder: folder, agent_file: agentFile } });
+  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, skill_folder: folder, agent_file: agentFile, ...note, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
 }
 
 async function describeAll(home: string): Promise<Record<string, unknown>[]> {
@@ -82,7 +143,7 @@ async function describeAll(home: string): Promise<Record<string, unknown>[]> {
     try {
       const workflow = await loadWorkflow(home, id, DEFAULT_TOOLS);
       const state = await loadWorkflowState(home, id);
-      rows.push({ workflow: id, version: workflow.version, mode: workflow.mode, trigger: workflow.trigger, sandbox: state?.sandbox ?? false, dry_run: state?.dry_run ?? null });
+      rows.push({ workflow: id, version: workflow.version, mode: workflow.mode, trigger: workflow.trigger, sandbox: state?.sandbox ?? false, dry_run: state?.dry_run ?? null, skills: workflow.skills });
     } catch (error) {
       if (!(error instanceof InputError)) throw error;
       rows.push({ workflow: id, error: error.message });
@@ -138,7 +199,7 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   const run = state?.dry_run;
   if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskfollow dryrun ${id}' first`);
   if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskfollow dryrun ${id}' again`);
-  await saveWorkflowState(home, { workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
+  await saveWorkflowState(home, { ...state, workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.dry_run_confirmed", ref: `workflow:${id}`, payload: { by, version: run.version, run_id: run.run_id } });
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };
 }

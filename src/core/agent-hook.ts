@@ -102,6 +102,9 @@ export function decide(event: Raw, config: HookConfig): Decision {
   return { allow: true };
 }
 
+/** Tokens recognisable by their prefix (Shopify, Slack, OpenAI-style, GitHub, GitLab); also used to check delivered text (D160). */
+export const TOKEN_PATTERN = /\b(shpat|shpca|shppa|xox[abp]|xapp|sk|ghp|glpat)[-_][A-Za-z0-9_-]{8,}/g;
+
 /** A constant such as `CREATED_AT` after a name like `sortKey` is not a secret (task 25). */
 const CONSTANT = /^[A-Z]+(_[A-Z]+)+$/;
 
@@ -109,7 +112,9 @@ const CONSTANT = /^[A-Z]+(_[A-Z]+)+$/;
 export function summarize(input: unknown): string {
   const text = (typeof input === "string" ? input : JSON.stringify(input) ?? "")
     .replace(/(bearer|token|key|secret|password|authorization)(["':=\s]+)([^\s"',}]{8,})/gi, (whole, name: string, gap: string, value: string) => (CONSTANT.test(value) ? whole : `${name}${gap}[masked]`))
-    .replace(/\b(shpat|shpca|shppa|xox[abp]|xapp|sk|ghp|glpat)[-_][A-Za-z0-9_-]{8,}/g, "[masked]");
+    .replace(TOKEN_PATTERN, "[masked]")
+    // A doability check's word (D159, review S3), whatever its length: the record must never hold it.
+    .replace(/("word"\s*:\s*")[^"]*"/g, '$1[masked]"');
   return text.length > SUMMARY_MAX ? `${text.slice(0, SUMMARY_MAX - 1)}…` : text;
 }
 
