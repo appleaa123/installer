@@ -42,6 +42,9 @@ async function suggestions(home: string): Promise<readonly Raw[]> {
   return offered.filter((entry) => entry.when === undefined || (state !== null && whenHolds(entry.when as StepWhen, state)));
 }
 
+/** What a person may give with a suggested workflow (item 5): their time, their skills, rules and examples. */
+const SUGGESTION_KEYS = ["trigger", "skills", "my_rules", "examples"];
+
 /** A suggestion may say `"tz": "local"`: it runs in this computer's own time zone, which only the computer knows (D130). */
 function withLocalZone(raw: Raw): Raw {
   const trigger = raw.trigger;
@@ -79,7 +82,11 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
   if (words === undefined || (words.description === undefined && found)) {
     if (!found) throw new InputError(`No suggested workflow '${id}' (${suggested.map((entry) => String(entry.workflow)).join(", ") || "the recipe suggests none"}); describe a new one with ${PLAIN_WORDS}`);
     const { when: _when, ...suggestion } = found;
-    return { ...withLocalZone(suggestion), version: 1, ...(words ? ownerSkills(words) : {}) };
+    // Item 5: the person may give their own time; anything else would change the suggestion's shape (D159).
+    const other = Object.keys(words ?? {}).filter((key) => !SUGGESTION_KEYS.includes(key));
+    if (other.length > 0) throw new InputError(`workflow add: a suggested workflow's --value may change only ${SUGGESTION_KEYS.join(", ")} (not ${other.join(", ")}); to change more, describe your own workflow with ${PLAIN_WORDS}`);
+    const timed = words?.trigger === undefined ? suggestion : { ...suggestion, trigger: words.trigger };
+    return { ...withLocalZone(timed), version: 1, ...(words ? ownerSkills(words) : {}) };
   }
   if (typeof words.description !== "string" || words.description.trim() === "") throw new InputError(`workflow add needs the person's description: ${PLAIN_WORDS}`);
   const { description, tools, trigger, max_turns: turns, steps } = words;
