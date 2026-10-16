@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REASON_TOOL } from "../../src/core/agent-hook.js";
 import { approveItem } from "../../src/core/approvals.js";
@@ -85,6 +86,33 @@ describe("taskfollow why (D138)", () => {
     const home = await runnerHome();
     await expect(whyCommand(home, "2026-10-14-deadbeef", () => LATER)).rejects.toThrow("No run '2026-10-14-deadbeef'");
     await expect(whyCommand(home, "yesterday", () => LATER)).rejects.toThrow("a run id");
+  });
+});
+
+describe("taskfollow why shows a suggestion no channel delivered, once (D164)", () => {
+  it("lists it in the run list and in the plain lines, then not again", async () => {
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    const { NOTICE_FILE } = await import("../../src/core/watch-notice.js");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await writeConfig(home, NOTICE_FILE, { checked: "2026-10-14", suggested: ["mcp:shopify"], waiting: [{ at: AT, text: "I noticed your agent used shopify on 6 of the last 28 days." }] });
+    const first = await whyCommand(home, undefined, () => LATER);
+    expect(first.suggestions).toEqual([{ at: AT, text: "I noticed your agent used shopify on 6 of the last 28 days." }]);
+    expect(renderWhy(first)).toContain("I noticed your agent used shopify");
+    const again = await whyCommand(home, undefined, () => LATER);
+    expect(again).not.toHaveProperty("suggestions");
+  });
+
+  it("still lists the runs when the suggestion file is damaged, and says how to fix it", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await mkdir(join(home, "config"), { recursive: true });
+    await writeFile(join(home, "config", "watch-notice.json"), "{ not json");
+    const listed = await whyCommand(home, undefined, () => LATER);
+    expect(listed).toHaveProperty("runs");
+    expect(listed.suggestions_damaged).toContain("config/watch-notice.json is not valid JSON");
+    expect(renderWhy(listed)).toContain("config/watch-notice.json is not valid JSON");
   });
 });
 
