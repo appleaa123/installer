@@ -37,4 +37,10 @@ describe("the online-store examples in INSTALL.md (D145)", () => {
       for (const step of example?.steps ?? []) if ("task" in step) expect(step.task).not.toHaveProperty("changes", true);
     }
   });
+
+  it("asks the product draft for the update tool's own arguments, so the approved call can be made as approved (task 28)", async () => {
+    const product = ((await examples()) as { steps: { task?: { prompt: string } }[] }[])[2];
+    expect(product?.steps[0]?.task?.prompt).toContain("only the arguments that tool takes");
+    expect(product?.steps[0]?.task?.prompt).toContain("not the tool name");
+  });
 });

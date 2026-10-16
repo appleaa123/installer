@@ -89,6 +89,8 @@ describe("running a task step (D139)", () => {
     await saveStep(home, record, { step: "lookup", status: "failed", started_at: AT, finished_at: AT, duration_ms: 0, input_fingerprint: "x", error: TASK_INTERRUPTED });
     const run = await resumeRun(request(home), record);
     expect(run).toMatchObject({ status: "failed", reason: expect.stringContaining("may already have acted") });
+    expect(run.reason).toContain("'taskfollow why ");
+    expect(run.reason).not.toContain("--run");
     expect(await agentRan()).toBe(false);
   });
 

@@ -59,7 +59,7 @@ const exists = (path: string): Promise<boolean> => access(path).then(() => true,
 
 /** Exactly one result, for the approved tool, made after the gate marked it: anything else is a plain failure. */
 async function verdict(exec: Exec, record: RunRecord, path: string, tool: string, agentError: string | undefined): Promise<string | null> {
-  const why = `'taskfollow why --run ${record.run_id}'`;
+  const why = `'taskfollow why ${record.run_id}'`;
   const [marked, made] = [await exists(madeMarker(path)), await results(path)];
   if (made === null) return `the step's record is damaged, so TaskFollow cannot tell whether the call was made; check with ${why}`;
   if (made.length > 1 || made.some((result) => result.tool !== tool) || (!marked && made.length > 0)) {

@@ -6,6 +6,7 @@ import { AUDIT_FILE } from "../../src/core/audit.js";
 import { resumeRun, startRun, type RunRequest } from "../../src/core/runner.js";
 import { loadStep } from "../../src/core/runs.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
+import { whyCommand } from "../../src/core/why.js";
 import { parseWorkflow } from "../../src/core/workflow.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -117,6 +118,15 @@ describe("making the approved call (D151)", () => {
     expect((await recordLines(home, run)).map((line) => line.outcome)).toEqual(["refused", "ok", "refused"]);
   });
 
+  it("shows in why the person's approval before the call it allowed (task 28)", async () => {
+    const { home, run } = await approved([exact]);
+    const why = (await whyCommand(home, run.run_id, () => LATER)) as { timeline: { at: string; who: string; what: string }[] };
+    const approvedAt = why.timeline.findIndex((entry) => entry.who === "Owner" && entry.what.startsWith("approved"));
+    const callAt = why.timeline.findIndex((entry) => entry.who === "your agent" && entry.what.startsWith(TOOL));
+    expect(approvedAt).toBeGreaterThan(-1);
+    expect(callAt).toBeGreaterThan(approvedAt);
+  });
+
   it("fails, and does not try again, when the agent did not make the call", async () => {
     const { home, done } = await approved([]);
     expect(done).toMatchObject({ status: "failed", reason: expect.stringContaining("did not make the approved call") });
@@ -124,9 +134,11 @@ describe("making the approved call (D151)", () => {
     expect((await getApproval(home, 1, LATER)).status).toBe("used");
   });
 
-  it("fails when the tool answered with an error", async () => {
-    const { done } = await approved([{ ...exact, response: { isError: true, content: [{ type: "text", text: "Product not found" }] } }]);
+  it("fails when the tool answered with an error, and names the why command that exists (task 28)", async () => {
+    const { run, done } = await approved([{ ...exact, response: { isError: true, content: [{ type: "text", text: "Product not found" }] } }]);
     expect(done).toMatchObject({ status: "failed", reason: expect.stringContaining(`the approved call to ${TOOL} failed`) });
+    expect(done.reason).toContain(`'taskfollow why ${run.run_id}'`);
+    expect(done.reason).not.toContain("--run");
     expect((await taskRun()).denied).toEqual([]);
   });
 
