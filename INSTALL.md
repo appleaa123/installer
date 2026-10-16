@@ -181,6 +181,15 @@ Before a workflow is trusted to run on a schedule, TaskFollow checks what your a
 
 If `taskfollow doctor` says a check no longer holds, run the command it gives (for example `taskfollow check start t7`); a workflow whose runner check failed or went out of date does not run until then. Never ask the person for a check word, never open a check page yourself, and never answer a check for them: a word that only the ability under test could give is shown to the person alone, and anything said in the chat does not count. When a check page did not open, tell the person to run `taskfollow check page <id>` in their own terminal.
 
+## 9d. A consultation instead of an install
+
+When the person first wants to see what their own assistant can do before setting anything up (or a consultant sends them TaskFollow for an early consultation), the install's first question, *"set up TaskFollow to run your work, or first see what your assistant can do for you"*, takes the answer `consult`. Then:
+
+1. **The interview and the work done once.** Ask the person to walk you through a normal week (section 9b) and propose two to five workflows; add the ones they choose with `taskfollow workflow add`. For each, run `taskfollow check once <id>` and show the result.
+2. **The checks.** Run the checks each workflow's needs ask for (section 9c), and show `taskfollow check summary <id>`: every gap comes with what is missing, why it matters, what happens without it, and the options.
+3. **The report and the tidy-up happen by themselves.** The install writes a one-page report under the installer's home (`exports/consult-report-<date>.md`) and says where. Tell the person to read it before forwarding it to anyone: names from their own words may still be in it. Then it removes what the consultation added to their assistant (the workflows' skill folders, the TaskFollow section of `CLAUDE.md`, test files, and the installer's tool connection), and keeps only the results and the chosen workflows. Nothing is set up to run: no channel, no schedule, no keys.
+4. **Continuing to an install later.** If the person wants these workflows to run for them, run `taskfollow add install` in the same folder: the results are kept, the workflows' skill folders come back with the person's own rules, and the install continues from its first question.
+
 ## 10. Health, the kill switch and support
 
 1. **Health.** `taskfollow doctor` checks the audit chain, the install state and its backup, the keychain items and each channel, the runner's last tick, the gateway, disk space and the host; it clears run claims a crash left behind and deletes run logs, messages and recordings older than the retention period (`taskfollow retention`, 90 days unless the person sets another; the audit is never deleted). The runner also runs it once a day and tells the decision maker when something failed. Show the person each finding and its fix.
