@@ -56,4 +56,33 @@ describe("check summary: the person's page for a workflow (plan Task 11)", () =>
     await writeWorkflow(home, BRIEF);
     await expect(checkCommand(home, (await loadState(home)) ?? undefined, ["missed", "brief"], {}, ctx)).rejects.toThrow(/needs the assistant whose schedule sent it/);
   });
+
+  it("renders every need of a shipped shape, each gap with its four parts (item 7 Task 7)", async () => {
+    const home = await runnerHome();
+    await writeWorkflow(home, BRIEF);
+    const raw = { ...BRIEF };
+    await saveWorkflowState(home, { workflow: "brief", sandbox: true, shape: "invoice-processing", content_hash: workflowHash(raw) });
+    const out = await summary(home);
+    for (const label of ["Reads files attached to your email", "Writes to your records (a sheet)", "Reaches TaskFollow's tools", "Runs in TaskFollow's runner"]) expect(out.text).toContain(label);
+    expect(out.text).toContain("Missing:");
+    expect(out.text).toContain("Why it matters:");
+    expect(out.text).toContain("Without it:");
+    expect(out.text).toContain("Your options: 1)");
+  });
+
+  it("shows no four-part lines under a yes", async () => {
+    const home = await runnerHome();
+    await writeWorkflow(home, BRIEF);
+    await recordResult(home, result("answers", "fake-agent", "yes-you-told-us", "once", "You saw it"));
+    const out = await summary(home);
+    const at = out.lines.findIndex((line) => line.includes("Done once, now"));
+    expect(out.lines[at + 1] ?? "").not.toContain("Missing:");
+  });
+
+  it("names the source a described workflow reads, from its tools", async () => {
+    const home = await runnerHome();
+    await writeWorkflow(home, { ...BRIEF, steps: [{ id: "mail", tool: "channel.inbox", args: {} }] });
+    expect((await summary(home)).text).toContain("Reads your email");
+  });
 });
+
