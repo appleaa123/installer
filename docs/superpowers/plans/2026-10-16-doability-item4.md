@@ -156,6 +156,7 @@ export async function decideHome(home: string, workflow: Workflow, wish: { while
 
 - The order of spec 5.2 T8, driven by `check start t8 --workflow <id>`: (1) the test skill is delivered as in Task 9 with a word in it; (2) instruction for the home agent (shown to the person to paste when the home agent is not the operator); (3) the person ticks *"I see the task in its list"*; (4) when they plant the email themselves, the page shows the subject first; (5) they close the window; (6) TaskFollow plants the email if it can; (7) the confirmation page opens at the scheduled time, lives 24 hours, asks for both words and *around / before / well after*.
 - Results: around → yes-you-told-us for `scheduler`, `reads:email`, and `skills` with the honest wording; before → not-checked; well after → `scheduler` yes, the *while away* wish not met; nothing → no-tested only when the person says so.
+- Clean-up on Cowork is manual (D158): the page lists *"Delete the task 'TaskFollow check' in your scheduled tasks list, and the skill in Settings, Skills"*; it never tells the person to ask the assistant to delete them. Until the person ticks *done*, the page keeps *"a test task may still be in your Cowork list"*.
 - [ ] Tests with an injected clock: confirmation closed before `opens_at`; around/before/after mapping; the skill wording; a late `check mark` after the challenge is done is refused and audited. Commit `feat(checks): T8, the agent's own scheduler`.
 
 ### Task 11: The person's page, the operator rules, the human task, PR 4b
