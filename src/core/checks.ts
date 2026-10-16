@@ -182,7 +182,7 @@ export type Answerer = "agent" | "terminal" | "person";
 const READ_BACK: readonly string[] = ["t3f", "t3r"];
 
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
-const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r", "t4"];
+const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r", "t4", "t11"];
 
 /** A refusal that records nothing and leaves the challenge open with its tries untouched. */
 const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
@@ -216,6 +216,11 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (challenge.test === "t8" && answerer === "agent" && challenge.opens_at && now < challenge.opens_at) {
     await saveChallenge(home, { ...challenge, status: "cancelled" });
     return resultsFor(home, challenge, "not-checked", "It ran before the scheduled time, so it was not the agent's scheduler; start the check again", now, via, through);
+  }
+  // T11 (review B4): a ping that arrives means the hook did NOT stop it; only the runner check records that, as a no.
+  if (challenge.test === "t11") {
+    await saveChallenge(home, { ...challenge, status: "done", details: { ...(challenge.details ?? {}), pinged: "yes" } });
+    return stillOpen(challenge, "The call reached TaskFollow; the hook test records what that means", now);
   }
   await saveChallenge(home, { ...challenge, status: "done" });
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);

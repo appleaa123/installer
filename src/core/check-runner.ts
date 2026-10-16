@@ -29,17 +29,18 @@ export interface RunnerCheckOptions {
 
 const usesTool = (workflow: Workflow, tool: string): boolean => workflow.steps.some((step) => (step.kind === "agent" && step.agent.tools.includes(tool)) || (step.kind === "tool" && step.tool === tool) || (step.kind === "approve" && step.tool === tool));
 
-async function pingUnderHook(record: string): Promise<boolean> {
+async function pingLine(record: string, outcome: "ok" | "refused"): Promise<boolean> {
   try {
     return (await readFile(record, "utf8")).split("\n").some((line) => {
       if (!line.trim()) return false;
       const entry = JSON.parse(line) as { tool?: string; outcome?: string };
-      return entry.tool === PING_RULE && entry.outcome === "ok";
+      return entry.tool === PING_RULE && entry.outcome === outcome;
     });
   } catch {
     return false;
   }
 }
+const pingUnderHook = (record: string): Promise<boolean> => pingLine(record, "ok");
 
 export async function runnerCheck(home: string, state: InstallState | undefined, options: RunnerCheckOptions): Promise<Record<string, unknown>> {
   const workflow = options.workflow;
@@ -79,4 +80,38 @@ export async function runnerCheck(home: string, state: InstallState | undefined,
     for (const config of channels) await recordResult(home, { need: `reads:${config.channel}`, workflow: workflow.id, result: "yes-tested", reason: "Met by construction: on TaskFollow's own runner, the workflow reads TaskFollow's own email channel, which TaskFollow checked when it was connected", at: now, agent, agent_version: version, test: "t7" });
   }
   return { test: "t7", passed: true, why: "TaskFollow ran a real task through its runner and saw the test call under its hook" };
+}
+
+/**
+ * T11, hooks that can block a call (spec 5.2, item 7a, review B4). The agent may try `check.ping` (it is in its
+ * allowed tools) but TaskFollow's hook allows nothing: a refusal line in the call record with the check still open
+ * means the hook stopped it (yes); a ping that reached TaskFollow means the hook did not (no); neither means the hook
+ * was never reached, for example when the agent's own permissions stopped the call first (not checked).
+ */
+export async function hooksCheck(home: string, state: InstallState | undefined, options: RunnerCheckOptions): Promise<Record<string, unknown>> {
+  const agent = state?.runtime?.profile ?? "unknown";
+  const version = state?.runtime?.agent_version ?? null;
+  const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
+  const record1 = async (result: "yes-tested" | "no-tested" | "not-checked", reason: string, challenge?: string) =>
+    recordResult(home, { need: "hooks", result, reason, at: options.now(), agent, agent_version: version, test: "t11", ...(challenge ? { challenge } : {}) });
+  if (!profile?.task) {
+    await record1("not-checked", NOT_A_HOME);
+    return { test: "t11", passed: false, why: NOT_A_HOME };
+  }
+  const { challenge, word } = await startChallenge(home, { needs: ["hooks"], test: "t11", agent, agentVersion: version, ttlMs: RUN_MS + 60_000, withWord: true }, options.now());
+  const record = await confinedPath(home, join(CHECKS_DIR, `${challenge.id}.calls.jsonl`));
+  const prompt = `This is a check by TaskFollow, nothing else. Call the tool check.ping with id ${challenge.id} and word ${word ?? ""}. Then answer {"done": true}.`;
+  await runTask(home, profile, { prompt, input: {}, may_use: [PING_RULE], hook_may_use: [], changes: false, output: OUTPUT, timeoutMs: RUN_MS, record }, { env: options.env ?? process.env });
+  const after = await loadChallenge(home, challenge.id);
+  if (after?.details?.pinged === "yes") {
+    await record1("no-tested", "The call went through: TaskFollow's hook did not stop a call the step did not allow", challenge.id);
+    return { test: "t11", passed: false, why: "the hook did not stop the call" };
+  }
+  if (after?.status === "open") await cancelChallenge(home, after, "the hook check ended", options.now());
+  if (after?.status === "open" && (await pingLine(record, "refused"))) {
+    await record1("yes-tested", "TaskFollow's hook stopped the call the step did not allow, before it reached TaskFollow", challenge.id);
+    return { test: "t11", passed: true, why: "the hook stopped the call" };
+  }
+  await record1("not-checked", "The hook was never reached: the agent did not try the call, or its own permissions stopped it first", challenge.id);
+  return { test: "t11", passed: false, why: "the hook was not reached" };
 }

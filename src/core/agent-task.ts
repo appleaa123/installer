@@ -30,6 +30,8 @@ export interface TaskRequest {
   readonly timeoutMs: number;
   /** The step's record file (JSON Lines), written by the hook. */
   readonly record: string;
+  /** The hook's own allow-list when it must differ from the agent's (T11 tests that the hook stops what the agent may try). */
+  readonly hook_may_use?: readonly string[];
   /** The workflow's skills block (9.12 item 2, D153): a restricted run loads none of the agent's own skills. */
   readonly skills?: string | null;
 }
@@ -94,7 +96,7 @@ export async function runTask(home: string, profile: RuntimeProfile, request: Ta
   await mkdir(dir, { recursive: true, mode: 0o700 });
   try {
     const configFile = join(dir, "hook.json");
-    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.may_use, changes: request.changes }), { mode: 0o600 });
+    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.hook_may_use ?? request.may_use, changes: request.changes }), { mode: 0o600 });
     const parts = {
       settingsJson: hookSettings(configFile, execPath, cliPath, options.platform ?? process.platform),
       mcpConfig: JSON.stringify({ mcpServers: { [TOOLS_MCP_NAME]: JSON.parse(toolsServerConfig(execPath, cliPath, home)) as unknown } }),
