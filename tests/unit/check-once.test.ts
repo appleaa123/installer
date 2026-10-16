@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { serveCheckPage } from "../../src/core/check-page.js";
 import { checkCommand } from "../../src/core/check-commands.js";
 import { abilities, loadChallenge } from "../../src/core/checks.js";
 import { loadState } from "../../src/core/state.js";
 import { runnerHome } from "../helpers/runner-home.js";
+import { makeTempHome } from "../helpers/temp-home.js";
 import { writeWorkflow } from "../helpers/workflow-home.js";
 
 /** Spec 2 principle 1, plan Task 7: the work done once, before any test, and the person says whether it looked right. */
@@ -58,5 +59,17 @@ describe("check once: the work done once (plan Task 7)", () => {
 
   it("refuses an unknown workflow", async () => {
     await expect(run(await runnerHome(), ["once", "nope"])).rejects.toThrow(/nope/);
+  });
+});
+
+describe("check once shows the whole list (item 5)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("check once shows the whole result", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_HOME", await makeTempHome());
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "z".repeat(500) }]));
+    await writeWorkflow(home, { workflow: "digest", version: 1, mode: "agentic", description: "Lists what needs me", trigger: { manual: true }, instructions: "Read.", tools: ["memo.list"] });
+    const out = (await run(home, ["once", "digest"])) as { ran: { result: string } };
+    expect(out.ran.result).toBe("z".repeat(500));
   });
 });
