@@ -107,11 +107,33 @@ describe("a workflow reading the inbox with after: last-run (item 5)", () => {
     expect(await read(home, await run(home, 3))).toEqual(["one"]);
   });
 
+  it("a triage that fails at runner level (status failed) lists its mail again (PR #59 review)", async () => {
+    const home = await runnerHome();
+    await mailArrives(home, "one");
+    const broken = { ...TRIAGE_FLOW, steps: [MAIL, { ...TRIAGE, agent: { ...TRIAGE.agent, input: "${mail.nothing_here}" } }] };
+    expect((await run(home, 2, broken)).status).toBe("failed");
+    answers(done);
+    expect(await read(home, await run(home, 3))).toEqual(["one"]);
+  });
+
+  it("a partial batch (more) continues from newest_id on the next run (PR #59 review)", async () => {
+    const home = await runnerHome();
+    await mailArrives(home, "one");
+    await mailArrives(home, "two");
+    const small = { ...TRIAGE_FLOW, steps: [{ ...MAIL, args: { limit: 1, after: "last-run" } }, TRIAGE] };
+    answers(done, done);
+    const first = await run(home, 2, small);
+    expect((await loadStep(home, first, "mail"))?.output).toMatchObject({ more: true, remaining: 1 });
+    expect(await read(home, first)).toEqual(["one"]);
+    expect(await read(home, await run(home, 3, small))).toEqual(["two"]);
+  });
+
   it.each([
     [{ ...TRIAGE_FLOW, steps: [MAIL] }, "needs an agent step after it"],
     [{ ...TRIAGE_FLOW, steps: [TRIAGE, MAIL] }, "needs an agent step after it"],
     [{ ...TRIAGE_FLOW, steps: [{ id: "x", tool: "memo.add", args: { text: "last-run" } }, TRIAGE] }, "only as channel.inbox's after"],
     [{ ...TRIAGE_FLOW, steps: [{ ...MAIL, args: { limit: "last-run", after: "last-run" } }, TRIAGE] }, "only as channel.inbox's after"],
+    [{ ...TRIAGE_FLOW, steps: [MAIL, TRIAGE, { ...HOLD, approve: { ...HOLD.approve, args: { id: 1, text: "last-run" } } }] }, "only as channel.inbox's after"],
   ])("last-run in the wrong place is refused (%#)", (value, message) => {
     expect(() => parse(value)).toThrow(message);
   });
