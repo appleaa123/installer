@@ -12,6 +12,14 @@ export interface CalcSpec {
   readonly sum: readonly string[];
   /** An earlier result to compare with; null when there is none yet. */
   readonly compare?: unknown;
+  /** D171: keep only rows whose fields hold one of the listed texts, and with `due_within_days`, whose `due` is on or before today plus N. */
+  readonly where?: CalcWhere;
+  /** Today as YYYY-MM-DD in the workflow's time zone; needed with `due_within_days`. */
+  readonly today?: string;
+}
+export interface CalcWhere {
+  readonly fields?: Readonly<Record<string, readonly string[]>>;
+  readonly due_within_days?: number;
 }
 
 type Stats = Readonly<Record<string, number>>;
@@ -24,7 +32,27 @@ export interface CalcResult {
   readonly missing: Stats;
 }
 type Grouped = CalcResult & { readonly key: string };
-export type CalcOutput = CalcResult & { readonly groups?: readonly Grouped[]; readonly change?: unknown };
+/** `no_date`: rows `due_within_days` left out because their `due` is empty or not a YYYY-MM-DD date. */
+export type CalcOutput = CalcResult & { readonly groups?: readonly Grouped[]; readonly change?: unknown; readonly no_date?: number };
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DUE_FIELD = "due";
+
+/** The calendar date N days after `today`, as YYYY-MM-DD text (dates are compared as text, never parsed from a row). */
+function dateAfter(today: string, days: number): string {
+  const [year, month, day] = today.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+/** The rows `where` keeps, and how many it left out for having no date. */
+function filtered(rows: readonly { readonly row: unknown; readonly index: number }[], where: CalcWhere, today: string | undefined): { rows: { row: unknown; index: number }[]; noDate: number } {
+  const listed = rows.filter(({ row }) => Object.entries(where.fields ?? {}).every(([field, values]) => values.includes(String(fieldOf(row, field) ?? ""))));
+  if (where.due_within_days === undefined) return { rows: listed, noDate: 0 };
+  if (today === undefined || !DATE.test(today)) throw new ActionFailure("calc: due_within_days needs today's date in the workflow's time zone");
+  const limit = dateAfter(today, where.due_within_days);
+  const dated = listed.filter(({ row }) => DATE.test(String(fieldOf(row, DUE_FIELD) ?? "")));
+  return { rows: dated.filter(({ row }) => String(fieldOf(row, DUE_FIELD)) <= limit), noDate: listed.length - dated.length };
+}
 
 const NUMBER = /^-?\d+(\.\d+)?$/;
 const round = (value: number): number => Math.round(value * 1e6) / 1e6;
@@ -77,10 +105,15 @@ function change(now: CalcResult, before: unknown, fields: readonly string[]): un
 
 export function calculate(list: unknown, spec: CalcSpec): CalcOutput {
   if (!Array.isArray(list)) throw new ActionFailure("calc: 'from' must be a list of rows");
-  const rows = list.map((row, index) => ({ row, index }));
+  const all = list.map((row, index) => ({ row, index }));
+  const kept = spec.where === undefined ? { rows: all, noDate: 0 } : filtered(all, spec.where, spec.today);
+  const rows = kept.rows;
   const overall = stats(rows, spec.sum);
   const groups = spec.group_by === undefined ? undefined : groupRows(rows, spec.group_by).map(([key, members]) => ({ key, ...stats(members, spec.sum) }));
-  return { ...overall, ...(groups ? { groups } : {}), ...(spec.compare === undefined ? {} : { change: change(overall, spec.compare, spec.sum) }) };
+  return {
+    ...overall, ...(groups ? { groups } : {}), ...(spec.compare === undefined ? {} : { change: change(overall, spec.compare, spec.sum) }),
+    ...(spec.where?.due_within_days === undefined ? {} : { no_date: kept.noDate }),
+  };
 }
 
 function groupRows(rows: readonly { readonly row: unknown; readonly index: number }[], field: string): [string, { row: unknown; index: number }[]][] {

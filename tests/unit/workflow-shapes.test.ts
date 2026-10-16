@@ -193,7 +193,7 @@ describe("invoice processing (Task 5)", () => {
   it("an invoice record is L3 and waits for the decision maker", () => {
     const save = step("invoice-processing", "save");
     expect(save).toMatchObject({ kind: "approve", tool: "records.create", when: "read.is_invoice == true", args: { entity: "invoice", values: { amount: "${read.amount}", status: "to check" } } });
-    const writes = Object.keys(((save as { args: { values: object } }).args.values)).map((field) => ({ entity: "invoice", field }));
+    const writes = Object.keys((save as unknown as { args: { values: object } }).args.values).map((field) => ({ entity: "invoice", field }));
     expect(deriveLevel({ tool: "records.create", level: "L2", categories: [], writes }, contractTags(CONTRACT), {}).level).toBe("L3");
   });
 

@@ -171,12 +171,16 @@ export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog)
   return { kind: "stop", status: rejected ? "partial" : "failed", reason };
 }
 
+/** The run clock's calendar day in a time zone, as YYYY-MM-DD (D171: `due_within_days` counts from it). */
+const dayIn = (tz: string, now: string): string => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+
 /** A calc step (D144): arithmetic only, no model. `compare` that has no value yet (the first run) compares with nothing. */
 export async function runCalc(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "calc" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.calc;
   const list = interpolate(spec.from, scope);
   const compare = spec.compare === undefined ? undefined : (lookup(scope, spec.compare.slice(2, -1)) ?? null);
-  const output = calculate(list, { sum: spec.sum, ...(spec.group_by ? { group_by: spec.group_by } : {}), ...(compare === undefined ? {} : { compare }) });
+  const where = spec.where === undefined ? {} : { where: spec.where, ...(spec.tz === undefined ? {} : { today: dayIn(spec.tz, exec.ctx.now()) }) };
+  const output = calculate(list, { sum: spec.sum, ...(spec.group_by ? { group_by: spec.group_by } : {}), ...(compare === undefined ? {} : { compare }), ...where });
   await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(list), output });
   return { kind: "done", output, actions: 0, needs_human: 0 };
 }

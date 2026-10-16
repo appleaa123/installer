@@ -73,3 +73,59 @@ describe("the calc step and last period's figures in a workflow (D144)", () => {
     expect(() => parseWorkflow({ ...WEEKLY, steps: [WEEKLY.steps[0], { id: "totals", calc: { from: "${orders.orders}", sum: [] } }] }, "weekly-sales", DEFAULT_TOOLS)).toThrow("sum");
   });
 });
+
+describe("calc where: only the rows a report is about (D166, D171)", () => {
+  beforeEach(async () => vi.stubEnv("FAKE_AGENT_HOME", await makeTempHome()));
+  afterEach(() => vi.unstubAllEnvs());
+  const INVOICES = [
+    { id: "A", status: "to check", amount: "100.00", due: "2026-10-10" },
+    { id: "B", status: "approved to pay", amount: "50.50", due: "2026-10-24" },
+    { id: "C", status: "paid", amount: "999.00", due: "2026-10-18" },
+    { id: "D", status: "to check", amount: "20.00", due: "" },
+    { id: "E", status: "to check", amount: "7.00", due: "2026-11-30" },
+    { id: "F", status: "approved to pay", amount: "5.00", due: "next week" },
+  ];
+  const OPEN = ["to check", "approved to pay"];
+  const DUE = {
+    workflow: "invoices-due", version: 1, description: "Invoices due", trigger: { cron: "0 8 * * 1", tz: "Pacific/Auckland" },
+    steps: [
+      { id: "open", task: { prompt: "List the invoices.", may_use: ["mcp__sheets__read"], output: { type: "object", properties: { records: { type: "array" } }, required: ["records"] } } },
+      { id: "due", calc: { from: "${open.records}", group_by: "currency", sum: ["amount"], where: { status: OPEN, due_within_days: 7 } } },
+    ],
+  };
+
+  it("calc where keeps any listed status", () => {
+    expect(calculate(INVOICES, { sum: ["amount"], where: { fields: { status: OPEN } } })).toMatchObject({ count: 5, sum: { amount: 182.5 } });
+  });
+
+  it("calc where counts a row without a date in no_date and leaves it out of count and sum", () => {
+    const result = calculate(INVOICES, { sum: ["amount"], where: { fields: { status: OPEN }, due_within_days: 7 }, today: "2026-10-16" });
+    expect(result).toMatchObject({ count: 1, sum: { amount: 100 }, no_date: 2 });
+  });
+
+  it("calc where due_within_days keeps dates on or before today plus N in the trigger's zone, overdue included", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [], answer: { records: INVOICES } }));
+    // 12:00 UTC on 16 October is already 17 October in Auckland: the 24th is within 7 days there, not in UTC.
+    const run = await startRun({ home, workflow: parseWorkflow(DUE, "invoices-due", DEFAULT_TOOLS), key: "invoices-due:1", trigger: { kind: "manual" }, now: () => "2026-10-16T12:00:00.000Z" });
+    expect(await loadStep(home, run, "due")).toMatchObject({ status: "done", output: { count: 2, sum: { amount: 150.5 }, no_date: 2 } });
+  });
+
+  it("calc where refuses an unknown key at load", () => {
+    const withWhere = (where: unknown) => ({ ...DUE, steps: [DUE.steps[0], { id: "due", calc: { from: "${open.records}", sum: ["amount"], where } }] });
+    expect(() => parseWorkflow(withWhere({ status: "to check" }), "invoices-due", DEFAULT_TOOLS)).toThrow("where");
+    expect(() => parseWorkflow(withWhere({ due_within_days: "7" }), "invoices-due", DEFAULT_TOOLS)).toThrow("due_within_days");
+    expect(() => parseWorkflow(withWhere({ "bad key!": ["x"] }), "invoices-due", DEFAULT_TOOLS)).toThrow("where");
+    expect(() => parseWorkflow(withWhere([]), "invoices-due", DEFAULT_TOOLS)).toThrow("where");
+  });
+
+  it("due_within_days is refused at load for a workflow whose trigger is not cron", () => {
+    expect(() => parseWorkflow({ ...DUE, trigger: { manual: true } }, "invoices-due", DEFAULT_TOOLS)).toThrow("due_within_days");
+    expect(parseWorkflow({ ...DUE, trigger: { manual: true }, steps: [DUE.steps[0], { id: "due", calc: { from: "${open.records}", sum: ["amount"], where: { status: OPEN } } }] }, "invoices-due", DEFAULT_TOOLS).steps).toHaveLength(2);
+  });
+
+  it("calc without where is unchanged", () => {
+    expect(calculate(INVOICES, { sum: ["amount"] })).not.toHaveProperty("no_date");
+    expect(calculate(INVOICES, { sum: ["amount"] }).count).toBe(6);
+  });
+});
