@@ -50,4 +50,10 @@ describe("check summary: the person's page for a workflow (plan Task 11)", () =>
     const after = await summary(home, { agent: "Claude Cowork" });
     expect(after.text).toContain("did not arrive");
   });
+
+  it("needs the assistant whose schedule sent the brief, so it never lowers the wrong one (review M4)", async () => {
+    const home = await runnerHome();
+    await writeWorkflow(home, BRIEF);
+    await expect(checkCommand(home, (await loadState(home)) ?? undefined, ["missed", "brief"], {}, ctx)).rejects.toThrow(/needs the assistant whose schedule sent it/);
+  });
 });

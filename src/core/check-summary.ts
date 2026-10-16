@@ -1,6 +1,7 @@
 import { agentOf, type CheckContext } from "./check-commands.js";
 import { freshResult, recordResult, type Need, type ResultKind, type StoredResult } from "./checks.js";
 import { decideHome, type AgentRef } from "./homes.js";
+import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import type { InstallState } from "./types.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
@@ -61,7 +62,9 @@ export async function summaryCommand(home: string, state: InstallState | undefin
 /** The person said a scheduled brief did not arrive (spec section 8): the schedule's result goes back to not checked. It can only lower. */
 export async function missedCommand(home: string, state: InstallState | undefined, id: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
   const workflow = await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS);
-  const { agent, version } = agentOf(state, typeof flags.value === "string" ? flags.value : undefined);
+  // Review M4: a missed brief belongs to the assistant whose own schedule sent it; guessing would lower the wrong one.
+  if (typeof flags.value !== "string" || !/"agent"/.test(flags.value)) throw new InputError(`check missed needs the assistant whose schedule sent it: --value '{"agent":"Claude Cowork"}'`);
+  const { agent, version } = agentOf(state, flags.value);
   const reason = "You said a scheduled brief did not arrive, so this goes back to not checked until the schedule is tested again";
   await recordResult(home, { need: "scheduler", workflow: workflow.id, result: "not-checked", reason, at: context.now(), agent, agent_version: version, test: "missed" });
   return { need: "scheduler", workflow: workflow.id, result: "not checked", why: reason };
