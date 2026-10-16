@@ -1,6 +1,6 @@
 # TaskFollow: where things stand and what to do next
 
-Last updated 2026-10-15.
+Last updated 2026-10-16.
 
 ## Done (merged into `main` on 2026-10-15)
 
@@ -43,7 +43,7 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 | 7a, doability rest | #54 | D162 | `src/core/check-reads.ts`, `check-write.ts`, `check-skill.ts`, `check-asks.ts`, `check-asks-form.ts`, `check-fresh.ts`, `check-runner.ts` (T11), `sheets.ts` (tabs) | `taskfollow check start t2a`/`t2f`/`t2r`/`t3f`/`t3r`/`t4`/`t6`/`t6b`/`t11`; "Not run: this workflow's check of TaskFollow's runner no longer holds" from a stopped run; a "checks" line in `taskfollow doctor` |
 | 7b, the four-part page and the consult mode | #55 | D163 | `src/core/gap-words.ts`, `check-summary.ts`, `consult.ts`, `services.ts` (`add install`), `actions.ts` (`consult_report`, `consult_cleanup`), `solutions/starter.json` 2.0.0 | `taskfollow check summary` shows every need, each gap in four parts; the install's first question (install or consult); `exports/consult-report-<date>.md`; `taskfollow add install` after a consultation |
 
-4. **Waiting on you:** merge #42 (section 9.14); say when task 28 is ready, so #40 can be brought up to date and merged (9.14 steps 1–3); item 5 (inbox triage) waits for #40.
+4. **Waiting on you:** human task 28 (written in PR #40's copy of `docs/human-tasks.md`). #40 was brought up to date with `main` on 2026-10-16 (after #56; typecheck and the full suite twice, 164 files, 2,251 tests, green) and pushed; it merges only after task 28 passes. Items 5, 6 and 8 edit the same runner and approval files, so they are built after #40 merges (9.14). Plans written and in Fable review: item 5 on `feat/inbox-triage`, item 6 on `feat/workflows-four` (discovery decided in D165).
 
 ## For you to do (checklists in `docs/human-tasks.md`)
 

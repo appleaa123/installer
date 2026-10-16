@@ -5,6 +5,8 @@ Each task says why it is needed and what to do, step by step.
 
 ## Open
 
+> **Task 28** (approve one product change, then let Claude Code make it; about 20 minutes; it unlocks PR #40) is written in PR #40's copy of this file and moves here when #40 merges: https://github.com/appleaa123/installer/pull/40
+
 ### 1. Review and merge the open pull requests (in order)
 
 **Why:** each plan's work waits on a branch until you approve it. Nothing is merged into `main` without you.
