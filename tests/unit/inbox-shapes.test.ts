@@ -14,7 +14,7 @@ import { storeInbound } from "../../src/core/inbox.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
 import { OUTBOX_DIR } from "../../src/core/outbound.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
-import { startRun } from "../../src/core/runner.js";
+import { resumeRun, startRun } from "../../src/core/runner.js";
 import { loadStep } from "../../src/core/runs.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
@@ -150,6 +150,18 @@ describe("running the inbox shapes (item 5)", () => {
     const pending = await listApprovals(home, AT);
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({ level: "L2", action: { tool: "channel.send", args: { reply_to: ASKED, to: "maria@tenant.example" } } });
+  });
+
+  it("says plainly when a reply was not approved in time, and how to get it again (PR #59 review)", async () => {
+    const { home } = await inboxHome();
+    await added(home, "inbox-triage-replies");
+    await confirmed(home, "inbox-triage-replies");
+    answers(LIST, REPLY);
+    const waiting = await runOf(home, "inbox-triage-replies", false);
+    const later = "2026-10-18T12:00:00.000Z";
+    const ended = await resumeRun({ home, workflow: await loadWorkflow(home, "inbox-triage-replies", DEFAULT_TOOLS), key: waiting.key, trigger: waiting.trigger, now: () => later }, waiting);
+    expect(ended.status).toBe("failed");
+    expect(ended.reason).toContain("was not approved within 24 hours, so nothing was sent; ask your agent in chat to draft it again");
   });
 
   it("checks reply_to before asking: a reply to another address is never put to the person", async () => {
