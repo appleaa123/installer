@@ -29,7 +29,10 @@ export interface CheckResult {
   readonly challenge?: string;
   /** How the agent reached TaskFollow: its MCP connection or the `taskfollow` command (T5). */
   readonly via?: string;
+  /** What carried the word back: the tool `check.ping`, the command `check mark`, or `check answer` (review B2). */
+  readonly through?: Through;
 }
+export type Through = "ping" | "mark" | "answer";
 export type StoredResult = CheckResult & NumberedRecord;
 
 export interface Challenge {
@@ -60,7 +63,11 @@ export interface Origin {
   readonly interactive: boolean;
   readonly parents: readonly string[];
   readonly via?: string;
+  readonly through?: Through;
 }
+
+/** Tests that prove TaskFollow's own tools: the word counts only when it came back through the tool (review B2). */
+const TOOL_TESTS: readonly string[] = ["t5", "t7"];
 
 const challengeFile = (id: string): string => join(CHECKS_DIR, `${id}.json`);
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -133,10 +140,10 @@ export async function openChallenge(home: string, id: string, now: string): Prom
   return challenge;
 }
 
-async function resultsFor(home: string, challenge: Challenge, result: ResultKind, reason: string, now: string, via?: string): Promise<StoredResult> {
+async function resultsFor(home: string, challenge: Challenge, result: ResultKind, reason: string, now: string, via?: string, through?: Through): Promise<StoredResult> {
   const stored: StoredResult[] = [];
   for (const need of challenge.needs) {
-    stored.push(await recordResult(home, { need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result, reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, ...(via ? { via } : {}) }));
+    stored.push(await recordResult(home, { need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result, reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, ...(via ? { via } : {}), ...(through ? { through } : {}) }));
   }
   return stored[0] as StoredResult;
 }
@@ -145,7 +152,7 @@ async function resultsFor(home: string, challenge: Challenge, result: ResultKind
 /** Who answered: the agent from its shell, someone at an interactive terminal, or the person on their check page. */
 export type Answerer = "agent" | "terminal" | "person";
 
-export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string): Promise<StoredResult> {
+export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
     const cancelled = tries >= MAX_TRIES;
@@ -155,15 +162,16 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   await saveChallenge(home, { ...challenge, status: "done" });
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
-  return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via);
+  if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
+  return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }
 
 export async function markChallenge(home: string, id: string, word: string, origin: Origin, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive ? "terminal" : "agent", now, origin.via);
+  return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive ? "terminal" : "agent", now, origin.via, origin.through ?? "mark");
 }
 
 export async function answerChallenge(home: string, id: string, text: string, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), text, "agent", now);
+  return settleChallenge(home, await openChallenge(home, id, now), text, "agent", now, undefined, "answer");
 }
 
 /** Ends a challenge without a result (the word was shown twice, or the person cancelled), with an audit entry. */

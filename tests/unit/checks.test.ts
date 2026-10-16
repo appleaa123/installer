@@ -58,6 +58,24 @@ describe("checks: challenges", () => {
   });
 });
 
+describe("checks: how the word came back (review B2, S2)", () => {
+  const start = (home: string, test: string) => startChallenge(home, { needs: test === "t5" ? ["tools"] : ["answers"], test, agent: "a", agentVersion: null, ttlMs: 60_000, withWord: true }, AT);
+
+  it("does not count a tool test answered by command: only the tool proves the tool", async () => {
+    const home = await makeTempHome();
+    const viaCommand = await start(home, "t5");
+    expect(await markChallenge(home, viaCommand.challenge.id, viaCommand.word ?? "", { ...NOT_TTY, through: "mark" }, AT)).toMatchObject({ result: "not-checked", reason: expect.stringContaining("by command, not through the tool") });
+    const viaTool = await start(home, "t5");
+    expect(await markChallenge(home, viaTool.challenge.id, viaTool.word ?? "", { ...NOT_TTY, via: "mcp", through: "ping" }, AT)).toMatchObject({ result: "yes-tested", via: "mcp", through: "ping" });
+  });
+
+  it("still accepts a command for T1, which tests exactly that", async () => {
+    const home = await makeTempHome();
+    const { challenge, word } = await start(home, "t1");
+    expect(await markChallenge(home, challenge.id, word ?? "", { ...NOT_TTY, through: "mark" }, AT)).toMatchObject({ result: "yes-tested" });
+  });
+});
+
 describe("checks: results and freshness", () => {
   const result = (at: string, version: string | null, extra = {}) => ({ need: "runner" as const, result: "yes-tested" as const, reason: "test", at, agent: "claude-code", agent_version: version, test: "t7", ...extra });
 
