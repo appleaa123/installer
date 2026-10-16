@@ -76,7 +76,8 @@ describe("a task run with the agent's own tools, through the hook (fake agent)",
     const result = await runTask(home, await fakeProfile(), req, { env: { ...process.env, FAKE_AGENT_TASK: JSON.stringify(script), FAKE_AGENT_HOME: home } });
     expect(result).toMatchObject({ ok: true, structured: { order_found: true, status: "shipped" } });
     const record = await lines(req.record);
-    expect(record.map((line) => [line.tool, line.outcome ?? "reason"])).toEqual([
+    // A reason line is recognised by its reason_for field (a failed reason call also carries outcome "failed").
+    expect(record.map((line) => [line.tool, line.reason_for !== undefined ? "reason" : line.outcome])).toEqual([
       [REASON_TOOL, "reason"],
       ["mcp__shopify__get_order", "ok"],
       ["mcp__shopify__create_refund", "refused"],
