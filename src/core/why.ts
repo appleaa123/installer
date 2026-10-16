@@ -97,8 +97,9 @@ async function explainRun(home: string, record: RunRecord, now: string): Promise
   const approvals = (await listApprovals(home, now)).filter((item) => item.source.run?.workflow === record.workflow && item.source.run.run_id === record.run_id);
   const entries: WhyEntry[] = [{ at: record.started_at, who: ENGINE, what: `started the run (${record.trigger.kind}) of workflow '${record.workflow}'`, why: triggerWhy(record) }];
   for (const log of await listSteps(home, record)) {
-    entries.push(...callEntries(await callLines(home, record, log.step)));
-    for (const item of approvals.filter((candidate) => candidate.source.run?.step === log.step)) entries.push(...approvalEntries(item));
+    // Task 28: an approved call comes after its approval, so a step's calls and approvals are told in time order.
+    const asked = approvals.filter((candidate) => candidate.source.run?.step === log.step).flatMap(approvalEntries);
+    entries.push(...[...callEntries(await callLines(home, record, log.step)), ...asked].sort((a, b) => a.at.localeCompare(b.at)));
     const own = stepEntry(log);
     if (own) entries.push(own);
   }

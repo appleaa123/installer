@@ -15,7 +15,7 @@ const AT = "2026-10-09T12:00:00.000Z";
 const PASSED: SuiteResult = { status: "passed", files: 93, tests: 1241, passed: 1241, failed: 0, skipped: 0 };
 const LIVE_PASSED: SuiteResult = { status: "passed", files: 7, tests: 12, passed: 12, failed: 0, skipped: 0 };
 const ALL_KEYS = { ...Object.fromEntries(LIVE_KEYS.map((name) => [name, `value-of-${name}`])), INSTALLER_LIVE_AGENT: "1" };
-const CLAUDE: CapabilityMap = { ...FAKE_RUNTIME, profile: "claude-code", agent_version: "2.1.294" };
+const CLAUDE: CapabilityMap = { ...FAKE_RUNTIME, profile: "claude-code", agent_version: "2.1.300" };
 
 /** Fakes for everything certify runs; `runs` lists each suite it asked for. */
 function fakes(over: Partial<CertifyDeps> & { offline?: SuiteResult; live?: SuiteResult; map?: CapabilityMap } = {}): CertifyDeps & { readonly runs: [boolean, string][] } {
@@ -56,7 +56,7 @@ describe("taskfollow certify, the local certification (D116)", () => {
 
   it("certifies a shipped profile with reviewed terms only when everything ran and passed from a clean checkout", async () => {
     const record = await certify(await makeTempHome(), "claude-code", fakes());
-    expect(record).toMatchObject({ profile: "claude-code", agent_version: "2.1.294", tier: "certified", reasons: [] });
+    expect(record).toMatchObject({ profile: "claude-code", agent_version: "2.1.300", tier: "certified", reasons: [] });
   });
 
   it.each([

@@ -37,7 +37,7 @@ export interface RuntimeProfile {
   readonly mcp_register?: { readonly cmd: readonly string[] };
   readonly mcp_remove?: { readonly cmd: readonly string[] };
   /** A task step's command (D139): the agent with its own tools, limited to `{may_use}`, under the hook in `{settings_json}`. */
-  readonly task?: { readonly cmd: readonly string[] };
+  readonly task?: { readonly cmd: readonly string[]; readonly min_version?: string };
   /**
    * T6b (item 7a): one unattended call under the person's OWN settings, nothing pre-allowed, nothing able to prompt;
    * the agent's JSON output lists what its own rules denied. `min_version`: the oldest version with that flag.
@@ -153,6 +153,11 @@ function optionalParts(raw: Raw): Pick<RuntimeProfile, "schema" | "resume"> {
   };
 }
 
+/** `min_version`: the oldest agent the task command works with (its gate needs newer hook settings than plain calls). */
+function taskPart(task: Raw): NonNullable<RuntimeProfile["task"]> {
+  return { cmd: argv(task.cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}"), ...(task.min_version === undefined ? {} : { min_version: str(task.min_version, "task.min_version") }) };
+}
+
 function personalPart(raw: Raw): Pick<RuntimeProfile, "personal_settings"> {
   if (raw.personal_settings === undefined) return {};
   if (raw.personal_settings !== "claude") throw new ProfileError("Profile personal_settings must be claude");
@@ -190,7 +195,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     headless: headlessPart(raw),
     ...optionalParts(raw),
     ...mcpParts(raw),
-    ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
+    ...(raw.task === undefined ? {} : { task: taskPart(obj(raw.task, "task")) }),
     ...(raw.asks === undefined ? {} : { asks: { cmd: argv(obj(raw.asks, "asks").cmd, "asks.cmd", "{prompt}"), ...(obj(raw.asks, "asks").min_version === undefined ? {} : { min_version: str(obj(raw.asks, "asks").min_version, "asks.min_version") }) } }),
     ...personalPart(raw),
     ...skillsPart(raw),

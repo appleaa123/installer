@@ -95,7 +95,7 @@ interface StepBase {
 export type WorkflowStep =
   | (StepBase & { readonly kind: "tool"; readonly tool: string; readonly args: ArgsTemplate; readonly foreach?: string })
   | (StepBase & { readonly kind: "judge"; readonly judge: JudgeSpec; readonly foreach?: string })
-  | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean })
+  | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean; readonly agent_call?: true })
   | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec })
   | (StepBase & { readonly kind: "task"; readonly task: TaskSpec })
   | (StepBase & { readonly kind: "calc"; readonly calc: CalcStepSpec });
@@ -267,10 +267,22 @@ function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: 
   if (value.task !== undefined) return { ...base, kind: "task", task: parseTask(value.task, `step '${id}'.task`, fail) };
   if (value.calc !== undefined) return { ...base, kind: "calc", calc: parseCalc(value.calc, `step '${id}'.calc`, fail) };
   const approve = isRecord(value.approve) ? value.approve : fail(`step '${id}'.approve must be {"tool":…,"args":…,"why":…}`);
+  if (approve.agent_call !== undefined) return parseAgentCall(base, approve, `step '${id}'.approve`, fail);
   return {
     ...base, kind: "approve", tool: workflowTool(registry, approve.tool, `step '${id}'.approve`, fail), args: args(approve.args, `step '${id}'.approve.args`, fail),
     why: text(approve.why, `step '${id}'.approve.why`, fail), urgent: approve.urgent === true,
   };
+}
+
+/** D151: one exact tool of the person's agent (never TaskFollow's own, never a pattern), approved call by call. */
+const AGENT_TOOL = /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_.-]+$/;
+
+function parseAgentCall(base: { readonly id: string; readonly when?: string }, approve: Record<string, unknown>, where: string, fail: (message: string) => never): WorkflowStep {
+  if (approve.tool !== undefined) return fail(`${where} has either tool or agent_call, not both`);
+  const call = isRecord(approve.agent_call) ? approve.agent_call : fail(`${where}.agent_call must be {"tool":…,"args":…}`);
+  const tool = typeof call.tool === "string" && AGENT_TOOL.test(call.tool) ? call.tool : fail(`${where}.agent_call.tool must name one exact MCP tool of the agent: mcp__<server>__<tool>`);
+  if (tool.startsWith("mcp__installer__")) return fail(`${where}.agent_call cannot name TaskFollow's own tools; use an approve step with tool`);
+  return { ...base, kind: "approve", agent_call: true, tool, args: args(call.args, `${where}.agent_call.args`, fail), why: text(approve.why, `${where}.why`, fail), urgent: approve.urgent === true };
 }
 
 const foreachOf = (step: WorkflowStep): string | undefined => ("foreach" in step ? step.foreach : undefined);

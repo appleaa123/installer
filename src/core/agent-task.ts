@@ -30,6 +30,8 @@ export interface TaskRequest {
   readonly timeoutMs: number;
   /** The step's record file (JSON Lines), written by the hook. */
   readonly record: string;
+  /** D151: the one call a person approved; the hook allows nothing else, and that call once. */
+  readonly exact?: { readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
   /** The hook's own allow-list when it must differ from the agent's (T11 tests that the hook stops what the agent may try). */
   readonly hook_may_use?: readonly string[];
   /** The workflow's skills block (9.12 item 2, D153): a restricted run loads none of the agent's own skills. */
@@ -71,8 +73,9 @@ const builtinTools = (mayUse: readonly string[]): string => (mayUse.some((rule) 
 /** Claude Code settings for this run only: the hook around every call, before, after and on failure. */
 export function hookSettings(configFile: string, execPath: string, cliPath: string, platform: string): string {
   const quote = platform === "win32" ? winQuote : shellQuote;
-  const entry = (phase: string) => [{ matcher: "*", hooks: [{ type: "command", command: `${quote(execPath)} ${quote(cliPath)} agent-hook ${phase} ${quote(configFile)}`, timeout: HOOK_TIMEOUT_S }] }];
-  return JSON.stringify({ hooks: { PreToolUse: entry("pre"), PostToolUse: entry("post"), PostToolUseFailure: entry("failed") } });
+  const entry = (phase: string, extra: object = {}) => [{ matcher: "*", hooks: [{ type: "command", command: `${quote(execPath)} ${quote(cliPath)} agent-hook ${phase} ${quote(configFile)}`, timeout: HOOK_TIMEOUT_S, ...extra }] }];
+  // The gate: Claude Code lets a call through when a hook times out or fails, unless the hook says to block (2.1.295+).
+  return JSON.stringify({ hooks: { PreToolUse: entry("pre", { onFailure: "block" }), PostToolUse: entry("post"), PostToolUseFailure: entry("failed") } });
 }
 
 export function buildTaskArgv(profile: RuntimeProfile, request: TaskRequest, parts: { readonly settingsJson: string; readonly mcpConfig: string }, schemaFile = ""): string[] {
@@ -96,7 +99,7 @@ export async function runTask(home: string, profile: RuntimeProfile, request: Ta
   await mkdir(dir, { recursive: true, mode: 0o700 });
   try {
     const configFile = join(dir, "hook.json");
-    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.hook_may_use ?? request.may_use, changes: request.changes }), { mode: 0o600 });
+    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.hook_may_use ?? request.may_use, changes: request.changes, ...(request.exact ? { exact: request.exact } : {}) }), { mode: 0o600 });
     const parts = {
       settingsJson: hookSettings(configFile, execPath, cliPath, options.platform ?? process.platform),
       mcpConfig: JSON.stringify({ mcpServers: { [TOOLS_MCP_NAME]: JSON.parse(toolsServerConfig(execPath, cliPath, home)) as unknown } }),

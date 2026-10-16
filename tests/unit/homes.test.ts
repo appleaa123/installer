@@ -37,6 +37,11 @@ describe("homes: the code floor", () => {
     expect(codeFloor(parse({ workflow: "t", version: 1, steps: [{ id: "t", task: { prompt: "x", may_use: ["mcp__shop"], changes: true, output: { type: "object" } } }] }))).toBe(true);
   });
 
+  it("makes an approved agent call (D151) hard-rule work, so it never leaves TaskFollow's runner", () => {
+    const agentCall = { workflow: "publish", version: 1, steps: [{ id: "publish", approve: { agent_call: { tool: "mcp__shopify__productUpdate", args: { id: "1", title: "Blue mug" } }, why: "The person approves this exact change" } }] };
+    expect(codeFloor(parse(agentCall))).toBe(true);
+  });
+
   it("has every v1 shape, with replies, records and payments as hard rules", () => {
     expect(Object.keys(SHAPES).sort()).toEqual(["crm-update", "inbox-triage", "inbox-triage-replies", "invoice-processing", "lead-qualification", "meeting-follow-up"]);
     expect(SHAPES["inbox-triage"]?.hardRule).toBe(false);
