@@ -26,14 +26,25 @@ The interview and the opportunity rule are operator text (level A). Discovery is
 - **After item 5 (inbox triage)**, whose plan is `docs/superpowers/plans/2026-10-16-inbox-triage-item5.md`. Item 6 uses what item 5 settles and does not redesign it:
   1. **The shape skill** is one tool-neutral file per shape, `solutions/shapes/<id>/SKILL.md` (no `scripts/`, no `assets/`). `workflow add <id>` writes it into the agent's skills folder in place of the generic `skillMarkdown()` (`workflow-skill.ts`). `references/my-rules.md` stays the owner's.
   2. **The test cases** are a shipped-empty `references/examples.md`. The interview fills it with two or three of the owner's real past items and the expected result. The agent reruns them in chat when the skill or the rules change (level A; no replay command).
-  3. **A suggestion's `--value`** carries only `trigger`, `skills` and `my_rules`. Anything else makes it a described workflow, which loses the shape (D159).
-  4. **`when`** on a suggestion uses `{step, equals}` or `any`/`all` of those (`solution.ts` 131, 157). Item 5 moves the starter to 2.1.0.
+  3. **A suggestion's `--value`** carries only `trigger`, `skills`, `my_rules` and `examples` (`SUGGESTION_KEYS`, `lifecycle.ts` 46). Anything else makes it a described workflow, which loses the shape (D159).
+  4. **`when`** on a suggestion uses `{step, equals}` or `any`/`all` of those (`solution.ts` 132–142). Item 5 moved the starter to 2.1.0 (D168, merged in PR #59).
 - **Every shape has both a `SHAPES` entry and a template** (`solutions/shapes/<id>/SKILL.md`). Item 6 adds one shape id, `invoices-due` (D166).
+- **Every shape ends with item 5's report step** (as the inbox-triage `triage` step does in `starter.json` 95–104). The last step of Tasks 2, 3, 5, 5b and 6 is an `agent` step `report`:
+  - its `tools` are `["channel.list","channel.notify"]`;
+  - its `input` is what the earlier steps found;
+  - its instructions start "Use the <id> skill:", say what the result is, then carry item 5's sentence word for word: *"Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary."*
+
+  Why this, and not a new ending:
+  - `starter-minimum.test.ts` 97 requires every suggestion's first agent step to say "finish with the note as your summary", and the test is not weakened.
+  - The no-channel ending is built only as this step.
+  - `why.ts`'s whole-result rule (213–214) and `makesList` (222–224) apply only to a workflow with an agent step.
+
+  It is the only agent step in each shape, so it is the first. A run whose approval is rejected stops before it (`partial`), as an inbox-triage-replies run does.
 - **Every shipped shape that reads or writes records needs Google Sheets.**
   - `records.*` throws for a record type that is not connected (`records.ts` 47–48). Without Sheets the DATA phase never ran.
   - So each of these suggestions carries `services.records`=`google-sheets` in its `when`: lead qualification, CRM update, invoice processing, invoices due and meeting follow-up.
   - The owner's own tool is the described-workflow path (INSTALL.md 9e says so).
-- **Not offered in a consultation.** `services.records` is asked only in an install (`starter.json` 292–309, `when: mode.purpose = install`), so these `when`s never hold in a consult.
+- **Not offered in a consultation.** `services.records` is asked only in an install (`starter.json` 391–409, `when: mode.purpose = install`), so these `when`s never hold in a consult.
   - This differs from item 5's inbox shapes, which a consult offers because they need no records.
   - The consult interview may still name such work in words. The report shows it as work that needs a Google Sheet or the owner's own tool, through D163's four-part words for `writes:records`.
 - **6b depends on 6a** (the interview proposes the shapes 6a ships).
@@ -41,7 +52,10 @@ The interview and the opportunity rule are operator text (level A). Discovery is
 ## Global Constraints
 
 - The hard rules (9.2) hold for every shape: replies to anyone, record writes, anything paid, and deletes go through a person, every time. Paying is never a step of any shape (9.6: "anything paid is always a person").
-- The shapes' needs and hard-rule flags stay the code constant in `homes.ts` `SHAPES` (D159). Item 6's only change to it is the new `invoices-due` entry (D166).
+- The shapes' needs and hard-rule flags stay the code constant in `homes.ts` `SHAPES` (D159). Item 6 makes two changes to it:
+  - the new `invoices-due` entry (D166);
+  - `lead-qualification`'s `reads:messages` becomes `reads:email` (`homes.ts` 21). The shape reads email only (B3), and no T2 variant tests `reads:messages`, so that need could never be met.
+- `homes.test.ts` 46 asserts the exact `SHAPES` keys, and gains `invoices-due`.
 - Workflows stay general; the agent picks the tools (9.6). A shipped suggestion uses only TaskFollow's own tools and the Sheets fallback, so it loads on every install.
 - When the owner names their own tool, the agent writes a **described** workflow with `--value`. It loses the shape and is hard-rule unless the owner's check-page answers say otherwise (D159). The owner's tool goes in a read-only `task` step, and any write goes behind `approve` + `agent_call`.
 - D148 holds: TaskFollow's code never reads the owner's email or messages for discovery. Only patterns the owner confirms reach TaskFollow, and only as the words of a workflow they chose to add.
@@ -58,7 +72,7 @@ The interview and the opportunity rule are operator text (level A). Discovery is
 1. **No shape reaches a person, a record or money without an approval.**
    - Every `channel.send`, `records.create`, `records.update`, `records.import` and `agent_call` in a shipped suggestion is an `approve` step; a test walks each suggestion and fails on any ungated write.
    - No `approve` uses `foreach` (refused at load, `workflow.ts` 265).
-   - No L2/L3 `tool` step uses `foreach` (refused at run, `runner-steps.ts` 80).
+   - No L2/L3 `tool` step uses `foreach` (refused at run, `runner-steps.ts` 90).
 2. **Shapes are recorded only when unchanged** (D159): a suggestion edited beyond trigger, skills and my_rules loses its shape. No path lets the agent's file set `shape`.
 3. **The invoice amount is a financial field** (L3, decision maker), and no step of an invoice shape pays.
 4. **Reading a file is confined to exact files TaskFollow's code chose:**
@@ -82,7 +96,7 @@ The interview and the opportunity rule are operator text (level A). Discovery is
 9.6: "when the owner has no tool for the job, the agent says so; Google Sheets (`records.*`, exists) is available as the fallback record." The starter's contract has only `contact`. D166 adds three record types; `contact` is unchanged:
 
 - **`lead`:** key `email`; `name` (text, personal, required), `email` (email, personal), `source` (text: the channel it came in on), `status` (enum: `new`, `qualified`, `not a fit`, `waiting`), `next_step` (text), `notes` (text).
-- **`invoice`:** key `id` (text: vendor plus invoice number); `vendor` (text, required), `amount` (money, **financial**, required), `currency` (text), `due` (date), `status` (enum: `to check`, `approved to pay`, `paid`), `file` (text: the saved attachment's reference).
+- **`invoice`:** key `id` (text: vendor plus invoice number); `vendor` (text, required), `amount` (money, **financial**, required), `currency` (text), `due` (date), `status` (enum: `to check`, `approved to pay`, `paid`), `file` (`file_ref`, the existing type for a saved attachment, `contract.ts` 8).
 - **`action`:** key `id` (text); `what` (text, required), `owner` (text, personal), `due` (date), `meeting` (text), `status` (enum: `open`, `done`).
 
 The agent connects one only when the owner picks the fallback for that workflow: `taskfollow connect <entity> --sheet new` and `taskfollow map <entity>` (D68, D69), as INSTALL.md 9e says (Task 6). There is no new DATA-phase step.
@@ -107,19 +121,22 @@ The agent connects one only when the owner picks the fallback for that workflow:
   - `records.find` throws on a record type that is not connected (`records.ts` 48).
   - `contact` is connected by the install's DATA phase exactly when `services.records` is `google-sheets`.
   - `lead` is connected when the shape is added (INSTALL.md 9e, before the dry run; the dry run fails in plain words if it was skipped).
-  - Steps `known_lead` and `known_contact` are two L0 `records.find` steps on `{"email":"${event.from}"}`. Someone already in either is not a new lead.
+  - Steps `known_lead` and `known_contact` are two L0 `records.find` steps with args `{"entity":"lead"|"contact","where":{"email":"${event.from}"}}` (`where`, `record-tools.ts` 76–77). Someone already in either is not a new lead.
 - **Steps:**
-  1. `qualify` (`judge`). Input: the message, marked untrusted, plus both lookups. Schema `{new: boolean, fit: "yes"|"no"|"unsure", next_step: string, reply: string, why: string}`.
-  2. `save`: `approve records.create` on `lead`, with `status`, `next_step` and `source: "email"`; `when: qualify.new == true`.
+  1. `qualify` (`judge`). Input: the message, marked untrusted, plus both lookups. Schema `{new: boolean, name: string, fit: "yes"|"no"|"unsure", next_step: string, reply: string, why: string}`. `name` is needed because `lead.name` is required.
+  2. `save`: `approve records.create` on `lead`, with `name: ${qualify.name}`, `email: ${event.from}`, `status`, `next_step` and `source: "email"`; `when: qualify.new == true`.
   3. `reply`: `approve channel.send` with `reply_to`; `when: qualify.reply != ""`.
-- **Reported:** the run's result is the lead line. With no channel to the owner it waits for `why` (level 1, D155).
+  4. `report`: the ending step (Order and dependencies), with `${qualify}` as input; the result is the lead line: who, fit, next step.
+- **Reported:** through `report`. With no channel, the lead line is the run's summary and waits for `why` (level 1, D155).
 - **Skill:** what a lead is, the three fit answers, that a known person is not a new lead, the reply's tone, and "never promise a price, a date or a discount the owner's rules do not give". Plus `references/my-rules.md` (who is a fit, what the next step is) and `references/examples.md`.
 - **Home:** hard rule, so Home 1 when T7 passes. Otherwise draft-only (Home 2: the qualification and the reply text inside the brief to the owner) or by hand. `decideHome` is unchanged.
 - [ ] Failing tests:
   - `lead-qualification loads and records its shape`
+  - `SHAPES lead-qualification needs reads:email, not reads:messages`
+  - `the qualify schema has name, and save writes name and email`
+  - `report is the only agent step and says finish with the note as your summary`
   - `it is offered only when email and Google Sheets were chosen`
   - `the sender is looked up in lead and in contact`
-  - `the judge's input marks the message untrusted`
   - `save and reply are approve steps, conditioned on qualify.new and a non-empty reply`
 
   Implement; pass; commit `feat(shapes): lead qualification`.
@@ -131,12 +148,13 @@ The agent connects one only when the owner picks the fallback for that workflow:
 9.6 row: *the owner says "note that X", or a message arrives → which record, and what changes → gated: the write, with a preview → reported: what changed.*
 
 - **Two ways in, one shape:**
-  - A message from the owner to their TaskFollow channel: `{"event":"message.received","from":"member"}`. `when`: `all` of two parts: `services.records`=`google-sheets`, and `any` of `services.telegram`=`telegram`, `services.email`=`email`, `services.slack`=`slack`, `services.whatsapp`=`whatsapp` (the `any` as the starter already writes it; an `all` may hold an `any`, `solution.ts` 157).
+  - A message from the owner to their TaskFollow channel: `{"event":"message.received","from":"member"}`. `when`: `all` of two parts: `services.records`=`google-sheets`, and `any` of `mode.who`=`team`, `services.telegram`=`telegram`, `services.email`=`email`, `services.slack`=`slack`, `services.whatsapp`=`whatsapp`. The `mode.who`=`team` part follows `starter.json` 626–633: `services.telegram` is asked only when `mode.who` is `me`, and a team always has a channel. An `all` may hold an `any` (`solution.ts` 132–142).
   - With no channel, the owner says it in chat, and the agent calls `records.update` itself through TaskFollow's tools (level 0, by hand). The same approval holds, because it goes through TaskFollow's tool, which T5 proves in chat.
 - **Steps:**
   1. `which` (`judge`): schema `{entity: string, key: string, changes: object, found: boolean, question: string}`.
   2. `current`: `tool records.get`; `when: which.found == true`.
   3. `change`: `approve records.update` with only the changed fields; `when: which.found == true`.
+  4. `report`: the ending step, with `${which}` as input; the result is what changed, or the question when no record was found.
 - **The preview** is the approval item: D70 shows the current values and the change, and refuses a record changed since. Nothing new is built.
 - **Owner's own CRM:** a described workflow (Global Constraints), writing through `agent_call`.
 - [ ] Failing tests:
@@ -156,19 +174,21 @@ The agent connects one only when the owner picks the fallback for that workflow:
 - `src/core/agent-hook.ts`: `decide` for `Read`.
 - Tests in `tests/unit/agent-hook.test.ts`, `tests/unit/agent-task.test.ts`, `tests/unit/task-step.test.ts` and `tests/unit/workflow.test.ts`.
 
-9.6 says invoice processing has *"the agent read the file itself"*, and meeting follow-up reads `files`. Today a task allows only MCP tools and `Bash(...)`, and `may_use` goes verbatim into `--allowedTools` (`agent-task.ts` 83), so a made-up rule would match nothing.
+9.6 says invoice processing has *"the agent read the file itself"*, and meeting follow-up reads `files`. Today a task allows only MCP tools and `Bash(...)`, and `may_use` goes verbatim into `--allowedTools` (`agent-task.ts` 86), so a made-up rule would match nothing.
 
-- **The rule:** `may_use` may list the bare word `Read`. It passes to `--allowedTools` as `Read`, and `--tools` gains `Read`. A step that lists `Read` must say `read_from`, and a step with `read_from` must list `Read`; the workflow is refused at load otherwise.
+- **The rule:** `may_use` may list the bare word `Read`. It passes to `--allowedTools` as `Read`, and `--tools` gains `Read`. `builtinTools` (`agent-task.ts` 71) returns one string, so with both a `Bash(...)` rule and `Read` it returns `Bash,Read`. A step that lists `Read` must say `read_from`, and a step with `read_from` must list `Read`; the workflow is refused at load otherwise.
 - **Which files: TaskFollow's code picks them; the model never names a path.**
   - **`read_from: "attachments"`:** the saved attachments named in the step's interpolated input, exactly in D133's form (`ATTACHMENT_REF`, `attachments.ts` 17). Each is resolved through the existing `confinedPath` (`attachments.ts` 26, `actions.ts` 35), which refuses a link below the home. It is kept only if it is a regular file inside `realpath(<home>/data/inbox-files/)`.
   - **`read_from: "meeting-notes"`:** the runner first `lstat`s `<install folder>/meeting-notes/` itself and refuses it when it is a symbolic link or not a folder. It then chooses the newest regular file by modification time. It skips directories and other non-files, symbolic links (`lstat`), anything whose `realpath` is outside `realpath(<install folder>/meeting-notes/)`, and files over the attachment size cap (`MAX_ATTACHMENT_BYTES`, `mime.ts` 26).
-    - Without a known install folder (`state.work_dir`), the step fails in plain words.
+    - The folder is `<exec.state?.work_dir>/meeting-notes/` (`work_dir`, `types.ts` 156). Without a known install folder, the step fails in plain words.
   - **For both kinds:** if no usable file is left, the step does not start the agent. The run ends with the plain message under "What the person sees", and nothing is spent.
-- **Handing them over:** the chosen absolute paths go into the hook config (`hook.json`, a new `files` list next to `may_use`), and into the agent's input as `files: [{name, path}]`. `loadHookConfig` (`agent-hook.ts` 44–50) validates `files` as a list of absolute paths and treats anything else as damaged settings, which blocks.
+- **Handing them over:** the chosen absolute paths go into the hook config (`hook.json`, written at `agent-task.ts` 102, a new `files` list next to `may_use`), and into the agent's input as `files: [{name, path}]`. `loadHookConfig` (`agent-hook.ts` 47–55) validates `files` as a list of absolute paths and treats anything else as damaged settings, which blocks.
 - **Accepted limit:** between the hook's `realpath` check and Claude Code's own read, a process running as the same computer user could swap the file. This is the same-user limit D159 already records; nothing more is claimed.
-- **The hook:** a `Read` call passes only when its `file_path` is absolute and its `realpath` equals one of those paths. Everything else is refused: relative paths, `..`, links out, folders, any other file, and every `Read` when no file was listed. The call record keeps the file's name, never its content (D142).
+- **The hook:** in `decide` (`agent-hook.ts` 92–103), the `Read` path check comes **before** `matchesRule`. Otherwise `Read` in `may_use` would allow any path, since `matchesRule` compares only the tool name. A `Read` call passes only when its `file_path` is absolute and its `realpath` equals one of those paths. Everything else is refused: relative paths, `..`, links out, folders, any other file, and every `Read` when no file was listed. The call record keeps the file's name, never its content (D142).
 - **Why not `Bash(cat:*)`:** it is a valid rule today (`workflow.ts` 210), but it reads any file the computer user can read. The shapes never use it.
 - [ ] Failing tests:
+  - `Read with a path not listed is refused even though Read is in may_use` (the order in `decide`)
+  - `builtinTools gives Bash,Read when both are listed`
   - `Read allows exactly a listed saved attachment`
   - `Read refuses a relative path, a .., a link out, a folder and another file`
   - `Read is refused when no file was chosen`
@@ -197,6 +217,7 @@ The agent connects one only when the owner picks the fallback for that workflow:
 - **Steps:**
   1. `read`: a `task` with `may_use: ["Read"]` and `read_from: "attachments"`; input: the message's attachment references; schema `{is_invoice, vendor, number, amount, currency, due, file}`.
   2. `save`: `approve records.create` on `invoice`; `when: read.is_invoice == true`. It is L3 because `amount` is financial.
+  3. `report`: the ending step, with `${read}` as input; the result names the invoice, its amount and its due date, or says the email held no invoice.
 - **Where the numbers go:**
   - the shape writes to the `invoice` fallback;
   - when the owner names their accounting tool, a described workflow writes through `agent_call`;
@@ -218,7 +239,8 @@ The agent connects one only when the owner picks the fallback for that workflow:
 - `src/core/homes.ts`: `SHAPES["invoices-due"]`.
 - `solutions/shapes/invoices-due/SKILL.md`.
 - `solutions/starter.json`: suggestion `invoices-due`.
-- `src/core/runner-steps.ts`: `runCalc` passes the zone and the run's clock.
+- `src/core/runner-steps.ts`: `runCalc` reads `spec.tz` and the run's clock.
+- `src/core/workflow.ts`: the post-pass that stamps `tz`.
 - Tests in `tests/unit/calc-step.test.ts`, `tests/unit/homes.test.ts` and `tests/unit/workflow.test.ts`.
 
 D166 amends D159's six v1 shapes to seven, although the review advised cutting this.
@@ -226,9 +248,9 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
 - **The `calc` filter, minimal.** `calc` gains an optional `where`, an object with at most these two kinds of keys:
   - `"<field>": ["<value>", …]` keeps rows whose field equals any listed value, exactly as text;
   - `"due_within_days": N` (1–366) keeps rows whose `due` field is a date (`YYYY-MM-DD`) on or before today plus N days. Overdue rows are kept.
-- **Today, without guessing a zone.** `runCalc` (`runner-steps.ts` 155) has no handle on the workflow's settings, so the zone comes from the workflow's trigger:
-  - `due_within_days` is accepted at load only when the trigger is cron, and the zone is its `trigger.tz`;
-  - any other trigger is refused at load in plain words.
+- **Today, without guessing a zone.** `runCalc` (`runner-steps.ts` 174) has no handle on the workflow's settings, so the zone is stamped onto the step when the workflow loads:
+  - `parseWorkflow` gains a post-pass like `withLastRun` (`workflow.ts` 309–318). It refuses `due_within_days` in plain words unless `trigger.kind === "cron"`, and otherwise copies `trigger.tz` onto the step's `CalcStepSpec` as `tz` (`workflow.ts` 83).
+  - `runCalc` reads `spec.tz` and the run's clock, `exec.ctx.now()`.
   - Today and the limit are built as `YYYY-MM-DD` text with `Intl.DateTimeFormat` in that zone, from the run's clock (`exec.ctx.now()`), and compared as text; never `Date.parse`.
 - **Rows without a date.** A row whose `due` is empty or not a `YYYY-MM-DD` date is excluded from the count and the sum, and counted in a new `no_date` number, so it is not dropped silently.
 - Anything else in `where` is refused at load. Without `where`, `calc` is unchanged.
@@ -242,10 +264,10 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
   - Steps:
     1. `open`: `tool records.find` on `invoice` with `limit: 100`. `records.find` matches one exact value per field, so it cannot select two statuses or a date range itself, and it returns at most 100 rows (`record-tools.ts` 15–16). The skill and the message therefore say *"the first 100 invoices in your sheet"* whenever 100 came back.
     2. `due`: `calc` from `${open}` with `where: {"status":["to check","approved to pay"],"due_within_days":7}`, `group_by: "currency"`, `sum: ["amount"]`.
-    3. `say`: `judge`, writing the list in plain words with numbers only from `due`.
-    4. The ending follows item 5's rule for inbox triage: `channel.notify` when the person has a channel; otherwise the run ends with the result, which waits for `why`.
+    3. `report`: the ending step, with `{"rows":"${open}","totals":"${due}"}` as input. Its instructions add: "use only the numbers in totals; never add anything up yourself". There is no separate judge: the report step writes the words and sends them.
+- **The template passes `checkDelivered`** (`deliver.ts` 24, 78): it names no `taskfollow` command, local path or key, modelled on item 5's `solutions/shapes/inbox-triage/SKILL.md`, so it can be delivered to Home 2. A test runs `checkDelivered` on it.
 - **Home 2 delivery:** it reads TaskFollow's own sheet through `records.find`, which an agent's own scheduler cannot reach. So Home 2 needs the agent's own Google Sheets tool, and the doability check's `reads:records` result (T2 records variant, T8) decides it. The template is tool-neutral, as item 5 requires.
-- **Starter bookkeeping:** added in 6a's 2.2.0 with the other shapes; `invoices-due` is listed in INSTALL.md 9e.
+- **Starter bookkeeping:** added in 6a's 2.2.0 with the other shapes; `invoices-due` is listed in INSTALL.md 9e. Exact-list tests to update: `starter-minimum.test.ts` 113 (the version, 2.1.0 → 2.2.0, and 2.3.0 in 6b); `install-doc.test.ts` 139 (the workflow id list gains the five new ids); `homes.test.ts` 46 (the `SHAPES` keys gain `invoices-due`).
 - [ ] Failing tests (filter first):
   - `calc where keeps any listed status`
   - `calc where due_within_days keeps dates on or before today plus N in the trigger's zone, overdue included` (a clock near midnight UTC whose local date differs)
@@ -256,7 +278,8 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
   - `calc without where is unchanged`
   - `invoices-due is report-only in decideHome and may go to the agent's scheduler after T8`
   - `invoices-due loads and records its shape`
-  - `its judge's input is the calc output`
+  - `the report step's input holds the calc output, and its instructions forbid adding up`
+  - `the invoices-due template passes checkDelivered`
   - `every SHAPES id has a template`
 
   Implement; pass; commit `feat(shapes): invoices due each week (D166)`.
@@ -291,12 +314,13 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
   - The owner's notes are never deleted.
 - **The consult cleanup and continuing after it:**
   - The cleanup follows the same rule.
-  - Because `removeWritten` deletes `state/written.json` (`workflow-skill.ts` 154), a folder the cleanup left (it holds notes) would lose its `created` record. So `restoreAfterConsult` (`consult.ts` 101) records the folder again on `taskfollow add install`, with `created: true` only when the consult's own record said so, which the cleanup keeps in the consult file.
+  - Because `removeWritten` deletes `state/written.json` (`workflow-skill.ts` 168), a folder the cleanup left (it holds notes) would lose its `created` record. So `restoreAfterConsult` (`consult.ts` 101) records the folder again on `taskfollow add install`, with `created: true` only when the consult's own record said so, which the cleanup keeps in the consult file.
   - (In practice the shape is not offered in a consult, Order and dependencies, but a hand-written `workflow add` there must still be safe.)
 - **Steps:**
   1. `notes`: a `task` with `may_use: ["Read"]` and `read_from: "meeting-notes"`. Schema `{meeting: string, actions: [{id, what, owner, due}], send_to: string, summary: string}`; `owner`, `due` and `send_to` may be empty.
   2. `tasks`: one `approve records.import` on `action` with `rows: ${notes.actions}`. That is one approval for the whole list, L2 when it only adds (`import-tools.ts` 114). In a described version, `agent_call` for the owner's task app instead.
   3. `send`: `approve channel.send` of the summary to the one address the owner's rules name (`to: ${notes.send_to}`, for example a team list); `when: notes.send_to != ""`.
+  4. `report`: the ending step, with `${notes}` as input; the result is the list of actions.
 - **Hard rule, by the floor.** The shipped shape has `approve` steps, so `codeFloor` makes it hard-rule before `SHAPES`'s `"ask"` is read (`homes.ts` 63).
   - The check page's two questions (D159) apply only to a **described** version the owner writes without those steps, for example "just list the actions for me".
   - The shipped shape runs on Home 1, or by hand. It is not scheduled, so Home 2's scheduler is not offered, and the summary says so.
@@ -320,6 +344,7 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
   - `tasks is one approve of records.import with the actions as rows`
   - `no shipped suggestion has an approve or an L2/L3 tool step with foreach`
   - `every shipped shape loads, dry-runs and records its shape` (the seven, with item 5's)
+  - `every suggestion's first agent step is report, with channel.list and channel.notify` (the existing `starter-minimum.test.ts` 97 test then passes unchanged)
 
   Implement; pass; commit `feat(shapes): meeting follow-up and its notes folder; INSTALL.md 9e`.
 
@@ -332,7 +357,7 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
 9.4: *"the interview proposes workflows from the five shapes (9.6) and anything else the owner's day suggests; the owner picks; the owner's answers go into the workflow's skill (`references/my-rules.md`)."*
 
 - **After the walk-through of the week:** the agent compares what the person said with `taskfollow workflow suggestions`, proposes the matching shapes first in the person's words, then anything else their week suggests. For each, it asks which tool they use for it today ("which CRM do you use now?", 9.6).
-- **No tool named:** add the suggestion with `--value` carrying only `trigger`, `skills` and `my_rules`, plus two or three real past items for `references/examples.md`.
+- **No tool named:** add the suggestion with `--value` carrying only `trigger`, `skills`, `my_rules` and `examples` (two or three real past items with the expected result, written into `references/examples.md`).
 - **A tool named:** write a described workflow with that tool (sections 9 and 9a). It is not the shipped shape, so the check page asks its two questions (D159).
 - **At the end of the interview,** at most one line: *"Not sure what repeats in your week? Ask me to find your repetitive work any time."* (D165: on demand, nothing automatic.)
 - [ ] Failing tests:
@@ -360,7 +385,7 @@ The `CLAUDE.md` section gains one line: *"When you notice work that repeats, off
 **Files:**
 - new `solutions/skills/find-my-repetitive-work/SKILL.md`;
 - `solutions/starter.json`: an `auto` step at the start of the WORKFLOWS phase, for install and consult alike, that writes the skill;
-- `src/core/workflow-skill.ts`: write it and record it in `state/written.json`;
+- `src/core/workflow-skill.ts`: write it and record it in `state/written.json`. It reuses `skill_folders` with `workflow: "find-my-repetitive-work"`, because `WrittenFolder.workflow` is required (`workflow-skill.ts` 24–29). So uninstall's `removeWritten` removes it like any workflow skill folder. `consultCleanup` reads each entry's `references/my-rules.md` inside a try/catch (`consult.ts` 73–79), so the skill's missing rules file is harmless there. No workflow has that id: it is not a valid workflow and is never offered;
 - `src/core/lifecycle.ts` / `src/core/actions.ts`: the auto action;
 - `src/core/uninstall.ts` and `src/core/consult.ts`: remove it;
 - INSTALL.md 9b: a new item, "If the person is not sure what repeats";
@@ -390,7 +415,7 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
 
 ### Task 10: Records, human tasks, PRs
 
-- **Decisions** (next free D-numbers when built):
+- **Decisions:** 6a takes **D171** and 6b takes **D172** (D169 and D170 are in PR #60; item 8 will be D173 and the weekly re-check D174). Operator rule 14 is the opportunity rule. Human tasks are 38–40. Each decision records:
   - the fallback records as built (D166's choice);
   - the `Read` rule with `read_from` and the runner's file choice;
   - each shape's steps and gates;
@@ -421,7 +446,7 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
   - *"Lead qualification: when someone new emails you, sorts out whether they are a fit and what to do next, and drafts the reply. You approve the reply and the new lead before anything is sent or saved."*
   - *"CRM update: when you tell me 'note that …', finds the record and shows you the change; nothing is saved until you say yes."*
   - *"Invoice processing: when an invoice arrives by email, reads the vendor, the amount and the due date, and records it where you choose once you approve. It never pays anything."*
-  - *"Invoices due: every Monday, the invoices still to pay this week, with their total."*
+  - *"Invoices due: every Monday, the invoices still to pay this week (with their total when TaskFollow's runner makes the list; your assistant's own schedule lists each amount without adding them up)."*
   - *"Meeting follow-up: put your meeting notes in the meeting-notes folder and run it, and it lists who does what by when; creating tasks and sending the notes wait for your yes. Notes you paste here or email me, I handle with you in this chat."*
 - **Read refused** (call record and `why`): *"Refused: this step may read only the files TaskFollow gave it."*
 - **No meeting note:** *"There is no note in meeting-notes/ yet. Put the notes or transcript there as a file, or paste them in this chat."*
@@ -498,3 +523,29 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
   - Human task 38 needs Claude Code 2.1.295 or later.
   - The `CLAUDE.md` line is named as the one addition beyond D165.
 - **No finding rejected.** One citation was corrected: `removeWritten` deletes `state/written.json` at `workflow-skill.ts` 154, not 160. The other cited lines match: `records.ts` 47–48, `homes.ts` 63, `attachments.ts` 26, `actions.ts` 35, `agent-hook.ts` 44–50, `record-tools.ts` 15–16, `runner-steps.ts` 155, `consult.ts` 101; consult skips `services.records` (`starter.json` 292–309).
+
+## Pre-build check against item 5's real code (main 084db9b, D168), applied
+
+- **HIGH 1:**
+  - Every shape ends with an `agent` step `report` (tools `channel.list`, `channel.notify`) carrying item 5's sentence, as inbox-triage's `triage` does.
+  - `starter-minimum.test.ts` 97 then passes unchanged, and `why.ts` 213–214 and `makesList` 222–224 apply.
+  - invoices-due's judge `say` is folded into `report`.
+- **MEDIUM:**
+  - **2:** a post-pass in `parseWorkflow`, like `withLastRun` (`workflow.ts` 309–318), refuses `due_within_days` unless the trigger is cron and stamps `tz` on `CalcStepSpec`; `runCalc` (`runner-steps.ts` 174) reads `spec.tz` with `exec.ctx.now()`.
+  - **3:** `SUGGESTION_KEYS` has four keys (`lifecycle.ts` 46), and Task 7 passes past items as `examples`.
+  - **4:** crm-update's `any` gains `mode.who`=`team` (`starter.json` 626–633).
+  - **5:** the qualify schema gains `name`; `records.find` takes `where` (`record-tools.ts` 76–77).
+  - **6:** `SHAPES["lead-qualification"]` reads `reads:email`, a second `SHAPES` change; `homes.test.ts` 46 gains `invoices-due`.
+  - **7:** the discovery skill reuses `skill_folders` with `workflow: "find-my-repetitive-work"`.
+- **LOW:**
+  - exact-list tests named;
+  - `builtinTools` joins `Bash,Read`;
+  - the `Read` check comes before `matchesRule` in `decide`;
+  - `work_dir` for meeting-notes;
+  - the invoices-due total hedged for Home 2;
+  - `invoice.file` is `file_ref`, and every enum has options;
+  - the "untrusted" test dropped (`judge.ts` 22 already fences it);
+  - the invoices-due template checked by `checkDelivered`;
+  - citations refreshed;
+  - D171 (6a), D172 (6b).
+- **No finding rejected.** Each citation was checked in the rebased code. Two were a line or two off and are written here as found: `loadHookConfig` at 47–55, `decide` at 92–103. Rule 14 stays the opportunity rule: PR #60 adds no operator rule, and item 6 uses no rule 15.
