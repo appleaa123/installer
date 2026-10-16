@@ -322,3 +322,17 @@ Steps, in order:
 4. **Start v1 from `main`** with the build order in 9.12. Items 1–4 (the spike, skills, the bare-minimum install, the level-B step) do not depend on #40 and may go first if task 28 is delayed; item 5 (inbox triage) should not start before #40 is in.
 
 Publishing to npm (9.1) waits for the v1 build (9.12, item 9); `npx --yes taskfollow instructions` is not needed before then, because the owner is user 1 and installs from the checkout.
+
+### 9.15 Two homes, the doability check and the consult mode (owner, 2026-10-16)
+
+Settled by the owner on 2026-10-16 after the research in `docs/research/2026-10-16-agents-and-market.md` (D156). **This is part of v1.** Where it changes 9.4–9.7 or 9.12, this section wins.
+
+- **Any agent.** TaskFollow works with any agent the person has, OpenClaw and Hermes included: *"I'd still prefer it works with any agents even for OpenClaw or Hermes. There are still use cases or people might want to try taskfollow. Sure we can make taskfollow compatible more with Claude Code, but I'm not willing to tie this project with Claude."* It is a layer on the person's own agent and subscription, not a third-party agent of its own.
+- **What people need, in the owner's words:** *"Clearly, safer and honest feedback is what users need from models drifting and 'claim they can do'."*
+- **Two homes for a workflow.** TaskFollow's own runner (local; the gate, approvals, the run record, `why`) for work that touches a hard rule (9.2), or the agent's own scheduler (for example Claude Cowork's remote tasks, OpenClaw or Hermes cron) for work that only reads and reports to the person. Example from the owner: *"I install TaskFollow and ask it to check my email every morning and send a brief to my inbox. It can check, give feedback on doability, and actually let Claude Cowork run the workflow (as in skills format) remotely."*
+- **The doability check is the key for success:** *"I feel like doability check is more important than ever, so you better do your best planning on this. This will be the key for success."* It answers yes or no for each thing a workflow needs, honestly, **whether the agent has a scheduler included**, and gives a solution.
+- **An honest no still comes with a solution.** When TaskFollow cannot make the agent run a workflow itself (for example it cannot create a Cowork scheduled task for the person), it says so and gives the person the finished workflow and the steps to set it up in their agent: *"It's honest yes/no, and provide solution. We can think about building AI tools or resolve this by code later."*
+- **The consult mode.** The interview and the doability check, run by a client on their own agent, as an early consultation: *"if I do an early consult to client, I send this to them ask them to run because it's interactive (chat to build), there might be easier for clients to understand the value of AI and how their own agents, whether Hermes, OpenClaw, or Claude Cowork or Codex are capable of."* It may also serve freelancers and agencies who set up agents for small businesses.
+- **Claude Cowork and `CLAUDE.md`:** the owner expects Cowork reads it (*"Claude can't just use different mechanisms within their ecosystem"*); recorded as an assumption, checked in the final human session.
+- **Next:** a design spec for the doability check, reviewed from several angles, before items 4–7 are reworked around it.
+
