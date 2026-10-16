@@ -28,7 +28,7 @@ describe("installer mcp-serve (D56)", () => {
     expect(listed.result.tools.map((tool) => tool.name)).toEqual([
       "approvals.request", "approvals.list", "approvals.get", "actions.reason", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
-      "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send", "check.ping",
+      "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send", "check.ping", "why.show",
     ]);
     expect(await server.close()).toBe(0);
     expect(server.lines).toHaveLength(3);
@@ -51,6 +51,25 @@ describe("installer mcp-serve (D56)", () => {
     expect((await call(server, "memo.delete", { id: 1, approval_token: token })).result).toMatchObject({ isError: true });
     expect(await server.close()).toBe(0);
     await expect(verifyAudit(home)).resolves.toMatchObject({ ok: true });
+  });
+
+  it("tools/call why.show {} answers with since and runs (D169)", async () => {
+    const home = await makeTempHome();
+    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const server = await connect(home);
+    const shown = (await call(server, "why.show", {})).result;
+    expect(shown.isError).toBeUndefined();
+    expect(shown.structuredContent).toHaveProperty("since");
+    expect(shown.structuredContent?.runs).toEqual([]);
+    expect(await server.close()).toBe(0);
+  });
+
+  it("tools/call why.show with an unknown run id answers with why's No run text (D169)", async () => {
+    const home = await makeTempHome();
+    runCli(["start", "--solution", FIXTURE_REF], { home });
+    const server = await connect(home);
+    expect((await call(server, "why.show", { run: "2026-10-14-1a2b3c4d" })).result).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("No run '2026-10-14-1a2b3c4d'") }] });
+    expect(await server.close()).toBe(0);
   });
 
   it("starts without an install (so the agent can connect early) and says what is missing on a call", async () => {
