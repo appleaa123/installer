@@ -126,17 +126,19 @@ export async function freshResult(home: string, need: Need, agent: string, agent
   return newest;
 }
 
-async function refuse(home: string, id: string, why: string, now: string): Promise<never> {
-  await appendAudit(home, { ts: now, actor: "agent", event: "check.refused", ref: `check:${id.slice(0, 16)}`, payload: { why } });
+type Actor = "agent" | "human";
+
+async function refuse(home: string, id: string, why: string, now: string, actor: Actor): Promise<never> {
+  await appendAudit(home, { ts: now, actor, event: "check.refused", ref: `check:${id.slice(0, 16)}`, payload: { why } });
   throw new InputError(why);
 }
 
-/** The open challenge, or a refusal (audited) when it is unknown, expired, used or cancelled. */
-export async function openChallenge(home: string, id: string, now: string): Promise<Challenge> {
+/** The open challenge, or a refusal (audited, as whoever asked: the agent, or the person on their page) when it is unknown, expired, used or cancelled. */
+export async function openChallenge(home: string, id: string, now: string, actor: Actor = "agent"): Promise<Challenge> {
   const challenge = await loadChallenge(home, id);
-  if (!challenge) return refuse(home, id, `No check '${id}' is waiting`, now);
-  if (challenge.status !== "open") return refuse(home, id, `Check '${id}' was already answered or cancelled`, now);
-  if (Date.parse(now) > Date.parse(challenge.expires_at)) return refuse(home, id, `Check '${id}' expired; start it again`, now);
+  if (!challenge) return refuse(home, id, `No check '${id}' is waiting`, now, actor);
+  if (challenge.status !== "open") return refuse(home, id, `Check '${id}' was already answered or cancelled`, now, actor);
+  if (Date.parse(now) > Date.parse(challenge.expires_at)) return refuse(home, id, `Check '${id}' expired; start it again`, now, actor);
   return challenge;
 }
 

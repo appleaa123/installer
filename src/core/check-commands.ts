@@ -91,7 +91,7 @@ async function page(home: string, id: string | undefined, context: CheckContext)
   if (!challenge) throw new InputError(`No check '${id ?? ""}' is waiting`);
   const ttl = Math.max(60_000, Date.parse(challenge.expires_at) - Date.parse(context.now()));
   const served = await serveCheckPage(home, challenge.id, { now: context.now, ttlMs: ttl });
-  process.stdout.write(`Open this page in your browser: ${served.url}/confirm\n(It closes by itself when the check ends; press Ctrl+C to close it now.)\n`);
+  process.stdout.write(`Open this page in your browser: ${served.url}/confirm\n(It stays open until the check expires; press Ctrl+C to close it sooner.)\n`);
   await served.done;
   return { status: "closed" };
 }

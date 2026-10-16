@@ -107,7 +107,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
   }
   if (route === "/confirm") {
     if (challenge.opens_at && now < challenge.opens_at) return send(res, 409, confirmPage(challenge, path, now));
-    const open = await openChallenge(home, id, now).catch(() => null);
+    const open = await openChallenge(home, id, now, "human").catch(() => null);
     if (!open) return send(res, 409, page("check", "<h1>This check is finished or expired</h1>"));
     const form = new URLSearchParams(await readBody(req));
     if (description !== undefined && open.workflow) {

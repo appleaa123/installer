@@ -79,6 +79,17 @@ describe("check page: the confirmation, a separate page served from disk", () =>
     expect(await abilities(home)).toEqual([expect.objectContaining({ need: "scheduler", result: "yes-you-told-us", challenge: challenge.id })]);
   });
 
+  it("audits a refusal on the person's page as the person, not the agent (review S6)", async () => {
+    const home = await makeTempHome();
+    let now = AT;
+    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 60_000, withWord: true }, AT);
+    const page = await serve(home, challenge.id, undefined, () => now);
+    now = later(5);
+    await post(`${page.url}/confirm`, `word=${encodeURIComponent(word ?? "")}`);
+    const refusals = (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { event: string; actor: string }).filter((entry) => entry.event === "check.refused");
+    expect(refusals).toEqual([expect.objectContaining({ actor: "human" })]);
+  });
+
   it("reopens after a restart: a new server reads the same challenge from disk, with no word", async () => {
     const home = await makeTempHome();
     const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 24 * 60 * 60_000, withWord: true }, AT);
