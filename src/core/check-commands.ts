@@ -12,7 +12,7 @@ import type { InstallState } from "./types.js";
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, list";
+const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;
@@ -118,6 +118,8 @@ export async function checkCommand(home: string, state: InstallState | undefined
     const workflow = await loadWorkflow(home, requireWorkflowId(first), DEFAULT_TOOLS);
     return (await import("./deliver.js")).deliverToCowork(home, workflow, { now: context.now() });
   }
+  if (sub === "missed") return (await import("./check-summary.js")).missedCommand(home, state, first, flags, context);
+  if (sub === "summary") return (await import("./check-summary.js")).summaryCommand(home, state, first, flags, context);
   if (sub === "once") return (await import("./check-once.js")).onceCommand(home, state, first, flags, context);
   if (sub === "home") return homeOf(home, state, first, flags, context);
   if (sub === "list" || sub === undefined) return list(home);

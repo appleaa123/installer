@@ -165,6 +165,15 @@ Before a workflow is trusted to run on a schedule, TaskFollow checks what your a
 3. **`taskfollow check home <workflow>`** says where it runs and why: TaskFollow's runner, your agent's own schedule (only for work that reads and reports to the person), draft-only, or by hand.
 4. `taskfollow check list` shows every result and how it is known. `taskfollow report` shows the newest ones.
 
+**For each new workflow, in this order:**
+
+1. **Do it once first.** `taskfollow check once <workflow>` runs it once in sandbox (nothing is sent or changed) and opens a page where the person says whether they saw the result and whether it was right. If you did the work in the chat instead, add `--value '{"by":"chat"}'`; then you must have only read and drafted: nothing sent, written or deleted.
+2. **Reading email:** `taskfollow check start t2`. When TaskFollow has its own email channel it sends the test email to the person's own address; otherwise the person's page tells them what to send from their phone. Follow the instruction it prints; if you cannot read email, run `taskfollow check cannot <id>`.
+3. **On TaskFollow's runner:** `taskfollow check start t7 --workflow <id>`.
+4. **On the person's assistant's own schedule** (for example Claude Cowork; only for work that reads and reports to the person): `taskfollow check start t8 --workflow <id> --value '{"agent":"<that assistant's name>"}'`. The person's page walks them through it: upload the test skill, paste the instruction into that assistant, see the task in its list, close the window. The confirmation opens at the scheduled time. Do not set the task yourself unless you are the assistant that will run it.
+5. **Hand over the workflow** for that schedule: `taskfollow check deliver <workflow>` writes a skill zip and the schedule text, with the steps for the person. Removing them later is done by hand in that assistant's app (in Claude: the Scheduled list, and Settings, then Skills).
+6. **Show the person** `taskfollow check summary <workflow> --value '{"agent":"<name>","while_away":true}'`: each line says how it is known, and where the workflow runs and what that means.
+
 Never ask the person for a check word, never open a check page yourself, and never answer a check for them: a word that only the ability under test could give is shown to the person alone, and anything said in the chat does not count. When a check page did not open, tell the person to run `taskfollow check page <id>` in their own terminal.
 
 ## 10. Health, the kill switch and support
@@ -208,3 +217,4 @@ taskfollow start --solution starter-skillswiki --url {{SKILLSWIKI_URL}}
 10. When the person asks about work one of their workflows covers, use the skills the TaskFollow section of `CLAUDE.md` lists for it.
 11. At the start of each session with the person, run `taskfollow approvals list` and `taskfollow why <the day of your last session with them, or yesterday>`. Tell them in plain words what is waiting for their approval (they decide in their own terminal: give the complete command), what each scheduled run found, and which runs were missed or failed.
 12. When the person wants to be told while away, or at a set time on a laptop that will be closed, say what their setup gives and what it does not, as the report's Told and Runs lines do, and offer the options there. Never promise a message their setup cannot send.
+13. When a workflow runs on the person's assistant's own schedule, ask at the start of the next session whether its message arrived (each one ends with "Sent by your scheduled TaskFollow workflow <name>"). If it did not, run `taskfollow check missed <workflow> --value '{"agent":"<name>"}'` (its check goes back to not checked), say so plainly, and offer to run it by hand or check the schedule again.
