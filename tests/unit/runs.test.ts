@@ -107,6 +107,35 @@ describe("newestStepOutput: where the inbox triage starts reading (item 5)", () 
     expect(await newestStepOutput(home, now(10, { sandbox: true }), "mail", "triage")).toEqual(mailOut(7));
   });
 
+  it("an empty summary does not move the watermark (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    await past(home, 9, 7, { summary: "   ", calls: 0 });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+  });
+
+  it("falls back to an older run when the read step has no usable output (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    const skipped = await past(home, 9, undefined, { summary: "list", calls: 1 });
+    await saveStep(home, skipped, { step: "mail", status: "done", started_at: at(9), finished_at: at(9), duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
+    const usable = (output: unknown) => typeof (output as { newest_id?: unknown } | null)?.newest_id === "number";
+    expect(await newestStepOutput(home, now(10), "mail", "triage", usable)).toEqual(mailOut(3));
+  });
+
+  it("skips a damaged run, and lets any other error through (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    const damaged = await past(home, 9, 7, { summary: "list", calls: 1 });
+    const { writeFile, chmod } = await import("node:fs/promises");
+    const file = join(home, RUNS_DIR, "memo-digest", damaged.run_id, "steps", "mail.json");
+    await writeFile(file, JSON.stringify({ step: "mail", status: "strange" }));
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+    await chmod(file, 0o000);
+    await expect(newestStepOutput(home, now(10), "mail", "triage")).rejects.toThrow();
+    await chmod(file, 0o600);
+  });
+
   it("is null on the first run, and ignores later runs and the run itself", async () => {
     const home = await makeTempHome();
     expect(await newestStepOutput(home, now(10), "mail", "triage")).toBeNull();

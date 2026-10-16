@@ -170,17 +170,25 @@ export async function previousOutputs(home: string, record: RunRecord): Promise<
 
 /**
  * Item 5: the output of `step` in the newest earlier run of this workflow (same sandbox mode, whatever its status)
- * whose `step` is done and whose `report` step is done with a summary, or null. A run whose list was never made does
- * not count, so its mail is read again; a run waiting on approvals after its list counts, so mail is not repeated.
+ * whose `step` is done with a `usable` output and whose `report` step is done with a non-empty summary, or null. A run
+ * whose list was never made does not count, so its mail is read again; a run waiting on approvals after its list counts,
+ * so mail is not repeated. A damaged run is skipped, as in `previousOutputs`; any other error is not hidden.
  */
-export async function newestStepOutput(home: string, record: RunRecord, step: string, report: string): Promise<unknown> {
+export async function newestStepOutput(home: string, record: RunRecord, step: string, report: string, usable: (output: unknown) => boolean = () => true): Promise<unknown> {
   const earlier = (await listRuns(home, record.workflow, skipDamaged))
     .filter((run) => run.run_id !== record.run_id && run.sandbox === record.sandbox && run.started_at < record.started_at)
     .sort((a, b) => b.started_at.localeCompare(a.started_at));
   for (const run of earlier) {
-    const [read, listed] = await Promise.all([loadStep(home, run, step).catch(() => null), loadStep(home, run, report).catch(() => null)]);
+    let read: StepLog | null;
+    let listed: StepLog | null;
+    try {
+      [read, listed] = await Promise.all([loadStep(home, run, step), loadStep(home, run, report)]);
+    } catch (error) {
+      if (error instanceof StateCorruptError) continue;
+      throw error;
+    }
     const summary = isRecord(listed?.output) ? listed.output.summary : undefined;
-    if (read?.status === "done" && listed?.status === "done" && typeof summary === "string") return read.output ?? null;
+    if (read?.status === "done" && usable(read.output) && listed?.status === "done" && typeof summary === "string" && summary.trim() !== "") return read.output ?? null;
   }
   return null;
 }

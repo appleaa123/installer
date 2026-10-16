@@ -73,7 +73,7 @@ async function escalate(exec: Exec, record: RunRecord, step: string, prepared: P
 /** Item 5: "last-run" becomes the newest inbox id the last run with a list read, or null on the first run. */
 async function lastRunArgs(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "tool" }): Promise<ArgsTemplate> {
   if (step.last_run === undefined || typeof step.args === "string") return step.args;
-  const read = await newestStepOutput(exec.home, record, step.id, step.last_run);
+  const read = await newestStepOutput(exec.home, record, step.id, step.last_run, (output) => typeof (output as { newest_id?: unknown } | null)?.newest_id === "number");
   const newest = typeof read === "object" && read !== null ? (read as { newest_id?: unknown }).newest_id : undefined;
   return { ...step.args, after: typeof newest === "number" ? newest : null };
 }
