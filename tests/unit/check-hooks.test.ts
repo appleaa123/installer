@@ -29,6 +29,24 @@ describe("T11: hooks that can block a call", () => {
     expect(await freshResult(home, "hooks", "fake-agent", "9.9.9", AT)).toMatchObject({ result: "no-tested" });
   }, 60_000);
 
+  it("is no, tested when a call with a wrong word went through: reaching TaskFollow is what the hook should have stopped (review 6 of PR #54)", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_SKIP_HOOKS", "1");
+    script([{ tool: "mcp__installer__check_ping", input: "wrong-word" }]);
+    const out = await hooksCheck(home, (await loadState(home)) ?? undefined, { now: () => AT });
+    expect(out).toMatchObject({ passed: false });
+    expect(await freshResult(home, "hooks", "fake-agent", "9.9.9", AT)).toMatchObject({ result: "no-tested" });
+  }, 60_000);
+
+  it("a word marked from the command line never settles the hook test", async () => {
+    const home = await runnerHome();
+    const { startChallenge, markChallenge } = await import("../../src/core/checks.js");
+    const { challenge, word } = await startChallenge(home, { needs: ["hooks"], test: "t11", agent: "fake-agent", agentVersion: "9.9.9", ttlMs: 60_000, withWord: true }, AT);
+    expect((await markChallenge(home, challenge.id, word ?? "", { interactive: false, via: "cli", through: "mark" }, AT)).id).toBe(0);
+    expect((await loadChallenge(home, challenge.id))?.status).toBe("open");
+    expect(await freshResult(home, "hooks", "fake-agent", "9.9.9", AT)).toBeNull();
+  });
+
   it("is not checked when the agent never tried the call", async () => {
     const home = await runnerHome();
     script([]);

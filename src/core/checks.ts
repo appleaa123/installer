@@ -210,6 +210,13 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
     const refusal = scheduleRefusal(challenge, through);
     if (refusal) return stillOpen(challenge, refusal, now);
   }
+  // T11 (review B4; review 6 of PR #54): a ping that reaches TaskFollow means the hook did NOT stop it, whatever the word;
+  // only the runner check records that, as a no.
+  if (challenge.test === "t11" && through === "ping") {
+    await saveChallenge(home, { ...challenge, status: "done", details: { ...(challenge.details ?? {}), pinged: "yes" } });
+    return stillOpen(challenge, "The call reached TaskFollow; the hook test records what that means", now);
+  }
+  if (challenge.test === "t11") return stillOpen(challenge, "The hook test is settled by TaskFollow's runner, not by a word sent back", now);
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
     const cancelled = tries >= MAX_TRIES;
@@ -220,11 +227,6 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (challenge.test === "t8" && answerer === "agent" && challenge.opens_at && now < challenge.opens_at) {
     await saveChallenge(home, { ...challenge, status: "cancelled" });
     return resultsFor(home, challenge, "not-checked", "It ran before the scheduled time, so it was not the agent's scheduler; start the check again", now, via, through);
-  }
-  // T11 (review B4): a ping that arrives means the hook did NOT stop it; only the runner check records that, as a no.
-  if (challenge.test === "t11") {
-    await saveChallenge(home, { ...challenge, status: "done", details: { ...(challenge.details ?? {}), pinged: "yes" } });
-    return stillOpen(challenge, "The call reached TaskFollow; the hook test records what that means", now);
   }
   await saveChallenge(home, { ...challenge, status: "done" });
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
