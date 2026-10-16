@@ -58,7 +58,8 @@ async function start(home: string, state: InstallState | undefined, test: string
   const spec = test ? TESTS[test] : undefined;
   if (!spec) throw new InputError(`check start takes one of: ${[...Object.keys(TESTS), "t7", "describe"].join(", ")}`);
   const { agent, version } = agentOf(state, flags.value as string | undefined);
-  const workflow = typeof flags.workflow === "string" ? flags.workflow : undefined;
+  // Review S4: a result names only a workflow that exists, checked the way `describe` and `t7` check it.
+  const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
   const { challenge, word } = await startChallenge(home, { needs: spec.needs, test: test as string, ...(workflow ? { workflow } : {}), agent, agentVersion: version, ttlMs: CHECK_TTL_MS, withWord: true }, context.now());
   return { id: challenge.id, test, instruction: spec.instruction(challenge.id, word ?? ""), expires_at: challenge.expires_at };
 }

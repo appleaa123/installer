@@ -20,6 +20,12 @@ describe("taskfollow check (D159)", () => {
     expect(JSON.stringify(out)).not.toMatch(/127\.0\.0\.1|http:/);
   });
 
+  it("refuses a --workflow that does not exist (review S4)", async () => {
+    const home = await runnerHome();
+    await expect(run(home, ["start", "t1"], { workflow: "no-such-flow" })).rejects.toThrow(/no-such-flow/);
+    await expect(run(home, ["start", "t5"], { workflow: "../x" })).rejects.toThrow();
+  });
+
   it("records the agent named by the install's probe, or the home agent the person names", async () => {
     const home = await runnerHome();
     const out = (await run(home, ["start", "t1"])) as { id: string; instruction: string };
