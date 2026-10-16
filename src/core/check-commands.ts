@@ -12,7 +12,7 @@ import type { InstallState } from "./types.js";
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t5|t7|describe>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, list";
+const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;
@@ -107,6 +107,7 @@ export async function checkCommand(home: string, state: InstallState | undefined
   if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
   if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
   if (sub === "page") return page(home, first, context);
+  if (sub === "once") return (await import("./check-once.js")).onceCommand(home, state, first, flags, context);
   if (sub === "home") return homeOf(home, state, first, flags, context);
   if (sub === "list" || sub === undefined) return list(home);
   throw new InputError(`check takes: ${SUBCOMMANDS}`);

@@ -50,6 +50,8 @@ export interface Challenge {
   readonly shown_at?: string;
   readonly status: ChallengeStatus;
   readonly tries: number;
+  /** Plain facts a page shows (an instruction, a file to upload, a scheduled time); never a word. */
+  readonly details?: Readonly<Record<string, string>>;
 }
 
 export const CHECKS_DIR = join("state", "checks");
@@ -82,16 +84,19 @@ export interface ChallengeSpec {
   readonly opensAt?: string;
   /** Make a word; it is returned to the in-process caller only (to put on the person's page, or plant). */
   readonly withWord?: boolean;
+  /** A ready word (for example two parts, one of which lives in a test skill); hashed like any other. */
+  readonly word?: string;
+  readonly details?: Readonly<Record<string, string>>;
 }
 
 export async function startChallenge(home: string, spec: ChallengeSpec, now: string): Promise<{ challenge: Challenge; word?: string }> {
   const id = `c${randomBytes(4).toString("hex")}`;
-  const word = spec.withWord ? newWord() : undefined;
+  const word = spec.word ?? (spec.withWord ? newWord() : undefined);
   const salt = word ? newSalt() : undefined;
   const challenge: Challenge = {
     id, needs: spec.needs, test: spec.test, ...(spec.workflow ? { workflow: spec.workflow } : {}), agent: spec.agent, agent_version: spec.agentVersion,
     ...(word && salt ? { word_salt: salt, word_hash: hashWord(word, salt) } : {}),
-    created_at: now, expires_at: new Date(Date.parse(now) + spec.ttlMs).toISOString(), ...(spec.opensAt ? { opens_at: spec.opensAt } : {}), status: "open", tries: 0,
+    created_at: now, expires_at: new Date(Date.parse(now) + spec.ttlMs).toISOString(), ...(spec.opensAt ? { opens_at: spec.opensAt } : {}), status: "open", tries: 0, ...(spec.details ? { details: spec.details } : {}),
   };
   await writeConfig(home, challengeFile(id), challenge);
   await appendAudit(home, { ts: now, actor: "engine", event: "check.started", ref: `check:${id}`, payload: { test: spec.test, needs: spec.needs, workflow: spec.workflow ?? null } });
@@ -196,4 +201,12 @@ export async function latestByNeed(home: string, agent: string): Promise<{ need:
     if (!seen || seen.at < entry.at || (seen.at === entry.at && seen.id < entry.id)) newest.set(entry.need, entry);
   }
   return [...newest.values()].map((entry) => ({ need: entry.need, result: entry.result, at: entry.at }));
+}
+
+/** A person's answer that is not a word (the work done once, the scheduled job's outcome): one result per need, then done. */
+export async function settleByPerson(home: string, challenge: Challenge, outcomes: readonly { readonly need: Need; readonly result: ResultKind; readonly reason: string }[], now: string): Promise<void> {
+  await saveChallenge(home, { ...challenge, status: "done" });
+  for (const outcome of outcomes) {
+    await recordResult(home, { need: outcome.need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result: outcome.result, reason: outcome.reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, through: "answer" });
+  }
 }

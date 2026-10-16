@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cancelChallenge, loadChallenge, openChallenge, saveChallenge, settleChallenge, type Challenge } from "./checks.js";
+import { FORMS, type CheckForm, type FormContext } from "./check-forms.js";
 import { confirmDescribed, descriptionHash, workflowHash } from "./homes.js";
 import { readConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
@@ -93,6 +94,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
   const route = url.pathname.slice(path.length);
   const now = options.now();
   const description = challenge.test === "describe" && challenge.workflow ? (await loadWorkflow(home, challenge.workflow, DEFAULT_TOOLS)).description : undefined;
+  const form = FORMS[challenge.test];
+  if (form) return handleForm(req, res, form, challenge, { path, now, home, ...(options.word ? { word: options.word } : {}) }, route, origin);
   if (req.method === "GET" && route === "" && description !== undefined) return send(res, 200, confirmPage(challenge, path, now, description));
   if (req.method === "GET" && route === "") return send(res, 200, wordPage(challenge, path, Boolean(options.word) && !challenge.shown_at));
   if (req.method === "GET" && route === "/confirm") return send(res, 200, confirmPage(challenge, path, now, description));
@@ -125,6 +128,19 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
     return send(res, 200, page("check", ok ? "<h1>Thank you</h1><p>That matches. You can close this tab.</p>" : `<h1>That did not match</h1><p>${escapeHtml(result.reason)}</p><p><a href="${path}/confirm">Try again</a></p>`));
   }
   return send(res, 404, page("not found", "<h1>Not found</h1>"));
+}
+
+/** A check whose answer is not a word (check-forms.ts): render on GET, settle on a same-origin POST while it is open. */
+async function handleForm(req: IncomingMessage, res: ServerResponse, form: CheckForm, challenge: Challenge, context: FormContext, route: string, origin: string): Promise<void> {
+  if (req.method === "GET") {
+    const shown = await form.render(challenge, context, route);
+    return send(res, shown.status, page(shown.title, shown.body));
+  }
+  if (req.method !== "POST" || !sameOrigin(req, origin)) return send(res, 403, page("refused", "<h1>Refused</h1>"));
+  const open = await openChallenge(context.home, challenge.id, context.now, "human").catch(() => null);
+  if (!open) return send(res, 409, page("check", "<h1>This check is finished or expired</h1><p>You can close this tab.</p>"));
+  const done = await form.submit(open, new URLSearchParams(await readBody(req)), context, route);
+  return send(res, done.status, page(done.title, done.body));
 }
 
 export function serveCheckPage(home: string, id: string, options: CheckPageOptions): Promise<CheckPage> {
