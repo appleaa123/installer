@@ -12,8 +12,9 @@ import { newWord } from "./words.js";
 
 /**
  * Starting T8 (spec 5.2, plan Task 10, D160): a test skill holding one word, an email word for the subject, and an
- * instruction for the agent's own scheduler. The two words are hashed together: about 50 bits, so a 24-hour challenge
- * stays out of reach of brute force against the slow hash (D159's note). The email word goes only to the person's page
+ * instruction for the agent's own scheduler. The email part is two words and the skill part one, hashed together: about
+ * 75 bits, and about 50 even for an agent that reads the skill's word from the zip, so a 24-hour challenge stays out of
+ * reach of brute force against the slow hash (D159's note, review M5). The email word goes only to the person's page
  * process; the skill word only into the test skill.
  */
 const NEEDS: readonly Need[] = ["scheduler", "reads:email", "skills"];
@@ -39,7 +40,8 @@ export async function startScheduled(home: string, state: InstallState | undefin
   const minutes = minutesOf(value);
   const now = context.now();
   const scheduled = new Date(Date.parse(now) + minutes * 60_000).toISOString();
-  const emailWord = newWord();
+  // Review M5: the email part is two words, so even with the skill's word (it sits in the zip) brute force stays out of reach for the challenge's 24 hours.
+  const emailWord = `${newWord()} ${newWord()}`;
   const skillWord = newWord();
   const canPlant = context.canPlant ?? (async (target: string) => (await loadChannel(target, "email").catch(() => null)) !== null);
   const plant = (await canPlant(home)) ? "taskfollow" : "person";

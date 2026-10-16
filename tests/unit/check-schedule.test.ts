@@ -58,7 +58,8 @@ describe("check T8: the agent's own scheduler (plan Task 10)", () => {
     expect(out.instruction).toContain("not a background command, sleep or cron on this computer");
     expect(JSON.stringify(out)).not.toContain(emailWord);
     expect(JSON.stringify(out)).not.toContain(skillWord);
-    expect(emailWord).toMatch(/^[A-Z]+-[A-Z2-9]{4}$/);
+    // Review M5: two words for the email part, so a same-user agent holding the skill word still faces about 50 bits over 24 hours.
+    expect(emailWord).toMatch(/^[A-Z]+-[A-Z2-9]{4} [A-Z]+-[A-Z2-9]{4}$/);
     expect(skillWord).toMatch(/^[A-Z]+-[A-Z2-9]{4}$/);
     const challenge = await loadChallenge(home, out.id);
     expect(challenge).toMatchObject({ test: "t8", agent: "Claude Cowork", opens_at: later(10), expires_at: new Date(Date.parse(later(10)) + 24 * 3_600_000).toISOString() });
