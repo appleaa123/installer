@@ -12,7 +12,7 @@ import type { InstallState } from "./types.js";
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
+const SUBCOMMANDS = "start <t1|t2|t5|t7|t8|describe>, once <workflow>, mark <id> <word>, answer <id> <text>, cannot <id>, page <id>, home <workflow>, deliver <workflow>, summary <workflow>, missed <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;

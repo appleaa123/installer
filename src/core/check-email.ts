@@ -1,6 +1,7 @@
 import { agentOf, CHECK_TTL_MS, type CheckContext } from "./check-commands.js";
 import { plantAndAudit, plantByChannel, SUBJECT_PREFIX } from "./check-plant.js";
 import { openChallenge, settleByPerson, startChallenge, type Need } from "./checks.js";
+import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import type { InstallState } from "./types.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
@@ -36,6 +37,8 @@ export async function startReadsEmail(home: string, state: InstallState | undefi
 /** The agent says it cannot read email: not an ability verdict, and none of its words are kept. */
 export async function cannotCommand(home: string, id: string | undefined, now: string): Promise<Raw> {
   const challenge = await openChallenge(home, id ?? "", now);
+  // Review M2: only the email check can be closed this way, never a person's open schedule check or another test.
+  if (challenge.test !== "t2") throw new InputError("check cannot is only for the email check (t2)");
   const reason = "Blocked, not an ability problem: your assistant said it cannot reach your email yet (it may need an email connection, such as Gmail in its settings)";
   await settleByPerson(home, challenge, challenge.needs.map((need) => ({ need, result: "not-checked" as const, reason })), now);
   return { need: challenge.needs[0] ?? "reads:email", result: "not checked", why: reason };

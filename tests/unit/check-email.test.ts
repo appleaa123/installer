@@ -54,6 +54,14 @@ describe("check T2: reading email (plan Task 8)", () => {
     expect(stored.toLowerCase()).not.toContain(word.toLowerCase());
   });
 
+  it("lets 'check cannot' close only the email check, never another open check (review M2)", async () => {
+    const home = await runnerHome();
+    const other = (await run(home, ["start", "t1"])) as { id: string };
+    await expect(run(home, ["cannot", other.id])).rejects.toThrow("only for the email check");
+    expect((await loadChallenge(home, other.id))?.status).toBe("open");
+    await expect(run(home, ["nonsense"])).rejects.toThrow(/cannot <id>/);
+  });
+
   it("falls back to the person's page when planting fails, and audits it without the word (review H4)", async () => {
     const home = await runnerHome();
     const failing = { interactive: false, now: () => AT, launch: async (_home: string, id: string, word: string | undefined) => (launched.push({ id, word }), { pid: 0, opened: true }), plant: async () => { throw new ActionFailure("No email secret is stored"); } };
