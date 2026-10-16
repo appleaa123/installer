@@ -31,6 +31,8 @@ export interface CheckResult {
   readonly via?: string;
   /** What carried the word back: the tool `check.ping`, the command `check mark`, or `check answer` (review B2). */
   readonly through?: Through;
+  /** T8 only: whether it ran while the person was away (around the set time, window closed), not "well after" (review H2). */
+  readonly while_away?: boolean;
 }
 export type Through = "ping" | "mark" | "answer";
 export type StoredResult = CheckResult & NumberedRecord;
@@ -50,6 +52,8 @@ export interface Challenge {
   readonly shown_at?: string;
   readonly status: ChallengeStatus;
   readonly tries: number;
+  /** Plain facts a page shows (an instruction, a file to upload, a scheduled time); never a word. */
+  readonly details?: Readonly<Record<string, string>>;
 }
 
 export const CHECKS_DIR = join("state", "checks");
@@ -82,16 +86,19 @@ export interface ChallengeSpec {
   readonly opensAt?: string;
   /** Make a word; it is returned to the in-process caller only (to put on the person's page, or plant). */
   readonly withWord?: boolean;
+  /** A ready word (for example two parts, one of which lives in a test skill); hashed like any other. */
+  readonly word?: string;
+  readonly details?: Readonly<Record<string, string>>;
 }
 
 export async function startChallenge(home: string, spec: ChallengeSpec, now: string): Promise<{ challenge: Challenge; word?: string }> {
   const id = `c${randomBytes(4).toString("hex")}`;
-  const word = spec.withWord ? newWord() : undefined;
+  const word = spec.word ?? (spec.withWord ? newWord() : undefined);
   const salt = word ? newSalt() : undefined;
   const challenge: Challenge = {
     id, needs: spec.needs, test: spec.test, ...(spec.workflow ? { workflow: spec.workflow } : {}), agent: spec.agent, agent_version: spec.agentVersion,
     ...(word && salt ? { word_salt: salt, word_hash: hashWord(word, salt) } : {}),
-    created_at: now, expires_at: new Date(Date.parse(now) + spec.ttlMs).toISOString(), ...(spec.opensAt ? { opens_at: spec.opensAt } : {}), status: "open", tries: 0,
+    created_at: now, expires_at: new Date(Date.parse(now) + spec.ttlMs).toISOString(), ...(spec.opensAt ? { opens_at: spec.opensAt } : {}), status: "open", tries: 0, ...(spec.details ? { details: spec.details } : {}),
   };
   await writeConfig(home, challengeFile(id), challenge);
   await appendAudit(home, { ts: now, actor: "engine", event: "check.started", ref: `check:${id}`, payload: { test: spec.test, needs: spec.needs, workflow: spec.workflow ?? null } });
@@ -157,9 +164,24 @@ export type Answerer = "agent" | "terminal" | "person";
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
 const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7"];
 
+/** A refusal that records nothing and leaves the challenge open with its tries untouched. */
+const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
+
+/** T8 from the agent's side (review B1): only a mark from a scheduler on this computer, after the window closed, can count. */
+function scheduleRefusal(challenge: Challenge, through: Through | undefined): string | null {
+  if (through !== "mark") return "check answer and check.ping never settle a schedule check: the person confirms what arrived on their page";
+  if (!challenge.details?.closed_at) return "Not yet: the person must close the assistant's window on their page first (that is when the test email is planted)";
+  if (challenge.details.local_scheduler !== "yes") return "This assistant's schedule runs in the cloud, so a command on this computer did not come from it; confirm on your page";
+  return null;
+}
+
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
   if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
-    return { id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason: "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id };
+    return stillOpen(challenge, "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", now);
+  }
+  if (challenge.test === "t8" && answerer === "agent") {
+    const refusal = scheduleRefusal(challenge, through);
+    if (refusal) return stillOpen(challenge, refusal, now);
   }
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
@@ -167,10 +189,16 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
     await saveChallenge(home, { ...challenge, tries, ...(cancelled ? { status: "cancelled" as const } : {}) });
     return resultsFor(home, challenge, "not-checked", cancelled ? "The word did not match twice, so the test was cancelled; start it again" : "The word did not match; try once more", now);
   }
+  // T8 (spec 5.2): a mark from a job on this computer counts only at or after the scheduled time; before it, it was not the scheduler.
+  if (challenge.test === "t8" && answerer === "agent" && challenge.opens_at && now < challenge.opens_at) {
+    await saveChallenge(home, { ...challenge, status: "cancelled" });
+    return resultsFor(home, challenge, "not-checked", "It ran before the scheduled time, so it was not the agent's scheduler; start the check again", now, via, through);
+  }
   await saveChallenge(home, { ...challenge, status: "done" });
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
+  if (challenge.test === "t8") return resultsFor(home, challenge, "yes-you-told-us", "A job on this computer marked it at or after the set time; whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell", now, via, through);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }
 
@@ -178,8 +206,9 @@ export async function markChallenge(home: string, id: string, word: string, orig
   return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive ? "terminal" : "agent", now, origin.via, origin.through ?? "mark");
 }
 
-export async function answerChallenge(home: string, id: string, text: string, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), text, "agent", now, undefined, "answer");
+/** Review M6: an answer typed at an interactive terminal is labelled "was that you?", as a mark is. */
+export async function answerChallenge(home: string, id: string, text: string, now: string, origin: { readonly interactive: boolean } = { interactive: false }): Promise<StoredResult> {
+  return settleChallenge(home, await openChallenge(home, id, now), text, origin.interactive ? "terminal" : "agent", now, undefined, "answer");
 }
 
 /** Ends a challenge without a result (the word was shown twice, or the person cancelled), with an audit entry. */
@@ -196,4 +225,12 @@ export async function latestByNeed(home: string, agent: string): Promise<{ need:
     if (!seen || seen.at < entry.at || (seen.at === entry.at && seen.id < entry.id)) newest.set(entry.need, entry);
   }
   return [...newest.values()].map((entry) => ({ need: entry.need, result: entry.result, at: entry.at }));
+}
+
+/** A person's answer that is not a word (the work done once, the scheduled job's outcome): one result per need, then done. */
+export async function settleByPerson(home: string, challenge: Challenge, outcomes: readonly { readonly need: Need; readonly result: ResultKind; readonly reason: string; readonly while_away?: boolean }[], now: string): Promise<void> {
+  await saveChallenge(home, { ...challenge, status: "done" });
+  for (const outcome of outcomes) {
+    await recordResult(home, { need: outcome.need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result: outcome.result, reason: outcome.reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, through: "answer", ...(outcome.while_away === undefined ? {} : { while_away: outcome.while_away }) });
+  }
 }

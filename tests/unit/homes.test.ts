@@ -81,7 +81,7 @@ describe("homes: where a workflow runs", () => {
     const words = JSON.stringify({ description: "Each morning, tell me how many memos I have.", tools: ["memo.list", "channel.notify"] });
     await workflowCommand(at, "add", "count", words, () => AT);
     await runnerTested(at);
-    await recordResult(at, yes("scheduler", COWORK, "count", "yes-you-told-us"));
+    await recordResult(at, { ...yes("scheduler", COWORK, "count", "yes-you-told-us"), while_away: true });
     const decide = async () => (await decideHome(at, await loadWorkflow(at, "count", DEFAULT_TOOLS), { whileAway: true, runner: AGENT, homeAgent: COWORK }, AT)).home;
     expect(await decide()).toEqual({ home: "runner" });
     const workflow = await loadWorkflow(at, "count", DEFAULT_TOOLS);
@@ -118,9 +118,21 @@ describe("homes: where a workflow runs", () => {
     const at = await home();
     await workflowCommand(at, "add", "inbox-triage", undefined, () => AT);
     await runnerTested(at);
-    await recordResult(at, yes("scheduler", COWORK, "inbox-triage", "yes-you-told-us"));
+    await recordResult(at, { ...yes("scheduler", COWORK, "inbox-triage", "yes-you-told-us"), while_away: true });
     const decide = async (whileAway: boolean) => (await decideHome(at, await loadWorkflow(at, "inbox-triage", DEFAULT_TOOLS), { whileAway, runner: AGENT, homeAgent: COWORK }, AT)).home;
     expect(await decide(false)).toEqual({ home: "runner" });
     expect(await decide(true)).toEqual({ home: "agent-scheduler", agent: "Claude Cowork" });
+  });
+
+  it("does not claim 'while you are away' when the schedule ran only well after the set time (review H2)", async () => {
+    const at = await home();
+    await workflowCommand(at, "add", "inbox-triage", undefined, () => AT);
+    await recordResult(at, { ...yes("scheduler", COWORK, "inbox-triage", "yes-you-told-us"), while_away: false });
+    const workflow = await loadWorkflow(at, "inbox-triage", DEFAULT_TOOLS);
+    const noRunner = await decideHome(at, workflow, { whileAway: true, runner: AGENT, homeAgent: COWORK }, AT);
+    expect(noRunner.home).toEqual({ home: "agent-scheduler", agent: "Claude Cowork" });
+    expect(noRunner.why).not.toContain("while you are away");
+    await runnerTested(at);
+    expect((await decideHome(at, workflow, { whileAway: true, runner: AGENT, homeAgent: COWORK }, AT)).home).toEqual({ home: "runner" });
   });
 });

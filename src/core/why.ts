@@ -168,6 +168,12 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
   };
 }
 
+/** The result of one run by id (the work done once, plan Task 7), or undefined. */
+export async function runResult(home: string, runId: string): Promise<string | undefined> {
+  const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === runId);
+  return record ? resultOf(home, record) : undefined;
+}
+
 /** A run's result, for level 1 (9.4): an agent's summary, or the last done step's output; at most 300 characters. */
 async function resultOf(home: string, run: RunRecord): Promise<string | undefined> {
   let steps: StepLog[];

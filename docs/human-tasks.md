@@ -141,6 +141,28 @@ Each task says why it is needed and what to do, step by step.
 6. If you can, have someone with a WhatsApp username (no visible number) write: does the message arrive, and does a reply reach them?
 7. Note whether Meta asked you to switch the app to Live, and what it required.
 
+### 33. Your morning email brief, end to end, on Claude Code and on Claude Cowork (item 4, D160)
+
+**Why:** this is the doability check on your own example, *"check my email every morning and send me a brief"*, and the test of the whole idea (spec section 11): if it does not feel worth it to you as user 1, we learn it here. About 60 to 90 minutes, mostly waiting; your test Gmail and its app password (you enter it only on TaskFollow's own page); Claude Cowork on the web. Nothing is sent to anyone but you. Every command is one short line: `bash ~/Desktop/ML-Project/installer/docs/testing/task33-steps.sh <step>`. Tell Claude what each step printed or showed, with the exact words of anything unexpected.
+
+**Before you start:** TaskFollow's email channel ignores mail sent from its own address. For Home 1, send your test emails **from a different address** (your phone's other account, or a friend) to the test Gmail.
+
+**Home 1, TaskFollow's runner on this computer**
+1. `setup`: builds, starts a throwaway install in `~/taskfollow-task33` and answers its questions (on your own; no Telegram; email yes). Paste back the checksum line.
+2. `email`: a page opens: enter the test Gmail address and its app password there. When it says Connected, run `channel`, then `gateway`.
+3. Send two or three short test emails to the test Gmail from another address. Then `workflow` (adds the morning brief), and `describe`: on the page that opens, answer **No** to both questions (it sends nothing to anyone but you, and changes nothing).
+4. `once`: it runs the brief once, safely, and shows the result; a page asks whether you saw it and whether it was right. Answer there.
+5. `t7`: TaskFollow runs a test task through its own runner. Then `home1`: it says where the brief would run and why, shows your summary page, and runs the brief once by hand with `why`. Paste back what `home1` printed.
+
+**Home 2, Claude Cowork's own schedule**
+6. `t8`: a page opens with three steps: upload the test skill (Settings, then Skills), paste the instruction into a **Cowork** chat, and tick when you see the task in its list. Then close the Cowork tab and tick **I closed the window**; TaskFollow sends the test email to your own address (or the page gives you a subject to send from your phone). At the set time a push arrives on the Claude app; type the subject and the check word on the page, and say when it arrived.
+7. `deliver`: it writes the brief as a skill zip and prints the schedule text and steps. Upload the zip in Settings, then Skills, paste the schedule text into a Cowork chat, and let it send you a real brief (you can ask Cowork to run it once now, or wait for the next morning).
+8. `home2`: your summary page for Cowork. Paste it back, and say in one or two sentences **whether this felt worth it**, and what felt wrong or slow.
+
+**Clean up:** `clean` (stops the gateway, removes TaskFollow's registration from Claude Code, prints the settings checksum, which must equal step 1's). In Claude, delete the scheduled tasks for this test, and the skills `taskfollow-check-…` and `morning-brief` (Settings, then Skills); Cowork cannot delete them from a chat. Never run `taskfollow uninstall` here.
+
+**Paste back:** the two checksum lines; what `home1` and `home2` printed; the T8 page's last screen; anything unexpected, word for word; your verdict.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

@@ -4,11 +4,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cancelChallenge, loadChallenge, openChallenge, saveChallenge, settleChallenge, type Challenge } from "./checks.js";
+import { FORMS, type CheckForm, type FormContext } from "./check-forms.js";
 import { confirmDescribed, descriptionHash, workflowHash } from "./homes.js";
 import { readConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow } from "./workflow.js";
+import { whenWords } from "./clock-words.js";
 import { escapeHtml, readBody } from "./secret-page.js";
 
 /**
@@ -66,7 +68,7 @@ function describePage(path: string, description: string): string {
 }
 
 function confirmPage(challenge: Challenge, path: string, now: string, description?: string): string {
-  if (challenge.opens_at && now < challenge.opens_at) return page("check", `<h1>Not yet</h1><p>This page opens at ${escapeHtml(challenge.opens_at.slice(11, 16))} (UTC). Come back then; nothing is lost.</p>`);
+  if (challenge.opens_at && now < challenge.opens_at) return page("check", `<h1>Not yet</h1><p>This page opens at ${escapeHtml(whenWords(challenge.opens_at))}. Come back then; nothing is lost.</p>`);
   if (challenge.status !== "open") return page("check", "<h1>This check is finished</h1><p>You can close this tab.</p>");
   if (challenge.test === "describe" && description !== undefined) return describePage(path, description);
   return page("check", `<h1>What did you receive?</h1>${WARNING}<form method="post" action="${path}/confirm"><p><label>The word you received<br><input name="word" autocomplete="off" required></label></p><button type="submit">Confirm</button></form>`);
@@ -74,6 +76,8 @@ function confirmPage(challenge: Challenge, path: string, now: string, descriptio
 
 export interface CheckPageOptions {
   readonly word?: string;
+  /** T8's plant after the person closed the window; tests inject it (the page process uses TaskFollow's email channel). */
+  readonly plant?: (home: string, subject: string, text: string) => Promise<boolean>;
   readonly now: () => string;
   readonly ttlMs: number;
 }
@@ -93,6 +97,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
   const route = url.pathname.slice(path.length);
   const now = options.now();
   const description = challenge.test === "describe" && challenge.workflow ? (await loadWorkflow(home, challenge.workflow, DEFAULT_TOOLS)).description : undefined;
+  const form = FORMS[challenge.test];
+  if (form) return handleForm(req, res, form, challenge, { path, now, home, ...(options.word ? { word: options.word } : {}), ...(options.plant ? { plant: options.plant } : {}) }, route, origin);
   if (req.method === "GET" && route === "" && description !== undefined) return send(res, 200, confirmPage(challenge, path, now, description));
   if (req.method === "GET" && route === "") return send(res, 200, wordPage(challenge, path, Boolean(options.word) && !challenge.shown_at));
   if (req.method === "GET" && route === "/confirm") return send(res, 200, confirmPage(challenge, path, now, description));
@@ -103,7 +109,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
       return send(res, 200, page("check", "<h1>This word was already shown (a reload or another window can cause this)</h1><p>The test is cancelled, so nobody else can use the word. Ask your assistant to start the check again.</p>"));
     }
     await saveChallenge(home, { ...challenge, shown_at: now });
-    return send(res, 200, page("check", `<h1>Your word</h1><p class="word">${escapeHtml(options.word)}</p>${WARNING}<p>Do what your assistant's instructions say with this word. Then come back to <a href="${path}/confirm">the confirmation page</a> when it asks you to.</p>`));
+    const how = challenge.test === "t2" ? `<p>Send yourself an email from your phone (to the address your assistant reads) with exactly this subject:</p><p class="word">TASKFOLLOW-CHECK ${escapeHtml(challenge.id)} ${escapeHtml(options.word)}</p><p>Then tell your assistant you sent it, without saying the subject.</p>` : `<p>Do what your assistant's instructions say with this word. Then come back to <a href="${path}/confirm">the confirmation page</a> when it asks you to.</p>`;
+    return send(res, 200, page("check", `<h1>Your word</h1><p class="word">${escapeHtml(options.word)}</p>${WARNING}${how}`));
   }
   if (route === "/confirm") {
     if (challenge.opens_at && now < challenge.opens_at) return send(res, 409, confirmPage(challenge, path, now));
@@ -125,6 +132,19 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
     return send(res, 200, page("check", ok ? "<h1>Thank you</h1><p>That matches. You can close this tab.</p>" : `<h1>That did not match</h1><p>${escapeHtml(result.reason)}</p><p><a href="${path}/confirm">Try again</a></p>`));
   }
   return send(res, 404, page("not found", "<h1>Not found</h1>"));
+}
+
+/** A check whose answer is not a word (check-forms.ts): render on GET, settle on a same-origin POST while it is open. */
+async function handleForm(req: IncomingMessage, res: ServerResponse, form: CheckForm, challenge: Challenge, context: FormContext, route: string, origin: string): Promise<void> {
+  if (req.method === "GET") {
+    const shown = await form.render(challenge, context, route);
+    return send(res, shown.status, page(shown.title, shown.body));
+  }
+  if (req.method !== "POST" || !sameOrigin(req, origin)) return send(res, 403, page("refused", "<h1>Refused</h1>"));
+  const open = await openChallenge(context.home, challenge.id, context.now, "human").catch(() => null);
+  if (!open) return send(res, 409, page("check", "<h1>This check is finished or expired</h1><p>You can close this tab.</p>"));
+  const done = await form.submit(open, new URLSearchParams(await readBody(req)), context, route);
+  return send(res, done.status, page(done.title, done.body));
 }
 
 export function serveCheckPage(home: string, id: string, options: CheckPageOptions): Promise<CheckPage> {
