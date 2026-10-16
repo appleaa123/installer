@@ -15,10 +15,10 @@ import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, 
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { rm } from "node:fs/promises";
-import { workflowHash } from "./homes.js";
+import { SHAPES, workflowHash } from "./homes.js";
 import { restoreFile } from "./agent-file.js";
 import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
-import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, writeWorkflowSkill } from "./workflow-skill.js";
+import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, shippedSkill, writeWorkflowSkill } from "./workflow-skill.js";
 import { MAX_WORKFLOW_SKILLS, WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
 
 /**
@@ -101,6 +101,8 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const raw = newWorkflow(id, value, await suggestions(home));
   const rules = value === undefined ? undefined : parseWords(value).my_rules;
   if (rules !== undefined && typeof rules !== "string") throw new InputError('workflow add: "my_rules" must be text, the person\'s own rules from the interview');
+  const examples = value === undefined ? undefined : parseWords(value).examples;
+  if (examples !== undefined && typeof examples !== "string") throw new InputError('workflow add: "examples" must be text, two or three of the person\'s real past items with what they expect');
   const owner = parseWorkflow(raw, id, DEFAULT_TOOLS);
   // D126 changed (9.12 item 2): only a skillswiki: reference needs a Skills Wiki connection; a local skill does not.
   const needsSkill = owner.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || owner.skills.some(isSkillswikiRef);
@@ -118,7 +120,9 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const before = await agentFileBefore(agentFile);
   const writtenBefore = await loadWritten(home);
   try {
-    if (folder) await writeWorkflowSkill(folder, id, workflow.description, rules);
+    // Item 5: a suggestion that is one of the shapes gets the skill TaskFollow ships for it; anything else the generic one.
+    const shipped = fromSuggestion && Object.hasOwn(SHAPES, id) ? await shippedSkill(id) : null;
+    if (folder) await writeWorkflowSkill(folder, id, workflow.description, rules, { shipped, ...(examples === undefined ? {} : { examples }) });
     await refreshAgentFile(home, { workflow: id, description: workflow.description, skills: workflow.skills });
     await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), final);
     await saveWorkflowState(home, { workflow: id, sandbox: true, ...(fromSuggestion ? { shape: id, content_hash: workflowHash(final) } : {}) });

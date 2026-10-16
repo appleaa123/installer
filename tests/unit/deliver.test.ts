@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeConfig } from "../../src/core/data-source.js";
-import { deliverToCowork, scheduleWords } from "../../src/core/deliver.js";
+import { checkDelivered, deliverToCowork, scheduleWords } from "../../src/core/deliver.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { readZip, storedZip } from "../../src/core/zip.js";
@@ -137,5 +137,35 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
     expect(scheduleWords({ kind: "cron", cron: "30 7 * * *", tz: "Europe/London", tolerance_minutes: 5 })).toBe("every day at 07:30 (Europe/London)");
     expect(scheduleWords({ kind: "cron", cron: "0 9 * * 1", tz: "UTC", tolerance_minutes: 5 })).toBe("every Monday at 09:00 (UTC)");
     expect(scheduleWords({ kind: "manual" })).toBe("every weekday at 08:00, or at the time you prefer");
+  });
+});
+
+describe("deliver: the shipped inbox triage skill (item 5)", () => {
+  const ID = "inbox-triage";
+  const DESCRIPTION = "Every morning, read the mail that arrived since you last did this (or in the last 24 hours) and tell me what needs me.";
+  const triage = { ...raw(DESCRIPTION), workflow: ID };
+  const shipped = (id: string) => readFile(join(process.cwd(), "solutions", "shapes", id, "SKILL.md"), "utf8");
+
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills pass checkDelivered (%s)", async (id) => {
+    const { home } = await install();
+    await expect(checkDelivered(home, await shipped(id))).resolves.toBeUndefined();
+  });
+
+  it("the delivered inbox-triage SKILL.md holds the owner's rules under The owner's own rules and no pointer line", async () => {
+    const { home, work } = await install();
+    const folder = join(work, ".claude", "skills", ID);
+    await mkdir(join(folder, "references"), { recursive: true });
+    await writeFile(join(folder, "SKILL.md"), await shipped(ID));
+    await writeFile(join(folder, "references", "my-rules.md"), "# My rules for inbox-triage\n\nRepairs at 12 Oak St come first.\n");
+    await writeFile(join(folder, "references", "examples.md"), "# Examples for inbox-triage\n\nTom asks for the lease copy: reply.\n");
+    await writeWorkflow(home, triage);
+    await confirmDescribed(home, ID, descriptionHash(DESCRIPTION), workflowHash(triage), { sendsToOthers: false, writesOrDeletes: false }, AT);
+    await recordResult(home, { need: "scheduler", workflow: ID, result: "yes-you-told-us", reason: "you told us", at: AT, agent: "Claude Cowork", agent_version: null, test: "t8", while_away: true });
+    const out = await deliverToCowork(home, parseWorkflow(triage, ID, DEFAULT_TOOLS), { now: AT, agent: COWORK, runner: RUNNER });
+    const skill = readZip(await readFile(out.zip))[1]?.data.toString("utf8") ?? "";
+    expect(skill).toContain("## The owner's own rules\n\nRepairs at 12 Oak St come first.");
+    expect(skill).not.toContain("references/");
+    expect(skill).toContain("since you last did this (or in the last 24 hours");
+    expect(out.schedule).toContain("since you last did this (or in the last 24 hours)");
   });
 });

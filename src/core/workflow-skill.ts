@@ -1,5 +1,6 @@
-import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readSection, removeSection, sectionText, writeSection, type WorkflowLine } from "./agent-file.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
@@ -17,6 +18,7 @@ import { loadWorkflow, workflowIds } from "./workflow.js";
  */
 export const WRITTEN_FILE = join("state", "written.json");
 export const RULES_FILE = "my-rules.md";
+export const EXAMPLES_FILE = "examples.md";
 const DESCRIPTION_LIMIT = 300;
 
 export interface WrittenFolder {
@@ -80,6 +82,17 @@ export function rulesMarkdown(id: string, rules: string | undefined): string {
   return `# My rules for ${id}\n\n${body}\n`;
 }
 
+/** 9.6: a few of the owner's real past items with what they expect, rerun in chat when the skill or the rules change. */
+export function examplesMarkdown(id: string, examples: string | undefined): string {
+  const body = examples?.trim() || "None yet. In the interview, ask the owner for two or three real past items, shortened, and what they expect for each.";
+  return `# Examples for ${id}\n\n${body}\n`;
+}
+
+/** Item 5: the skill TaskFollow ships for a shape (`solutions/shapes/<id>/SKILL.md`), or null when it ships none. */
+export async function shippedSkill(id: string): Promise<string | null> {
+  return readFile(fileURLToPath(new URL(`../../solutions/shapes/${id}/${SKILL_FILE}`, import.meta.url)), "utf8").catch(() => null);
+}
+
 const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
 /** The folder the workflow's own skill goes into, refused when the agent already has a skill folder of that name. */
@@ -90,10 +103,11 @@ export async function plannedSkillFolder(roots: SkillRoots, id: string): Promise
   return folder;
 }
 
-export async function writeWorkflowSkill(folder: string, id: string, description: string, rules: string | undefined): Promise<void> {
+export async function writeWorkflowSkill(folder: string, id: string, description: string, rules: string | undefined, extra: { readonly shipped?: string | null; readonly examples?: string } = {}): Promise<void> {
   await mkdir(join(folder, REFERENCES_DIR), { recursive: true });
-  await writeFile(join(folder, SKILL_FILE), skillMarkdown(id, description), { flag: "wx" });
+  await writeFile(join(folder, SKILL_FILE), extra.shipped ?? skillMarkdown(id, description), { flag: "wx" });
   await writeFile(join(folder, REFERENCES_DIR, RULES_FILE), rulesMarkdown(id, rules), { flag: "wx" });
+  await writeFile(join(folder, REFERENCES_DIR, EXAMPLES_FILE), examplesMarkdown(id, extra.examples), { flag: "wx" });
 }
 
 /** Every current workflow as a line of the section, with `extra` (one not written yet) in its place. */
