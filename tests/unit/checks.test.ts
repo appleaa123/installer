@@ -74,6 +74,14 @@ describe("checks: how the word came back (review B2, S2)", () => {
     const { challenge, word } = await start(home, "t1");
     expect(await markChallenge(home, challenge.id, word ?? "", { ...NOT_TTY, through: "mark" }, AT)).toMatchObject({ result: "yes-tested" });
   });
+
+  it("refuses the person's typing for a test of what the agent can do, and keeps the check open", async () => {
+    const home = await makeTempHome();
+    const { challenge, word } = await start(home, "t1");
+    const { settleChallenge } = await import("../../src/core/checks.js");
+    expect(await settleChallenge(home, challenge, word ?? "", "person", AT)).toMatchObject({ result: "not-checked", reason: expect.stringContaining("your agent") });
+    expect((await loadChallenge(home, challenge.id))?.status).toBe("open");
+  });
 });
 
 describe("checks: results and freshness", () => {

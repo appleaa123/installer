@@ -152,7 +152,13 @@ async function resultsFor(home: string, challenge: Challenge, result: ResultKind
 /** Who answered: the agent from its shell, someone at an interactive terminal, or the person on their check page. */
 export type Answerer = "agent" | "terminal" | "person";
 
+/** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
+const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7"];
+
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
+  if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
+    return { id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason: "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id };
+  }
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
     const cancelled = tries >= MAX_TRIES;
