@@ -32,7 +32,7 @@ describe("the consult mode, end to end (D163)", () => {
       if (runCli(["check", "mark", started.id, word], { home, env }).code !== 0) throw new Error("check mark failed");
     };
     const home = await makeTempHome();
-    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script: { answers: { "mode.purpose": "consult" }, perform: { "consult.choose": add } }, startArgs: [], env });
+    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script: { answers: { "mode.purpose": "consult", "consult.names": "Marisol Okafor, Okafor Realty" }, perform: { "consult.choose": add } }, startArgs: [], env });
     expect(run.final.status).toBe("complete");
     const shown = JSON.stringify(run.calls.map((call) => call.stdout));
     for (const hidden of ["mode.who", "channels.", "workflows.choose", "activate.schedule"]) expect(shown).not.toContain(hidden);

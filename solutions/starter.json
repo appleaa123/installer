@@ -102,6 +102,22 @@
       "default": "install"
     },
     {
+      "step_id": "consult.names",
+      "phase": "MODE",
+      "type": "ask",
+      "when": {
+        "step": "mode.purpose",
+        "equals": "consult"
+      },
+      "title": "Your name and your business's name, so the report can leave them out",
+      "why": "The consultation ends with a report you may forward. Names you give here, email addresses and long numbers are removed from it. Say 'none' to skip.",
+      "blocking": true,
+      "input": {
+        "kind": "text"
+      },
+      "default": "none"
+    },
+    {
       "step_id": "mode.who",
       "phase": "MODE",
       "type": "ask",

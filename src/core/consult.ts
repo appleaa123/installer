@@ -29,10 +29,14 @@ interface ConsultState {
   readonly mcp_removed?: boolean;
 }
 
-const answerOf = (state: InstallState | undefined, step: string): string[] => {
-  const value = state?.steps[step]?.value;
-  return typeof value === "string" && value.trim() !== "" ? [value.trim()] : [];
-};
+/** The names the person asked the report to leave out (consult.names): each part, and each capitalised word in it. */
+export function namesToLeaveOut(state: InstallState | undefined): string[] {
+  const value = state?.steps["consult.names"]?.value;
+  if (typeof value !== "string") return [];
+  const parts = value.split(/[,;\n]|\band\b/).map((part) => part.trim()).filter((part) => part.length >= 2 && part.toLowerCase() !== "none");
+  const words = parts.flatMap((part) => part.split(/\s+/)).filter((word) => /^\p{Lu}/u.test(word) && word.length >= 3);
+  return [...new Set([...parts, ...words])];
+}
 
 /** The client's report: each workflow's page (needs, how we know, the home), scrubbed, under the TaskFollow home's exports. */
 export async function consultReport(home: string, state: InstallState | undefined, now: string): Promise<{ readonly file: string }> {
@@ -40,11 +44,11 @@ export async function consultReport(home: string, state: InstallState | undefine
   const context = { interactive: false, now: () => now, launch: async () => ({ pid: 0, opened: false }) };
   const pages: string[] = [];
   for (const id of ids) pages.push(`## ${id}\n\n\`\`\`\n${String((await summaryCommand(home, state, id, {}, context)).text)}\n\`\`\`\n`);
-  const known = [...(state ? await knownValues(home, state, now) : []), ...answerOf(state, "mode.name"), ...answerOf(state, "mode.decision-maker")].sort((a, b) => b.length - a.length);
+  const known = [...(state ? await knownValues(home, state, now) : []), ...namesToLeaveOut(state)].sort((a, b) => b.length - a.length);
   const body = [
     `# What your assistant can do for you: a consultation (${now.slice(0, 10)})`,
     "",
-    "Read it before forwarding: names from your own words may still be in it.",
+    "Removed from this report: your name, your business's name, email addresses and long numbers. Read it before forwarding: names of other people in your own words stay.",
     "",
     "Each workflow below lists what it needs, how TaskFollow knows (we saw it, you saw it, or nobody has seen it yet), and where it would run. Every gap says what is missing and your options.",
     "",

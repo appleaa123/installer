@@ -18,10 +18,11 @@ async function consultHome(): Promise<{ home: string; work: string }> {
   const home = await runnerHome();
   const work = await mkdtemp(join(tmpdir(), "consult-folder-"));
   const state = await loadState(home);
-  if (state) await saveState(home, { ...state, work_dir: work, steps: { ...state.steps, "mode.name": { status: "done", at: AT, by: "human", value: "Marisol Okafor" } } });
+  // The real consult path: no mode.name (install-only); the consult asks for the names to leave out (consult.names).
+  if (state) await saveState(home, { ...state, work_dir: work, steps: { ...state.steps, "mode.purpose": { status: "done", at: AT, by: "human", value: "consult" }, "consult.names": { status: "done", at: AT, by: "human", value: "Marisol Okafor, Okafor Realty" } } });
   await writePinnedSolution(home, JSON.stringify(SOLUTION));
   await writeFile(join(work, "CLAUDE.md"), "# Mine\n");
-  await workflowCommand(home, "add", "brief", JSON.stringify({ description: "Each morning, tell Marisol Okafor what is in her inbox.", tools: ["memo.list"], my_rules: "Flag every repair." }), () => AT);
+  await workflowCommand(home, "add", "brief", JSON.stringify({ description: "Each morning, tell Marisol Okafor of Okafor Realty what is in her inbox; copy sam@example.com and call 4165550199.", tools: ["memo.list"], my_rules: "Flag every repair." }), () => AT);
   await recordResult(home, { need: "answers", workflow: "brief", result: "yes-you-told-us", reason: "You saw it", at: AT, agent: "fake-agent", agent_version: "9.9.9", test: "once" });
   return { home, work };
 }
@@ -32,10 +33,10 @@ describe("consult: the report and the clean-up (item 7 Task 8)", () => {
     const { file } = await consultReport(home, (await loadState(home)) ?? undefined, AT);
     expect(file.startsWith(join(home, "exports"))).toBe(true);
     const text = await readFile(file, "utf8");
-    expect(text).toContain("Read it before forwarding");
+    expect(text).toContain("Removed from this report: your name, your business's name, email addresses and long numbers. Read it before forwarding: names of other people in your own words stay.");
     expect(text).toContain("brief");
     expect(text).toContain("Done once, now");
-    expect(text).not.toContain("Marisol Okafor");
+    for (const leaked of ["Marisol Okafor", "Okafor Realty", "sam@example.com", "4165550199"]) expect(text).not.toContain(leaked);
     expect(text).toContain("taskfollow add install");
   });
 
