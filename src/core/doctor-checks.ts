@@ -260,6 +260,7 @@ export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "state", run: stateCheck },
   { id: "audit", run: auditCheck },
   { id: "pause", run: pauseCheck },
+  { id: "checks", run: async (ctx) => (await import("./check-fresh.js")).checksDoctor(ctx) },
   { id: "secrets", run: secretsCheck },
   { id: "skillswiki", run: skillswikiCheck },
   { id: "packs", run: packsCheck },

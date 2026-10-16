@@ -8,6 +8,7 @@ import { ActionFailure } from "./failure.js";
 import { validateSchema } from "./json-schema.js";
 import { protectedFields, stripFields } from "./judge.js";
 import { loadProfileById } from "./profile.js";
+import { noteRunPassed } from "./check-fresh.js";
 import { auditRun, fingerprint, RUNS_DIR, saveStep, type RunRecord } from "./runs.js";
 import type { Exec, StepOutcome } from "./runner-steps.js";
 import type { WorkflowStep } from "./workflow.js";
@@ -52,6 +53,20 @@ function answerOf(structured: unknown, text: string): unknown {
   }
 }
 
+/** Whether the task's call record shows a call to TaskFollow's own tools that went through. */
+async function reachedOwnTools(path: string): Promise<boolean> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  return text.split("\n").some((line) => {
+    try {
+      const entry = JSON.parse(line) as { tool?: unknown; outcome?: unknown; reason_for?: unknown };
+      const through = entry.outcome === "ok" || (entry.reason_for !== undefined && entry.outcome === undefined);
+      return typeof entry.tool === "string" && entry.tool.startsWith("mcp__installer__") && through;
+    } catch {
+      return false;
+    }
+  });
+}
+
 export async function runTaskStep(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "task" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.task;
   if (record.sandbox && spec.changes) {
@@ -74,5 +89,7 @@ export async function runTaskStep(exec: Exec, record: RunRecord, step: WorkflowS
   if (problems.length > 0) throw new ActionFailure(`The agent's answer does not fit the step's output: ${problems.join("; ")}`);
   const finished = exec.ctx.now();
   await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: finished, duration_ms: Math.max(0, Date.parse(finished) - Date.parse(startedAt)), input_fingerprint: fingerprint(input), output });
+  // Review 4 of PR #54: a real run that finished under the hook proves the runner again (and TaskFollow's tools, when reached).
+  if (!record.sandbox) await noteRunPassed(exec.home, record.workflow, exec.state, finished, await reachedOwnTools(path));
   return { kind: "done", output, actions: spec.changes ? 1 : 0, needs_human: 0 };
 }

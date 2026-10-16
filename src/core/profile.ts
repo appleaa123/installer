@@ -38,6 +38,11 @@ export interface RuntimeProfile {
   readonly mcp_remove?: { readonly cmd: readonly string[] };
   /** A task step's command (D139): the agent with its own tools, limited to `{may_use}`, under the hook in `{settings_json}`. */
   readonly task?: { readonly cmd: readonly string[] };
+  /**
+   * T6b (item 7a): one unattended call under the person's OWN settings, nothing pre-allowed, nothing able to prompt;
+   * the agent's JSON output lists what its own rules denied. `min_version`: the oldest version with that flag.
+   */
+  readonly asks?: { readonly cmd: readonly string[]; readonly min_version?: string };
   /** The person's own settings TaskFollow knows how to edit for watching and always-ask (D146, D147); none for other agents. */
   readonly personal_settings?: "claude";
   /** The agent's own skill folders (9.12 item 2): `project` relative to the install folder, `user` may start with `~/`. */
@@ -77,6 +82,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "mcp_register.cmd": ["profile_dir", "name", "config_json"],
   "mcp_remove.cmd": ["profile_dir", "name"],
   "task.cmd": ["profile_dir", "prompt", "may_use", "tools", "settings_json", "mcp_config"],
+  "asks.cmd": ["profile_dir", "prompt"],
 };
 
 function argv(value: unknown, where: string, ...placeholders: string[]): readonly string[] {
@@ -185,6 +191,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     ...optionalParts(raw),
     ...mcpParts(raw),
     ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
+    ...(raw.asks === undefined ? {} : { asks: { cmd: argv(obj(raw.asks, "asks").cmd, "asks.cmd", "{prompt}"), ...(obj(raw.asks, "asks").min_version === undefined ? {} : { min_version: str(obj(raw.asks, "asks").min_version, "asks.min_version") }) } }),
     ...personalPart(raw),
     ...skillsPart(raw),
     ...(raw.push === undefined ? {} : { push: { note: str(obj(raw.push, "push").note, "push.note"), read: str(obj(raw.push, "push").read, "push.read") } }),

@@ -38,7 +38,7 @@ export async function startReadsEmail(home: string, state: InstallState | undefi
 export async function cannotCommand(home: string, id: string | undefined, now: string): Promise<Raw> {
   const challenge = await openChallenge(home, id ?? "", now);
   // Review M2: only the email check can be closed this way, never a person's open schedule check or another test.
-  if (challenge.test !== "t2") throw new InputError("check cannot is only for the email check (t2)");
+  if (challenge.test !== "t2" && challenge.test !== "t2a") throw new InputError("check cannot is only for the email checks (t2, t2a)");
   const reason = "Blocked, not an ability problem: your assistant said it cannot reach your email yet (it may need an email connection, such as Gmail in its settings)";
   await settleByPerson(home, challenge, challenge.needs.map((need) => ({ need, result: "not-checked" as const, reason })), now);
   return { need: challenge.needs[0] ?? "reads:email", result: "not checked", why: reason };

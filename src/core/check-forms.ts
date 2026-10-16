@@ -1,5 +1,6 @@
 import { settleByPerson, type Challenge } from "./checks.js";
 import { scheduledForm } from "./check-schedule-form.js";
+import { asksForm } from "./check-asks-form.js";
 import { escapeHtml } from "./secret-page.js";
 
 /**
@@ -50,6 +51,6 @@ const once: CheckForm = {
   },
 };
 
-export const FORMS: Readonly<Record<string, CheckForm>> = { once, t8: scheduledForm };
+export const FORMS: Readonly<Record<string, CheckForm>> = { once, t8: scheduledForm, t6: asksForm, t6b: asksForm };
 
 export { whenWords } from "./clock-words.js";

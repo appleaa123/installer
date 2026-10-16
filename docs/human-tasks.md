@@ -163,6 +163,15 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** the two checksum lines; what `home1` and `home2` printed; the T8 page's last screen; anything unexpected, word for word; your verdict.
 
+### 35. Does your Claude Code report a blocked send when nobody is there to ask? (item 7a, T6b, about 15 minutes)
+
+**Why:** T6b (D162) counts "your agent asks before sending" as tested only when Claude Code's own output lists the send as denied. Claude Code's headless docs say `claude -p --output-format json --permission-prompts none` lists denials in `permission_denials`; this has not been seen on your Claude Code yet, so T6b's yes is marked unconfirmed until this task. Use your test Gmail; nothing reaches anyone else.
+
+1. In your own terminal (not through your assistant), with an ask or deny rule for your email send tool in your Claude Code settings: `taskfollow check start t6b --value '{"tool":"<the tool, for example mcp__claude_ai_Gmail__send_email>","address":"<your test address>"}'`.
+2. Wait two minutes; answer on the page that opens whether a test email arrived.
+3. Tell Claude what `taskfollow check list` shows for asks-first, and whether the email arrived.
+4. Then once more with a `permissions.deny` rule instead of an ask rule: is the denial still listed (the result says yes, tested) or not (not checked)?
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
