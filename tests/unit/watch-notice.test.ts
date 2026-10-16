@@ -1,12 +1,21 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { habits, noticeHabits } from "../../src/core/watch-notice.js";
+import { habits, noticeHabits, takeSuggestions } from "../../src/core/watch-notice.js";
+import { InputError } from "../../src/core/inputs.js";
+import { AUDIT_FILE } from "../../src/core/audit.js";
+import { ActionFailure } from "../../src/core/failure.js";
+import { saveChannel } from "../../src/core/channels.js";
+import { readConfig } from "../../src/core/data-source.js";
+import { NOTICE_FILE } from "../../src/core/watch-notice.js";
 import { watchCommand } from "../../src/core/watch.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const NOW = "2026-10-28T09:00:00.000Z";
+const readAuditLines = async (home: string) => (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { event: string });
+/** A person reached by Telegram: notify is called, and its errors are not swallowed. */
+const withTelegram = (home: string) => saveChannel(home, { channel: "telegram", bot: { id: 999, username: "desk_test_bot" }, verified_at: NOW });
 
 async function callsOn(home: string, days: readonly string[], line: Record<string, unknown>): Promise<void> {
   await mkdir(join(home, "data", "agent-calls"), { recursive: true });
@@ -27,6 +36,7 @@ describe("noticing work done often through the agent (D148)", () => {
 
   it("tells only the person who asked for suggestions, once per service, and changes nothing", async () => {
     const home = await runnerHome();
+    await withTelegram(home);
     const settings = await env();
     await watchCommand(home, { sub: "add", arg: "mcp:shopify", interactive: true }, () => NOW, settings);
     await callsOn(home, days(6), { tool: "mcp__shopify__get_order", what: "id" });
@@ -64,8 +74,76 @@ describe("noticing work done often through the agent (D148)", () => {
   });
 });
 
+describe("a suggestion for a person no channel reaches (D164)", () => {
+  async function noticed(home: string) {
+    const settings = await env();
+    await watchCommand(home, { sub: "add", arg: "mcp:shopify", interactive: true }, () => NOW, settings);
+    await watchCommand(home, { sub: "suggest", arg: "Sam", interactive: true }, () => NOW, settings);
+    await callsOn(home, days(6), { tool: "mcp__shopify__get_order", what: "id" });
+  }
+  const unreachable = async () => {
+    throw new InputError("No joined member is called 'Sam'");
+  };
+
+  it("keeps the suggestion for the next session without trying a channel there is none, and still makes it only once", async () => {
+    const home = await runnerHome();
+    await noticed(home);
+    let calls = 0;
+    const counted = async () => {
+      calls += 1;
+    };
+    expect(await noticeHabits(home, () => NOW, counted)).toEqual(["mcp:shopify"]);
+    expect(calls).toBe(0);
+    expect(await noticeHabits(home, () => "2026-10-29T09:00:00.000Z", counted)).toEqual([]);
+    const shown = await takeSuggestions(home, NOW);
+    expect(shown).toEqual([{ at: NOW, text: expect.stringMatching(/I noticed .*shopify.* on 6 of the last 28 days/s) }]);
+    expect(await takeSuggestions(home, NOW)).toEqual([]);
+    const events = (await readAuditLines(home)).map((line) => line.event);
+    expect(events).toContain("watch.noticed_waiting");
+    expect(events).not.toContain("watch.noticed");
+    expect(events).toContain("watch.noticed_shown");
+  });
+
+  it("keeps nothing when the message went out", async () => {
+    const home = await runnerHome();
+    await withTelegram(home);
+    await noticed(home);
+    await noticeHabits(home, () => NOW, async () => undefined);
+    expect(await takeSuggestions(home, NOW)).toEqual([]);
+  });
+
+  it("does not hide an unexpected failure", async () => {
+    const home = await runnerHome();
+    await withTelegram(home);
+    await noticed(home);
+    await expect(noticeHabits(home, () => NOW, async () => { throw new Error("disk full"); })).rejects.toThrow("disk full");
+  });
+
+  it("does not hide a channel that failed: a person with a channel is retried, not quietly queued", async () => {
+    const home = await runnerHome();
+    await withTelegram(home);
+    await noticed(home);
+    await expect(noticeHabits(home, () => NOW, async () => { throw new ActionFailure("Telegram did not answer"); })).rejects.toThrow("Telegram did not answer");
+    await expect(noticeHabits(home, () => NOW, unreachable)).rejects.toThrow("No joined member");
+    expect(await takeSuggestions(home, NOW)).toEqual([]);
+  });
+
+  it("keeps a suggestion another process left waiting while it looked", async () => {
+    const home = await runnerHome();
+    await withTelegram(home);
+    await noticed(home);
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    // Another process writes while this one is sending (the window between its read and its write).
+    const meanwhile = async () => writeConfig(home, NOTICE_FILE, { waiting: [{ at: "2026-10-27T09:00:00.000Z", text: "An earlier suggestion." }] });
+    await noticeHabits(home, () => NOW, meanwhile);
+    const kept = (await readConfig(home, NOTICE_FILE)) as { waiting: { text: string }[]; suggested: string[] };
+    expect(kept.waiting.map((entry) => entry.text)).toContain("An earlier suggestion.");
+    expect(kept.suggested).toContain("mcp:shopify");
+  });
+});
+
 describe("the tick asks for the daily look (D148)", () => {
-  it("runs it, and a member who cannot be reached is reported, not fatal", async () => {
+  it("runs it; a member no channel reaches gets it at the next session, not an error", async () => {
     const { tick } = await import("../../src/core/tick.js");
     const home = await runnerHome();
     const settings = await env();
@@ -73,6 +151,7 @@ describe("the tick asks for the daily look (D148)", () => {
     await watchCommand(home, { sub: "suggest", arg: "Nobody", interactive: true }, () => NOW, settings);
     await callsOn(home, days(6), { tool: "mcp__shopify__get_order", what: "id" });
     const result = await tick(home, () => NOW);
-    expect(result.errors).toContainEqual(expect.stringMatching(/^notice: .*Nobody/));
+    expect(result.errors.filter((error) => error.startsWith("notice:"))).toEqual([]);
+    expect(await takeSuggestions(home, NOW)).toHaveLength(1);
   });
 });

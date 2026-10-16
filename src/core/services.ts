@@ -38,8 +38,29 @@ function conditionSteps(when: StepWhen | undefined): string[] {
   return [when.step];
 }
 
+/**
+ * `taskfollow add install` after a consultation (D163): the same home becomes an install, with the consult's results
+ * kept. The workflows' skill folders come back with their own rules, and TaskFollow's tools are registered again.
+ */
+async function continueAfterConsult(deps: EngineDeps, state: InstallState): Promise<Advanced> {
+  if (state.steps[PURPOSE]?.value !== "consult") throw new InputError("This setup is not a consultation, so there is nothing to switch: it already sets TaskFollow up to run your work");
+  const { readConfig } = await import("./data-source.js");
+  const { CONSULT_FILE, restoreAfterConsult } = await import("./consult.js");
+  let note: string | undefined;
+  if ((await readConfig(deps.home, CONSULT_FILE)) !== null) {
+    await (await import("./actions.js")).runAction(deps.home, { action: "register_tools_mcp" }, state);
+    const { skipped } = await restoreAfterConsult(deps.home);
+    if (skipped.length > 0) note = `Not put back: ${skipped.map((entry) => `${entry.workflow} (${entry.why})`).join("; ")}. Tell the person; their own folder was left as it is.`;
+  }
+  const advanced = await revise(deps, state, PURPOSE, "install", "agent");
+  return note ? { ...advanced, note } : advanced;
+}
+
+const PURPOSE = "mode.purpose";
+
 /** `taskfollow add <service>`: the answer gains the service and its steps come into view. Never guesses a name. */
 export async function addService(deps: EngineDeps, state: InstallState, option: string): Promise<Advanced> {
+  if (option === "install") return continueAfterConsult(deps, state);
   const all = pickers(deps.solution);
   if (all.length === 0) throw new InputError("This install was made before services could be chosen, so nothing can be added to it this way");
   const hosts = option === "none" ? [] : all.filter((picker) => picker.input?.options?.includes(option));

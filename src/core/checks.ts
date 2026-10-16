@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { rm, rmdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
@@ -34,7 +35,7 @@ export interface CheckResult {
   /** T8 only: whether it ran while the person was away (around the set time, window closed), not "well after" (review H2). */
   readonly while_away?: boolean;
 }
-export type Through = "ping" | "mark" | "answer";
+export type Through = "ping" | "mark" | "answer" | "read-back";
 export type StoredResult = CheckResult & NumberedRecord;
 
 export interface Challenge {
@@ -111,7 +112,30 @@ export async function loadChallenge(home: string, id: string): Promise<Challenge
   return isRecord(raw) && raw.id === id ? (raw as unknown as Challenge) : null;
 }
 
-export const saveChallenge = (home: string, challenge: Challenge): Promise<void> => writeConfig(home, challengeFile(challenge.id), challenge);
+/**
+ * Item 7: files and skill folders a test made are listed in its challenge (`details.file`, `details.skill_dir`) and
+ * removed once it is answered, cancelled or expired. Only paths inside a `taskfollow-check` folder or named
+ * `taskfollow-check-…` are ever removed, whatever the challenge file says.
+ */
+/** Folders a check writes into; each is removed once it is empty, never with anything else in it. */
+const CHECK_FOLDERS = ["taskfollow-check", "taskfollow-deliver"];
+
+export async function removeArtifacts(challenge: Challenge): Promise<void> {
+  for (const path of [challenge.details?.file, challenge.details?.skill_dir, challenge.details?.zip]) {
+    if (typeof path !== "string" || path === "") continue;
+    const parent = basename(dirname(path));
+    const ours = CHECK_FOLDERS.includes(parent) ? parent === "taskfollow-check" || basename(path).startsWith("taskfollow-check-") : basename(path).startsWith("taskfollow-check-");
+    if (!ours) continue;
+    await rm(path, { recursive: true, force: true });
+    // The folder goes too once nothing else is in it (a delivered workflow's zip keeps taskfollow-deliver/).
+    if (CHECK_FOLDERS.includes(parent)) await rmdir(dirname(path)).catch(() => undefined);
+  }
+}
+
+export async function saveChallenge(home: string, challenge: Challenge): Promise<void> {
+  await writeConfig(home, challengeFile(challenge.id), challenge);
+  if (challenge.status !== "open") await removeArtifacts(challenge);
+}
 
 const isResult = (value: unknown): value is StoredResult => isRecord(value) && typeof value.id === "number" && typeof value.need === "string" && typeof value.result === "string";
 
@@ -124,8 +148,8 @@ export async function recordResult(home: string, result: CheckResult): Promise<S
 export const abilities = (home: string): Promise<StoredResult[]> => listRecords(home, ABILITIES_DIR, isResult);
 
 /** Spec 8: the newest result for this need and agent (and workflow), unless the agent's version changed or it is over 30 days old. */
-export async function freshResult(home: string, need: Need, agent: string, agentVersion: string | null, now: string, workflow?: string): Promise<StoredResult | null> {
-  const matching = (await abilities(home)).filter((entry) => entry.need === need && entry.agent === agent && (entry.workflow ?? null) === (workflow ?? null));
+export async function freshResult(home: string, need: Need, agent: string, agentVersion: string | null, now: string, workflow?: string, exceptTests: readonly string[] = []): Promise<StoredResult | null> {
+  const matching = (await abilities(home)).filter((entry) => entry.need === need && entry.agent === agent && (entry.workflow ?? null) === (workflow ?? null) && !exceptTests.includes(entry.test));
   const newest = matching.sort((a, b) => a.at.localeCompare(b.at) || a.id - b.id).at(-1);
   if (!newest) return null;
   if (newest.agent_version !== null && agentVersion !== null && newest.agent_version !== agentVersion) return null;
@@ -161,8 +185,14 @@ async function resultsFor(home: string, challenge: Challenge, result: ResultKind
 /** Who answered: the agent from its shell, someone at an interactive terminal, or the person on their check page. */
 export type Answerer = "agent" | "terminal" | "person";
 
+/** Writing tests (T3): what counts is what TaskFollow reads back from the target, never a word sent back. */
+const READ_BACK: readonly string[] = ["t3f", "t3r"];
+
+/** Asking first (T6, T6b, item 7a review B1): settled only by the person's answers on their page, never by a word sent back. */
+const PERSON_ONLY: readonly string[] = ["t6", "t6b"];
+
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
-const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7"];
+const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r", "t4", "t11"];
 
 /** A refusal that records nothing and leaves the challenge open with its tries untouched. */
 const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
@@ -176,13 +206,24 @@ function scheduleRefusal(challenge: Challenge, through: Through | undefined): st
 }
 
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
+  if (PERSON_ONLY.includes(challenge.test)) return stillOpen(challenge, "This check is answered only on the person's page, with what arrived in their inbox", now);
   if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
     return stillOpen(challenge, "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", now);
+  }
+  if (READ_BACK.includes(challenge.test) && through !== "read-back") {
+    return stillOpen(challenge, "TaskFollow reads what was written itself: write it, then run 'taskfollow check answer <id> done'", now);
   }
   if (challenge.test === "t8" && answerer === "agent") {
     const refusal = scheduleRefusal(challenge, through);
     if (refusal) return stillOpen(challenge, refusal, now);
   }
+  // T11 (review B4; review 6 of PR #54): a ping that reaches TaskFollow means the hook did NOT stop it, whatever the word;
+  // only the runner check records that, as a no.
+  if (challenge.test === "t11" && through === "ping") {
+    await saveChallenge(home, { ...challenge, status: "done", details: { ...(challenge.details ?? {}), pinged: "yes" } });
+    return stillOpen(challenge, "The call reached TaskFollow; the hook test records what that means", now);
+  }
+  if (challenge.test === "t11") return stillOpen(challenge, "The hook test is settled by TaskFollow's runner, not by a word sent back", now);
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
     const cancelled = tries >= MAX_TRIES;
@@ -199,6 +240,8 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
   if (challenge.test === "t8") return resultsFor(home, challenge, "yes-you-told-us", "A job on this computer marked it at or after the set time; whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell", now, via, through);
+  if (challenge.test === "t4") return resultsFor(home, challenge, "yes-tested", "The skill's text reached the agent: it gave the word only the test skill held. Whether through its skill system or by reading the file, TaskFollow cannot tell", now, via, through);
+  if (READ_BACK.includes(challenge.test)) return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: it read the word back from the place it named. Writing never decides where a workflow runs", now, via, through);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }
 

@@ -252,7 +252,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -290,7 +290,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -313,7 +313,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const alone = JSON.stringify([{ tool: "memo.list", args: {} }, { tool: "channel.list", args: {} }, { tool: "done", summary: "No memos this week" }]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: alone };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -348,7 +348,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
       perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
     };
     const home = await makeTempHome();
@@ -368,7 +368,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
@@ -396,7 +396,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add whatsapp");
@@ -439,7 +439,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add slack");

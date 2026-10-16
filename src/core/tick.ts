@@ -255,6 +255,10 @@ export async function tick(home: string, now: () => string = () => new Date().to
       const ctx = await toolContext(home, "runner", DEFAULT_TOOLS, now);
       await noticeHabits(home, now, async (member, text) => void (await invokeTool(ctx, "channel.notify", { member, text })));
     });
+    // Item 7a: checks that expired are ended and what they made (test files, skills, tabs) is removed.
+    await guard(state, "checks", async () => {
+      await (await import("./check-fresh.js")).sweepChecks(home, now());
+    });
     await guard(state, "doctor", async () => {
       result.doctor = (await dailyDoctor(home, now, env))?.status ?? null;
     });

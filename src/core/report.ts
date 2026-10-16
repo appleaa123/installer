@@ -33,6 +33,8 @@ export interface Report {
   readonly runs?: string;
   /** The newest doability results for the install's agent, in plain words (D159). */
   readonly checked?: string;
+  /** A consultation instead of an install (D163): whether it finished, and where its report is. */
+  readonly consult?: { readonly finished: boolean; readonly report?: string };
 }
 
 export interface Told {
@@ -47,6 +49,8 @@ export interface ReportExtras {
   readonly pushRead?: string;
   /** The newest doability result per need for the install's agent (D159); passed in so the report stays synchronous. */
   readonly checks?: readonly { readonly need: string; readonly result: string; readonly at: string }[];
+  /** The consult report's path relative to the home (D163), read by the caller so the report stays synchronous. */
+  readonly consultReport?: string;
 }
 
 const CHECK_WORDS: Readonly<Record<string, string>> = { "yes-tested": "yes, tested", "yes-you-told-us": "yes, you told us", "not-checked": "not checked", "no-tested": "no, tested" };
@@ -122,7 +126,10 @@ export function runtimeLimits(runtime: CapabilityMap | undefined): readonly stri
 export function buildReport(solution: Solution, state: InstallState, extras: ReportExtras = {}): Report {
   const inView = visibleSteps(solution, state);
   const rows = inView.map((step) => ({ step, record: state.steps[step.step_id] }));
-  const working = rows.filter(({ record }) => record?.status === "done").map(({ step }) => item(step, "done"));
+  const consulting = state.steps["mode.purpose"]?.value === "consult";
+  const cleaned = consulting && state.steps["consult.cleanup"]?.status === "done";
+  // After a consultation's tidy-up the tool connection is gone, so it is not listed as working (D163).
+  const working = rows.filter(({ step, record }) => record?.status === "done" && !(cleaned && step.step_id === "preflight.tools")).map(({ step }) => item(step, "done"));
   const limited = rows
     .filter(({ step, record }) => !step.blocking && unresolved(record))
     .map(({ step, record }) => item(step, record?.hint ?? record?.reason ?? record?.status ?? ""));
@@ -143,6 +150,7 @@ export function buildReport(solution: Solution, state: InstallState, extras: Rep
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
     working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined, can_add: addableOptions(solution, state),
     told: toldOf(personChannels(rows), extras), ...(runsOf(state) ? { runs: runsOf(state) } : {}),
+    ...(consulting ? { consult: { finished: current === null || current === undefined, ...(extras.consultReport ? { report: extras.consultReport } : {}) } } : {}),
     ...(extras.checks && extras.checks.length > 0 ? { checked: extras.checks.map((entry) => `${entry.need}: ${CHECK_WORDS[entry.result] ?? entry.result} (${entry.at.slice(0, 10)})`).join(" · ") } : {}),
   };
 }
@@ -156,6 +164,7 @@ function agentLine(report: Report): string | null {
 }
 
 export function renderReport(report: Report): string {
+  if (report.consult?.finished) return renderConsult(report);
   const lines = [`${HEADLINE[report.overall]}  (${report.done} of ${report.total} steps done) · ${report.solution}`];
   if (report.working.length > 0) lines.push(`✅ Working    ${report.working.map((entry) => entry.title).join(" · ")}`);
   const agent = agentLine(report);
@@ -166,5 +175,14 @@ export function renderReport(report: Report): string {
   if (report.can_add.length > 0) lines.push(`➕ Can add    ${report.can_add.map((option) => `${option.replace(/-/g, " ")} (taskfollow add ${option})`).join(" · ")}`);
   report.limited.forEach((entry, index) => lines.push(`${index === 0 ? "⚠️ Limited   " : "             "}${entry.title} — ${entry.detail}`));
   report.needs_you.forEach((entry, index) => lines.push(`${index === 0 ? "⛔ Needs you " : "             "}${index + 1}. ${entry.title} — ${entry.detail}`));
+  return lines.join("\n");
+}
+
+/** A finished consultation (D163): nothing runs, so no Told or Runs lines; the report's place and the next step. */
+function renderConsult(report: Report): string {
+  const lines = [`✅ CONSULTATION FINISHED: nothing is set up to run  (${report.done} of ${report.total} steps done) · ${report.solution}`];
+  if (report.consult?.report) lines.push(`📄 Report     ${report.consult.report} (under TaskFollow's home; read it before forwarding)`);
+  if (report.checked) lines.push(`🔎 Checked    ${report.checked}`);
+  lines.push("➕ Next       to have the workflows run for you: taskfollow add install");
   return lines.join("\n");
 }

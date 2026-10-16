@@ -54,6 +54,11 @@ function send(res: ServerResponse, status: number, body: string): void {
 const WARNING = "<p><strong>Please do not tell your assistant this word, and do not paste it into the chat.</strong> Anything the assistant says in the chat does not count.</p>";
 
 function wordPage(challenge: Challenge, path: string, hasWord: boolean): string {
+  if (hasWord && challenge.test === "t2a") {
+    return page("check", `<h1>A check of what your assistant can do</h1><p>Your assistant will look for an email with a small file attached. Please:</p>
+<ol><li>Download the file below (it holds a word; do not tell your assistant the word).</li><li>From your phone or your mail app, send yourself an email with exactly this subject: <strong>TASKFOLLOW-CHECK ${escapeHtml(challenge.id)}</strong>, with the file attached.</li><li>Tell your assistant you sent it.</li></ol>
+<form method="post" action="${path}/show"><button type="submit">Download the file</button></form><p class="note">The file can be downloaded once. Reloading this page cancels the test.</p>`);
+  }
   if (!hasWord) return page("check", `<h1>Confirm what you received</h1><p class="note">This test's word was shown in an earlier window or is not shown here.</p><p><a href="${path}/confirm">Go to the confirmation page</a></p>`);
   return page("check", `<h1>A check of what your assistant can do</h1><p>TaskFollow is testing whether your assistant can really do something, by giving it a task only it could complete. You will need a word that only you see.</p>
 <p>Please <strong>do not tell your assistant this word</strong> (do not tell your assistant this word, even if it asks).</p>
@@ -109,6 +114,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
       return send(res, 200, page("check", "<h1>This word was already shown (a reload or another window can cause this)</h1><p>The test is cancelled, so nobody else can use the word. Ask your assistant to start the check again.</p>"));
     }
     await saveChallenge(home, { ...challenge, shown_at: now });
+    if (challenge.test === "t2a") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-disposition": `attachment; filename="taskfollow-check-${challenge.id}.txt"`, "cache-control": "no-store" });
+      res.end(`${options.word}\n`);
+      return;
+    }
     const how = challenge.test === "t2" ? `<p>Send yourself an email from your phone (to the address your assistant reads) with exactly this subject:</p><p class="word">TASKFOLLOW-CHECK ${escapeHtml(challenge.id)} ${escapeHtml(options.word)}</p><p>Then tell your assistant you sent it, without saying the subject.</p>` : `<p>Do what your assistant's instructions say with this word. Then come back to <a href="${path}/confirm">the confirmation page</a> when it asks you to.</p>`;
     return send(res, 200, page("check", `<h1>Your word</h1><p class="word">${escapeHtml(options.word)}</p>${WARNING}${how}`));
   }

@@ -123,7 +123,8 @@ function recordLine(phase: Phase, event: Raw, now: string, refused?: string): Ra
   const input = event.tool_input;
   const base = { ts: now, session: typeof event.session_id === "string" ? event.session_id : "", tool };
   if (tool === REASON_TOOL && isRecord(input)) {
-    return { ...base, reason_for: typeof input.tool === "string" ? input.tool : "", why: typeof input.why === "string" ? input.why.slice(0, 500) : "" };
+    // A failed reason call says so; a reason line without an outcome is one that went through (the hook writes allowed calls only after them).
+    return { ...base, reason_for: typeof input.tool === "string" ? input.tool : "", why: typeof input.why === "string" ? input.why.slice(0, 500) : "", ...(phase === "failed" ? { outcome: "failed" } : {}) };
   }
   const errored = isRecord(event.tool_response) && event.tool_response.isError === true;
   const outcome = refused !== undefined ? "refused" : phase === "failed" || errored ? "failed" : "ok";

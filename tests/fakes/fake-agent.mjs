@@ -183,7 +183,8 @@ function task() {
       return;
     }
     const payload = { session_id: session, tool_use_id: `toolu_${index}`, tool_name: call.tool, tool_input: call.input };
-    if (refusedBy(runHooks(settings, "PreToolUse", payload))) return run.denied.push(call.tool);
+    // FAKE_AGENT_SKIP_HOOKS=1: a hook that fails open (the item 7a T11 case where the hook does not stop the call).
+    if (process.env.FAKE_AGENT_SKIP_HOOKS !== "1" && refusedBy(runHooks(settings, "PreToolUse", payload))) return run.denied.push(call.tool);
     const started = Date.now();
     let response = call.response ?? { ok: true };
     let failed = false;

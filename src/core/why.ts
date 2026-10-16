@@ -9,6 +9,7 @@ import { InputError } from "./inputs.js";
 import { StateCorruptError } from "./state.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
+import { takeSuggestions } from "./watch-notice.js";
 
 /**
  * `taskfollow why` (D138): the record is the reference. Without an argument it lists the runs of the last day (or
@@ -164,8 +165,23 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
     // 9.12 item 3: with no channel, a run's result waits here; nobody was told about a run that failed or was missed.
     // WhatsApp reaches customers, not the person (as in the report), so it does not count as telling them.
     no_channel: (await listChannels(home)).every((config) => isCustomersOnly(config.channel)),
+    // D164: "I noticed" suggestions no channel could deliver, shown once, at the person's next session.
+    ...(await suggestionsField(home, now())),
     next: "Run 'taskfollow why <run>' with a run id to see who did what in that run, and why",
   };
+}
+
+export const DAMAGED_NOTICE = "config/watch-notice.json is not valid JSON; remove it and the next tick writes it again";
+
+async function suggestionsField(home: string, now: string): Promise<{ suggestions?: readonly { at: string; text: string }[]; suggestions_damaged?: string }> {
+  try {
+    const suggestions = await takeSuggestions(home, now);
+    return suggestions.length === 0 ? {} : { suggestions };
+  } catch (error) {
+    // An optional feature's damaged file must not stop the session-start list (INSTALL.md rule 11).
+    if (!(error instanceof StateCorruptError)) throw error;
+    return { suggestions_damaged: DAMAGED_NOTICE };
+  }
 }
 
 /** The result of one run by id (the work done once, plan Task 7), or undefined. */
@@ -200,11 +216,16 @@ export function renderWhy(why: Raw): string {
     return (why.timeline as WhyEntry[]).map((entry) => `${entry.at.slice(0, 16).replace("T", " ")}  ${entry.who}: ${entry.what}${entry.why ? `\n    why: ${entry.why}` : ""}`).join("\n");
   }
   const runs = Array.isArray(why.runs) ? (why.runs as Raw[]) : [];
-  if (runs.length === 0) return `No runs since ${str(why.since)}.`;
+  const suggestions = Array.isArray(why.suggestions) ? (why.suggestions as Raw[]) : [];
+  const told = [
+    ...(suggestions.length === 0 ? [] : ["", "TaskFollow noticed (tell the person):", ...suggestions.map((entry) => `    ${str(entry.text)}`)]),
+    ...(typeof why.suggestions_damaged === "string" ? ["", why.suggestions_damaged] : []),
+  ];
+  if (runs.length === 0) return [`No runs since ${str(why.since)}.`, ...told].join("\n");
   const untold = why.no_channel === true;
   const lines = runs.map((run) => {
     const head = `${str(run.started_at).slice(0, 16).replace("T", " ")}  ${str(run.run_id)}  ${str(run.workflow)}: ${str(run.status)}${run.reason ? ` (${str(run.reason)})` : ""}${untold && UNTOLD.has(str(run.status)) ? " (nobody was told: no channel)" : ""}`;
     return run.result ? `${head}\n    result: ${str(run.result)}` : head;
   });
-  return [...lines, "", str(why.next)].join("\n");
+  return [...lines, ...told, "", str(why.next)].join("\n");
 }

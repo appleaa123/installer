@@ -109,6 +109,16 @@ type ActionRun = (home: string, args: Args, state: InstallState | undefined) => 
 
 const ACTIONS: Readonly<Record<string, ActionRun>> = {
   noop: async () => ({}),
+  /** D163: the consult's report for the client, scrubbed, under the home's exports. */
+  consult_report: async (home, _args, state) => {
+    await (await import("./consult.js")).consultReport(home, state, now());
+    return {};
+  },
+  /** D163: the end of a consult; only the results and the interview's workflows stay. */
+  consult_cleanup: async (home, _args, state) => {
+    await (await import("./consult.js")).consultCleanup(home, state, now());
+    return {};
+  },
   write_file: async (home, args) => {
     const target = await confinedPath(home, stringArg(args, "path"));
     const content = args.content === undefined ? "" : stringArg(args, "content");

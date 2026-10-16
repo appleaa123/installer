@@ -163,6 +163,23 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** the two checksum lines; what `home1` and `home2` printed; the T8 page's last screen; anything unexpected, word for word; your verdict.
 
+### 35. Does your Claude Code report a blocked send when nobody is there to ask? (item 7a, T6b, about 15 minutes)
+
+**Why:** T6b (D162) counts "your agent asks before sending" as tested only when Claude Code's own output lists the send as denied. Claude Code's headless docs say `claude -p --output-format json --permission-prompts none` lists denials in `permission_denials`; this has not been seen on your Claude Code yet, so T6b's yes is marked unconfirmed until this task. Use your test Gmail; nothing reaches anyone else.
+
+1. In your own terminal (not through your assistant), with an ask or deny rule for your email send tool in your Claude Code settings: `taskfollow check start t6b --value '{"tool":"<the tool, for example mcp__claude_ai_Gmail__send_email>","address":"<your test address>"}'`.
+2. Wait two minutes; answer on the page that opens whether a test email arrived.
+3. Tell Claude what `taskfollow check list` shows for asks-first, and whether the email arrived.
+4. Then once more with a `permissions.deny` rule instead of an ask rule: is the denial still listed (the result says yes, tested) or not (not checked)?
+
+### 36. Does Claude Cowork read the install folder's CLAUDE.md? (D156 assumption, the final session, about 5 minutes)
+
+**Why:** D156 recorded your expectation that Claude Cowork reads a project's `CLAUDE.md` the way Claude Code does; the official documents do not say. TaskFollow writes the list of your workflows there (D154), so whether Cowork sees it decides whether Cowork knows your workflows in chat.
+
+1. In Claude Cowork, open a project on the install folder (the folder with TaskFollow's section in `CLAUDE.md`).
+2. Ask: *"Which TaskFollow workflows do I have, and which skills does each use?"*
+3. Tell Claude whether the answer names your workflows (it read the section) or not. If not, the fallback is to paste the same section into the Cowork project's standing instructions.
+
 ## Optional
 
 ### 28. Approve one product change, then let Claude Code make it (before approve-then-publish is promised to a client)

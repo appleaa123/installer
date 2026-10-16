@@ -20,7 +20,7 @@ export const SHAPES: Readonly<Record<string, { readonly needs: readonly Need[]; 
   "inbox-triage-replies": { needs: ["answers", "reads:email", "skills", "tools"], hardRule: true },
   "lead-qualification": { needs: ["answers", "reads:messages", "skills", "writes:records", "tools"], hardRule: true },
   "crm-update": { needs: ["answers", "reads:messages", "skills", "writes:records", "tools"], hardRule: true },
-  "invoice-processing": { needs: ["answers", "reads:email", "skills", "writes:records", "tools"], hardRule: true },
+  "invoice-processing": { needs: ["answers", "reads:email-attachment", "skills", "writes:records", "tools"], hardRule: true },
   "meeting-follow-up": { needs: ["answers", "reads:files", "skills"], hardRule: "ask" },
 };
 

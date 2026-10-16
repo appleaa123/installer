@@ -385,7 +385,10 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
 const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   next: async ({ state, deps }) => (await advance(deps, state)).result,
   /** D134: add a service the person did not choose during the install; its steps then appear. */
-  add: async ({ state, deps }, _flags, arg) => (await addService(deps, state, requireArg(arg, "add"))).result,
+  add: async ({ state, deps }, _flags, arg) => {
+    const added = await addService(deps, state, requireArg(arg, "add"));
+    return added.note ? { ...added.result, note: added.note } : added.result;
+  },
   submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
   verify: async ({ state, deps }, _flags, arg) => {
     const verified = await verifyStep(deps, state, requireArg(arg, "verify"));
@@ -395,7 +398,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   report: async ({ state, deps }, flags) => {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
     const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
-    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks });
+    const consultReport = await (await import("./core/consult.js")).consultReportPath(deps.home);
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}) });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },

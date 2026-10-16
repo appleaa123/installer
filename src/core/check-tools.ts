@@ -16,6 +16,8 @@ export const CHECK_TOOLS: readonly ToolDef[] = [
     },
     run: async (ctx, args) => {
       const result = await markChallenge(ctx.home, args.id as string, args.word as string, { interactive: false, via: ctx.via, through: "ping" }, ctx.now());
+      // A check that made a spreadsheet tab removes it however it ended (review 3 of PR #54).
+      await (await import("./check-reads.js")).cleanupTab(ctx.home, args.id as string);
       return { result: result.result, reason: result.reason };
     },
   },

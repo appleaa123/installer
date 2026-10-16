@@ -26,6 +26,11 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 1. ~~Build item 1, the spike~~ **done 2026-10-15 (task 29, D153):** a restricted task run loads only Claude Code's built-in skills, not the owner's, the folder's or plugins', and neither a `/skill` prefix nor `--add-dir` changes that. So the runner puts the workflow's skill text into the task prompt (9.5's fallback, like D83).
 2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall.
 3. ~~Build item 3, the bare-minimum install~~ **built (D155)**: Telegram optional for a person on their own, results in `why`, the session-start rule, the report's Told and Runs lines, the vision in README/START-HERE/INSTALL. Next: item 4, the level-B step.
+**Follow-ups (not yet planned):**
+
+- A weekly unattended re-check of T5 and preflight T7 for profile agents, in its own guarded tick pass with its own timeout and weekly marker (spec section 8, D162). Until then the doctor reports stale results and a real successful run refreshes `runner`/`tools`.
+- B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
+
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
 | Item | PR | Decision | Files | What you see |
@@ -35,6 +40,8 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 | 3, bare minimum | #45 | D155 | `solutions/starter.json` 1.9.0, `src/core/solution.ts` + `visibility.ts` (`any`), `services.ts`, `why.ts`, `report.ts`, `profiles/claude-code.json` (`push`), INSTALL.md, START-HERE.md, README.md | the Telegram question; "💬 Told" and "🕒 Runs" in `taskfollow report`; "result:" and "(nobody was told: no channel)" in `taskfollow why` |
 | 4a, doability core | #50 | D159 | `src/core/words.ts`, `checks.ts`, `check-page.ts`, `check-commands.ts`, `check-runner.ts`, `check-tools.ts`, `homes.ts` | `taskfollow check start` (t1, t5, t7, describe), `check home`, `check list`; a page in your browser with a word shown once; "🔎 Checked" in the report |
 | 4b, doability Home 2 | #51 | D160 | `src/core/check-once.ts`, `check-email.ts`, `check-plant.ts`, `check-schedule.ts`, `check-schedule-form.ts`, `check-forms.ts`, `check-summary.ts`, `deliver.ts`, `zip.ts` | `taskfollow check once`, `check start t2`/`t8`, `check cannot`, `check deliver` (a skill zip in `<install folder>/taskfollow-deliver/`), `check summary`, `check missed`; the T8 checklist page; "Sent by your scheduled TaskFollow workflow …" at the end of a Cowork brief |
+| 7a, doability rest | #54 | D162 | `src/core/check-reads.ts`, `check-write.ts`, `check-skill.ts`, `check-asks.ts`, `check-asks-form.ts`, `check-fresh.ts`, `check-runner.ts` (T11), `sheets.ts` (tabs) | `taskfollow check start t2a`/`t2f`/`t2r`/`t3f`/`t3r`/`t4`/`t6`/`t6b`/`t11`; "Not run: this workflow's check of TaskFollow's runner no longer holds" from a stopped run; a "checks" line in `taskfollow doctor` |
+| 7b, the four-part page and the consult mode | #55 | D163 | `src/core/gap-words.ts`, `check-summary.ts`, `consult.ts`, `services.ts` (`add install`), `actions.ts` (`consult_report`, `consult_cleanup`), `solutions/starter.json` 2.0.0 | `taskfollow check summary` shows every need, each gap in four parts; the install's first question (install or consult); `exports/consult-report-<date>.md`; `taskfollow add install` after a consultation |
 
 4. **Waiting on you:** merge #42 (section 9.14); say when task 28 is ready, so #40 can be brought up to date and merged (9.14 steps 1–3); item 5 (inbox triage) waits for #40.
 
