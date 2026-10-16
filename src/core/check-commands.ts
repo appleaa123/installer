@@ -111,7 +111,7 @@ export async function checkCommand(home: string, state: InstallState | undefined
   const [sub, first, second] = args;
   if (sub === "start") return start(home, state, first, flags, context);
   if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
-  if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
+  if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now(), { interactive: context.interactive }).then(view);
   if (sub === "page") return page(home, first, context);
   if (sub === "cannot") return (await import("./check-email.js")).cannotCommand(home, first, context.now());
   if (sub === "deliver") {

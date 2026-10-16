@@ -206,8 +206,9 @@ export async function markChallenge(home: string, id: string, word: string, orig
   return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive ? "terminal" : "agent", now, origin.via, origin.through ?? "mark");
 }
 
-export async function answerChallenge(home: string, id: string, text: string, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), text, "agent", now, undefined, "answer");
+/** Review M6: an answer typed at an interactive terminal is labelled "was that you?", as a mark is. */
+export async function answerChallenge(home: string, id: string, text: string, now: string, origin: { readonly interactive: boolean } = { interactive: false }): Promise<StoredResult> {
+  return settleChallenge(home, await openChallenge(home, id, now), text, origin.interactive ? "terminal" : "agent", now, undefined, "answer");
 }
 
 /** Ends a challenge without a result (the word was shown twice, or the person cancelled), with an audit entry. */

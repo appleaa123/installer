@@ -54,6 +54,14 @@ describe("check T2: reading email (plan Task 8)", () => {
     expect(stored.toLowerCase()).not.toContain(word.toLowerCase());
   });
 
+  it("records an answer typed at an interactive terminal as 'was that you?', not as the agent's (review M6)", async () => {
+    const home = await runnerHome();
+    const out = (await run(home, ["start", "t2"])) as { id: string };
+    const word = wordOf(planted[0]?.subject ?? "", out.id);
+    const typed = await checkCommand(home, (await loadState(home)) ?? undefined, ["answer", out.id, word], {}, { ...ctx(true), interactive: true });
+    expect(typed).toMatchObject({ result: "not checked", why: expect.stringContaining("interactive terminal") });
+  });
+
   it("lets 'check cannot' close only the email check, never another open check (review M2)", async () => {
     const home = await runnerHome();
     const other = (await run(home, ["start", "t1"])) as { id: string };
