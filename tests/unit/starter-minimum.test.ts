@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { addableOptions } from "../../src/core/services.js";
 import { parseSolution } from "../../src/core/solution.js";
-import type { InstallState, StepRecord } from "../../src/core/types.js";
-import { visibleSteps } from "../../src/core/visibility.js";
+import type { InstallState, StepRecord, StepWhen } from "../../src/core/types.js";
+import { visibleSteps, whenHolds } from "../../src/core/visibility.js";
 
 /** 9.12 item 3: a person on their own installs with no channel; Telegram, email and Slack only when chosen. */
 const STARTER = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
@@ -89,8 +89,36 @@ describe("taskfollow add telegram for a person on their own (PR #45 review)", ()
 });
 
 describe("the starter's suggested workflows", () => {
+  /** An agentic suggestion's instructions, or each agent step's of a typed one (item 5's shapes are typed). */
+  const instructionsOf = (flow: Record<string, unknown>): string[] => (Array.isArray(flow.steps)
+    ? (flow.steps as { agent?: { instructions?: string } }[]).flatMap((step) => (step.agent?.instructions === undefined ? [] : [step.agent.instructions]))
+    : [String(flow.instructions)]);
+
   it("end with their result when nobody joined a channel", () => {
-    for (const flow of STARTER.workflows ?? []) expect(String(flow.instructions)).toContain("finish with the note as your summary");
+    for (const flow of STARTER.workflows ?? []) {
+      const [first] = instructionsOf(flow);
+      expect(first).toContain("finish with the note as your summary");
+    }
+  });
+
+  it("the starter suggests both inbox shapes when email was chosen or in a consultation, not otherwise (item 5)", () => {
+    const offered = (answers: Record<string, unknown>) => (STARTER.workflows ?? []).filter((flow) => whenHolds(flow.when as StepWhen | undefined, state(answers))).map((flow) => flow.workflow);
+    expect(offered({ ...SOLO, "services.email": "email" })).toEqual(expect.arrayContaining(["inbox-triage", "inbox-triage-replies"]));
+    expect(offered({ "mode.purpose": "consult" })).toEqual(expect.arrayContaining(["inbox-triage", "inbox-triage-replies"]));
+    expect(offered(SOLO)).not.toContain("inbox-triage");
+    expect(offered(SOLO)).not.toContain("inbox-triage-replies");
+    expect(STARTER.version).toBe("2.1.0");
+  });
+
+  it("inbox-triage-replies makes its list before any reply, and only the reply step can send (item 5)", () => {
+    const replies = (STARTER.workflows ?? []).find((flow) => flow.workflow === "inbox-triage-replies") as { steps: { id: string; tool?: string; args?: Record<string, unknown>; agent?: { tools: string[] } }[] };
+    expect(replies.steps.map((step) => step.id)).toEqual(["mail", "triage", "reply"]);
+    expect(replies.steps[0]).toMatchObject({ tool: "channel.inbox", args: { channel: "email", limit: 50, after: "last-run" } });
+    expect(replies.steps[1]?.agent?.tools).not.toContain("channel.send");
+    expect(replies.steps[2]?.agent?.tools).toEqual(["channel.send"]);
+    const triage = (STARTER.workflows ?? []).find((flow) => flow.workflow === "inbox-triage") as { steps: { agent?: { tools: string[] } }[]; trigger: unknown };
+    expect(triage.steps.flatMap((step) => step.agent?.tools ?? [])).not.toContain("channel.send");
+    expect(triage.trigger).toEqual({ cron: "0 8 * * *", tz: "local" });
   });
 
 describe("the consult path (item 7 Task 8, D163)", () => {
