@@ -48,6 +48,7 @@ import { uninstall } from "./core/uninstall.js";
 import { nodeTooOld } from "./core/node-version.js";
 import { addService } from "./core/services.js";
 import { installerVersion } from "./core/version.js";
+import { inventory } from "./core/skills.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -65,7 +66,8 @@ import type { CapabilityMap, InstallState, Solution } from "./core/types.js";
 export const EXIT = { OK: 0, INTERNAL: 1, USAGE: 2, STATE_CORRUPT: 3 } as const;
 const HOME_MODE = 0o700;
 const GROUP_OTHER_BITS = 0o077;
-const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, why, watch, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
+const SKILLS_NEXT = 'Tell the person which of these fit the workflow and why; add only the ones they confirm, as "skills":[<ref>,…] in the --value of taskfollow workflow add';
+const COMMANDS = "instructions, start, add, next, submit, verify, resume, report, probe, secret, guide, disconnect, tool, approvals, connect, map, channel, invite, members, gateway, run, tick, schedule, model, workflow, dryrun, sandbox, harden, autonomy, alerts, learnings, why, skills, watch, doctor, pause, unpause, host, packs, retention, support, uninstall, certify, version";
 
 class NoInstallError extends InputError {
   constructor() {
@@ -389,6 +391,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   /** D146: the opt-in record of the agent's direct calls to watched services; changes only from a person's terminal. */
   watch: async ({ deps }, _flags, arg, extra) => watchCommand(deps.home, { sub: arg, ...(extra === undefined ? {} : { arg: extra }), interactive: process.stdin.isTTY === true }, deps.now),
   /** D138: who did what in a run, and why, from the record; plain lines for a person at a terminal. */
+  /** 9.12 item 2: the agent's skills, names and descriptions only; the agent proposes, the person confirms. */
+  skills: async ({ deps }) => ({ ...(await inventory(deps.home, process.env)), next: SKILLS_NEXT }),
   why: async ({ deps }, _flags, arg, extra) => {
     const why = await whyCommand(deps.home, arg, deps.now, extra);
     return process.stdout.isTTY === true ? renderWhy(why) : why;

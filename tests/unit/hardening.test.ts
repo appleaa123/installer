@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { approveItem, listApprovals } from "../../src/core/approvals.js";
@@ -10,6 +10,7 @@ import { dryrunCommand } from "../../src/core/lifecycle.js";
 import { loadWorkflowState } from "../../src/core/sandbox.js";
 import { invokeTool, toolContext } from "../../src/core/tools.js";
 import { loadWorkflow } from "../../src/core/workflow.js";
+import { loadState, saveState } from "../../src/core/state.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 import { writeWorkflow } from "../helpers/workflow-home.js";
@@ -76,6 +77,26 @@ describe("hardening proposals (§10.8, D93)", () => {
 });
 
 describe("the replay gate and versions (§10.8)", () => {
+  it("keeps the workflow's skills in the hardened version (9.12 item 2)", async () => {
+    const folder = join(process.env.INSTALLER_AGENT_USER_SKILLS ?? "", "tidy-rules");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "SKILL.md"), "---\nname: tidy-rules\n---\nTidy.\n");
+    const home = await runnerHome();
+    await writeWorkflow(home, { ...AGENTIC, skills: [folder] });
+    for (let index = 1; index <= 5; index += 1) expect(await agentRun(home, index, NOTE)).toMatchObject({ status: "completed" });
+    expect(await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT)).toMatchObject({ status: "hardened", version: 2 });
+    expect((await load(home)).skills).toEqual([folder]);
+  });
+
+  it("rewrites the CLAUDE.md section after a new version (9.12 item 2)", async () => {
+    const home = await hardenable();
+    const work = await makeTempHome();
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, work_dir: work });
+    await hardenCommand(home, "tidy", "apply", undefined, TERMINAL, () => AT);
+    expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **tidy**");
+  });
+
   it("blocks the switch when an older run does not come out the same, and shows where", async () => {
     const home = await runnerHome();
     await writeWorkflow(home, AGENTIC);

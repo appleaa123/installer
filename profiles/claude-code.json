@@ -17,5 +17,7 @@
   "mcp_remove": { "cmd": ["claude", "mcp", "remove", "-s", "user", "{name}"] },
   "task": { "cmd": ["claude", "-p", "{prompt}", "--output-format", "json", "--restricted", "--permission-prompts", "none", "--permission-mode", "manual", "--tools", "{tools}", "--allowedTools", "{may_use}", "--settings", "{settings_json}", "--mcp-config", "{mcp_config}", "--no-session-persistence"] },
   "personal_settings": "claude",
+  "skills_dirs": { "project": ".claude/skills", "user": "~/.claude/skills" },
+  "instructions_file": "CLAUDE.md",
   "tos_review": { "status": "ok", "note": "First-party CLI used headless by the client on their own account." }
 }
