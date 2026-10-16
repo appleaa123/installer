@@ -1,5 +1,6 @@
 import { revise, type Advanced, type EngineDeps } from "./engine.js";
 import { InputError } from "./inputs.js";
+import { stepVisible } from "./visibility.js";
 import type { InstallState, Solution, StepDef } from "./types.js";
 
 /**
@@ -39,6 +40,8 @@ export async function addService(deps: EngineDeps, state: InstallState, option: 
     const addable = addableOptions(deps.solution, state);
     throw new InputError(`'${option}' is not something this install can add. You can add: ${addable.join(", ") || "nothing more"}`);
   }
+  // 9.12 item 3: a question this setup never asks (Telegram for a team, which always has it) cannot be reopened.
+  if (!stepVisible(picker, state)) throw new InputError(`${option} is already part of this setup, or does not apply to it: the question '${picker.title}' is not asked here`);
   if (state.steps[picker.step_id]?.status !== "done") throw new InputError(`Finish the install first: the question '${picker.title}' is not answered yet. Answer it, then add ${option}`);
   if (included(picker, state, option)) throw new InputError(`${option} is already part of this setup`);
   const current = state.steps[picker.step_id]?.value;
