@@ -19,6 +19,7 @@ import { escapeHtml, readBody } from "./secret-page.js";
  * secret page (D47), this page writes check results and audit entries.
  */
 const HOST = "127.0.0.1";
+const SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin";
 type Env = Readonly<Record<string, string | undefined>>;
 
 export function systemOpener(platform: string, env: Env): { readonly cmd: string; readonly args: (url: string) => string[] } | null {
@@ -34,6 +35,8 @@ export function openWithSystem(url: string, platform: string = process.platform,
   if (!opener) return false;
   // Only what an opener needs to reach the desktop session; nothing the agent set can redirect it.
   const keep = Object.fromEntries(["HOME", "USER", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "SYSTEMROOT"].flatMap((key) => (env[key] ? [[key, env[key]]] : [])));
+  // Review S5: xdg-open is a shell script that finds the browser through PATH; give it the system's, never the agent's.
+  if (platform !== "win32") keep.PATH = SYSTEM_PATH;
   launch(opener.cmd, opener.args(url), { detached: true, stdio: "ignore", windowsHide: true, env: keep }).on("error", () => undefined).unref();
   return true;
 }

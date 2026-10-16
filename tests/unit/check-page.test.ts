@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { serveCheckPage, systemOpener } from "../../src/core/check-page.js";
+import { openWithSystem, serveCheckPage, systemOpener } from "../../src/core/check-page.js";
 import { abilities, loadChallenge, startChallenge } from "../../src/core/checks.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -112,3 +112,18 @@ describe("check page: is this work only for you? (spec 7)", () => {
   });
 });
 
+describe("check page: the opener's environment (review S5)", () => {
+  it("gets a fixed system PATH on macOS and Linux, never the agent's, and no PATH on Windows", () => {
+    const seen: { cmd: string; env: Record<string, string | undefined> }[] = [];
+    const launch = ((cmd: string, _args: string[], options: { env: Record<string, string | undefined> }) => {
+      seen.push({ cmd, env: options.env });
+      return { on: () => ({ unref: () => undefined }) };
+    }) as unknown as Parameters<typeof openWithSystem>[3];
+    const hostile = { PATH: "/tmp/evil:/usr/bin", HOME: "/Users/x", INSTALLER_BROWSER: "/tmp/log.sh" };
+    openWithSystem("http://127.0.0.1:1/x", "linux", hostile, launch);
+    openWithSystem("http://127.0.0.1:1/x", "darwin", hostile, launch);
+    openWithSystem("http://127.0.0.1:1/x", "win32", { ...hostile, SYSTEMROOT: "C:\\Windows" }, launch);
+    expect(seen.map((entry) => entry.env.PATH)).toEqual(["/usr/local/bin:/usr/bin:/bin", "/usr/local/bin:/usr/bin:/bin", undefined]);
+    expect(seen.every((entry) => entry.env.INSTALLER_BROWSER === undefined)).toBe(true);
+  });
+});
