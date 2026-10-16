@@ -141,6 +141,17 @@ Each task says why it is needed and what to do, step by step.
 6. If you can, have someone with a WhatsApp username (no visible number) write: does the message arrive, and does a reply reach them?
 7. Note whether Meta asked you to switch the app to Live, and what it required.
 
+### 32. The Cowork spike: can Claude Cowork on the web host a scheduled workflow? (item 4, spec section 11)
+
+**Why:** the doability spec (`docs/superpowers/specs/2026-10-16-doability-check.md`, version 3.1) lets report-only work run in the agent's own scheduler (D156, "Home 2"). Four facts only your Cowork can settle, and they shape item 4 before the check is built. About 30 minutes in your browser at claude.ai, using your test email account. Nothing real is sent or deleted. Tell Claude what happened at each step, with the exact words of anything unexpected; screenshots help.
+
+1. **Make the test skill.** In a terminal: `bash ~/Desktop/ML-Project/installer/docs/testing/task32-make-plugin.sh`. It puts `taskfollow-test-plugin` (a folder and a `.zip`) on your Desktop and prints a word such as `KESTREL-7K3P`. Write the word down and never type it into Cowork.
+2. **Can a skill get in?** In Cowork on the web, look for where plugins or skills are added. Try uploading the `.zip` (or the folder). Tell Claude: was there an upload option; did it accept it; or did it only offer a marketplace or repository?
+3. **Does it use the skill?** In a Cowork chat: *"What is the TaskFollow check word?"* Does it answer with your word? Tell Claude yes or no only, not the word.
+4. **Can it read your test mailbox?** Connect the test email account to Cowork if it offers a connector for it. Then send yourself an email from your phone with the subject `TASKFOLLOW-CHECK spike`. In Cowork: *"What is the subject of the newest email that starts with TASKFOLLOW-CHECK?"* Tell Claude which connector you used and whether it found it.
+5. **Can a scheduled task run while you are away?** Ask Cowork: *"Set a one-time scheduled task for 15 minutes from now: read the subject of the newest email starting with TASKFOLLOW-CHECK, and send me that subject and the TaskFollow check word, the way you would send me a daily brief."* Check that the task shows in its list. **Close the browser tab.** From your phone, send yourself another email with the subject `TASKFOLLOW-CHECK later-<any 4 letters you make up>`. After the 15 minutes, check: did a message arrive (email to you, or only a result inside Cowork)? Did it have the new subject and the right check word? About what time did it arrive?
+6. **Clean up.** Ask Cowork to delete the scheduled task and to remove the test plugin, and check its lists no longer show them. Delete the two test emails if you like.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
