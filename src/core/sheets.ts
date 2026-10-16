@@ -119,7 +119,8 @@ export function sheetsClient(def: ConnectorDef, tokens: AccessTokenSource, env: 
       const answer = await call({ method: "POST", path: `/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`, body: { requests: [{ addSheet: { properties: { title } } }] }, location });
       const replies = Array.isArray(answer.replies) ? answer.replies : [];
       const added = replies.find((reply): reply is Raw => isRecord(reply) && isRecord(reply.addSheet));
-      const id = added && isRecord(added.addSheet) && isRecord(added.addSheet.properties) ? added.addSheet.properties.sheetId : undefined;
+      const { properties: tab } = (added && isRecord(added.addSheet) ? added.addSheet : {}) as Raw;
+      const id = isRecord(tab) ? tab.sheetId : undefined;
       if (typeof id !== "number") throw new ActionFailure("Google Sheets added no tab id");
       return id;
     },
