@@ -9,6 +9,7 @@ import { whyCommand } from "../../src/core/why.js";
 import { parseWorkflow } from "../../src/core/workflow.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+import { writeWorkflow } from "../helpers/workflow-home.js";
 
 const AT = "2026-10-14T12:00:00.000Z";
 const LATER = "2026-10-14T12:05:00.000Z";
@@ -140,13 +141,55 @@ describe("taskfollow why: each run's result (9.12 item 3, level 1)", () => {
     expect(runs.find((entry) => entry.workflow === "list")?.result).toBe('{"memos":[]}');
   });
 
-  it("cuts a long result at 300 characters", async () => {
+  it("why list marks a cut result and names the run (item 5)", async () => {
     const home = await runnerHome();
     vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "x".repeat(400) }]));
-    await run(home, { workflow: "digest", version: 1, mode: "agentic", trigger: { manual: true }, instructions: "Read.", tools: ["memo.list"] }, AT);
+    const record = await run(home, { workflow: "digest", version: 1, mode: "agentic", trigger: { manual: true }, instructions: "Read.", tools: ["memo.list"] }, AT);
     const result = (await listed(home))[0]?.result ?? "";
-    expect(result).toHaveLength(300);
-    expect(result.endsWith("…")).toBe(true);
+    expect(result).toBe(`${"x".repeat(299)}… (the whole result: taskfollow why ${record.run_id})`);
+  });
+
+  it("why run id shows the whole result when it is a summary (item 5)", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "y".repeat(400) }]));
+    const record = await run(home, { workflow: "digest", version: 1, mode: "agentic", trigger: { manual: true }, instructions: "Read.", tools: ["memo.list"] }, AT);
+    const why = await whyCommand(home, record.run_id, () => LATER);
+    expect(why.result).toBe("y".repeat(400));
+    const { renderWhy } = await import("../../src/core/why.js");
+    expect(renderWhy(why)).toContain(`result:\n${"y".repeat(400)}`);
+  });
+
+  it("why run id shows no message bodies when the run made no list (item 5)", async () => {
+    const home = await runnerHome();
+    const tool = await toolContext(home, "cli", DEFAULT_TOOLS, () => AT);
+    await invokeTool(tool, "memo.add", { text: `first ${"a".repeat(300)}` });
+    await invokeTool(tool, "memo.add", { text: "SECOND-MEMO-BODY" });
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "memo.list", args: {} }]));
+    const steps = [{ id: "memos", tool: "memo.list" }, { id: "list", agent: { instructions: "Make the list.", input: "${memos}", tools: ["memo.list"], max_turns: 1 } }];
+    const triage = { workflow: "triage", version: 1, trigger: { manual: true }, steps };
+    await writeWorkflow(home, triage);
+    const record = await run(home, triage, AT);
+    const why = await whyCommand(home, record.run_id, () => LATER);
+    expect(String(why.result)).toContain("this run made no list");
+    expect(String(why.result)).not.toContain("SECOND-MEMO-BODY");
+  });
+
+  it("why run id keeps a plain cut for a workflow that makes no list at all (PR #59 review)", async () => {
+    const home = await runnerHome();
+    const tool = await toolContext(home, "cli", DEFAULT_TOOLS, () => AT);
+    await invokeTool(tool, "memo.add", { text: `first ${"a".repeat(300)}` });
+    const list = { workflow: "list", version: 1, trigger: { manual: true }, steps: [{ id: "memos", tool: "memo.list" }] };
+    await writeWorkflow(home, list);
+    const record = await run(home, list, AT);
+    const why = await whyCommand(home, record.run_id, () => LATER);
+    expect(String(why.result)).toHaveLength(300);
+    expect(String(why.result)).not.toContain("made no list");
+  });
+
+  it("why run id of a run without a result is unchanged (item 5)", async () => {
+    const home = await runnerHome();
+    const record = await run(home, { workflow: "edit", version: 1, trigger: { manual: true }, steps: [{ id: "fix", tool: "memo.edit", args: { id: 99, text: "x" } }] }, AT);
+    expect(await whyCommand(home, record.run_id, () => LATER)).not.toHaveProperty("result");
   });
 
   it("shows no result, and does not fail, when a step file is damaged", async () => {

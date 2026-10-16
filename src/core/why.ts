@@ -10,6 +10,8 @@ import { StateCorruptError } from "./state.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
 import { takeSuggestions } from "./watch-notice.js";
+import { DEFAULT_TOOLS } from "./tool-set.js";
+import { loadWorkflow } from "./workflow.js";
 
 /**
  * `taskfollow why` (D138): the record is the reference. Without an argument it lists the runs of the last day (or
@@ -150,7 +152,8 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
   if (arg !== undefined && RUN_ID.test(arg)) {
     const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === arg);
     if (!record) throw new InputError(`No run '${arg}': 'taskfollow why' lists the recent runs`);
-    return { run: { workflow: record.workflow, run_id: record.run_id, status: record.status, sandbox: record.sandbox }, timeline: await explainRun(home, record, now()) };
+    const result = await resultOf(home, record, "run");
+    return { run: { workflow: record.workflow, run_id: record.run_id, status: record.status, sandbox: record.sandbox }, timeline: await explainRun(home, record, now()), ...(result ? { result } : {}) };
   }
   if (arg !== undefined && !DATE.test(arg)) throw new InputError("why takes a run id (for example 2026-10-14-1a2b3c4d), or a date to list the runs since (for example 2026-10-13)");
   const since = arg ?? new Date(Date.parse(now()) - DAY_MS).toISOString();
@@ -185,14 +188,18 @@ async function suggestionsField(home: string, now: string): Promise<{ suggestion
   }
 }
 
-/** The result of one run by id (the work done once, plan Task 7), or undefined. */
+/** The result of one run by id (the work done once, plan Task 7): an agent's summary whole (item 5), or undefined. */
 export async function runResult(home: string, runId: string): Promise<string | undefined> {
   const record = (await listRuns(home, undefined, skipDamaged)).find((run) => run.run_id === runId);
-  return record ? resultOf(home, record) : undefined;
+  return record ? resultOf(home, record, "once") : undefined;
 }
 
-/** A run's result, for level 1 (9.4): an agent's summary, or the last done step's output; at most 300 characters. */
-async function resultOf(home: string, run: RunRecord): Promise<string | undefined> {
+/**
+ * A run's result, for level 1 (9.4): an agent's summary, or the last done step's output. In the list it is cut at 300
+ * characters and names the run to see it whole (item 5); for one run (`why <run id>`, `check once`) an agent's summary
+ * is whole and any other output stays cut, so a list that was never made never prints every message it read.
+ */
+async function resultOf(home: string, run: RunRecord, form: "list" | "run" | "once" = "list"): Promise<string | undefined> {
   let steps: StepLog[];
   try {
     steps = await listSteps(home, run);
@@ -204,8 +211,21 @@ async function resultOf(home: string, run: RunRecord): Promise<string | undefine
   if (!last) return undefined;
   const output = last.output as unknown;
   const summary = typeof output === "object" && output !== null && "summary" in output && typeof (output as { summary: unknown }).summary === "string" ? (output as { summary: string }).summary : undefined;
+  if (form !== "list" && summary !== undefined) return summary;
   const text = summary ?? JSON.stringify(output);
-  return text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT - 1)}…` : text;
+  const cut = text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT - 1)}…` : text;
+  if (form === "run") return (await makesList(home, run.workflow)) ? `${cut} (this run made no list)` : cut;
+  return form === "once" || cut === text ? cut : `${cut} (the whole result: taskfollow why ${run.run_id})`;
+}
+
+/** Whether the workflow has an agent step, the one that makes a list; false when its file cannot be read. */
+async function makesList(home: string, workflow: string): Promise<boolean> {
+  try {
+    return (await loadWorkflow(home, workflow, DEFAULT_TOOLS)).steps.some((step) => step.kind === "agent");
+  } catch (error) {
+    if (error instanceof InputError) return false;
+    throw error;
+  }
 }
 
 const RESULT_LIMIT = 300;
@@ -214,7 +234,8 @@ const UNTOLD = new Set(["failed", "partial", "missed"]);
 /** For a person at a terminal: one line per entry (time, who, what, why), or one line per run. */
 export function renderWhy(why: Raw): string {
   if (Array.isArray(why.timeline)) {
-    return (why.timeline as WhyEntry[]).map((entry) => `${entry.at.slice(0, 16).replace("T", " ")}  ${entry.who}: ${entry.what}${entry.why ? `\n    why: ${entry.why}` : ""}`).join("\n");
+    const lines = (why.timeline as WhyEntry[]).map((entry) => `${entry.at.slice(0, 16).replace("T", " ")}  ${entry.who}: ${entry.what}${entry.why ? `\n    why: ${entry.why}` : ""}`);
+    return [...lines, ...(typeof why.result === "string" ? ["", `result:\n${why.result}`] : [])].join("\n");
   }
   const runs = Array.isArray(why.runs) ? (why.runs as Raw[]) : [];
   const suggestions = Array.isArray(why.suggestions) ? (why.suggestions as Raw[]) : [];

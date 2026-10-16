@@ -93,7 +93,7 @@ interface StepBase {
 }
 
 export type WorkflowStep =
-  | (StepBase & { readonly kind: "tool"; readonly tool: string; readonly args: ArgsTemplate; readonly foreach?: string })
+  | (StepBase & { readonly kind: "tool"; readonly tool: string; readonly args: ArgsTemplate; readonly foreach?: string; readonly last_run?: string })
   | (StepBase & { readonly kind: "judge"; readonly judge: JudgeSpec; readonly foreach?: string })
   | (StepBase & { readonly kind: "approve"; readonly tool: string; readonly args: ArgsTemplate; readonly why: string; readonly urgent: boolean; readonly agent_call?: true })
   | (StepBase & { readonly kind: "agent"; readonly agent: AgentSpec })
@@ -300,6 +300,23 @@ function argumentRoots(step: WorkflowStep): readonly string[] {
  * Every reference must name an earlier step, `run`, or `event` (event triggers); `item` only in the arguments of a
  * foreach step. `when` and `foreach` are read once per step, before any item, so they cannot use `item`.
  */
+/** Item 5: channel.inbox's `after` may say "last-run", resolved by the runner from the last run whose list was made. */
+export const LAST_RUN = "last-run";
+
+const holdsLastRun = (value: unknown): boolean => value === LAST_RUN || (Array.isArray(value) ? value.some(holdsLastRun) : isRecord(value) && Object.values(value).some(holdsLastRun));
+
+/** Marks the channel.inbox step with the agent step after it, whose summary says the list was made; refuses "last-run" elsewhere. */
+function withLastRun(steps: readonly WorkflowStep[], fail: (message: string) => never): WorkflowStep[] {
+  return steps.map((step, index) => {
+    if ((step.kind !== "tool" && step.kind !== "approve") || !holdsLastRun(step.args)) return step;
+    const own = step.kind === "tool" && step.tool === "channel.inbox" && isRecord(step.args) && step.args.after === LAST_RUN && !holdsLastRun({ ...step.args, after: null });
+    if (!own) return fail(`step '${step.id}': "${LAST_RUN}" is accepted only as channel.inbox's after`);
+    const report = steps.slice(index + 1).find((later) => later.kind === "agent");
+    if (!report) return fail(`step '${step.id}': after "${LAST_RUN}" needs an agent step after it, the one that makes the list`);
+    return { ...step, last_run: report.id };
+  });
+}
+
 function checkReferences(workflow: Workflow, fail: (message: string) => never): void {
   // `previous`: the step outputs of this workflow's last finished run (D144), null before the first one.
   const seen: string[] = ["run", "previous", ...(workflow.trigger.kind === "event" ? ["event"] : [])];
@@ -352,7 +369,7 @@ export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry
   const fallback = value.fallback === undefined ? {} : { fallback: parseAgent(isRecord(value.fallback) ? { ...value.fallback, input: undefined } : value.fallback, registry, "fallback", fail) };
   const workflow: Workflow = {
     id, version, description: typeof value.description === "string" ? value.description : "", mode: value.mode === "agentic" ? "agentic" : "typed",
-    trigger: parseTrigger(value.trigger, fail), steps: rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), ...fallback,
+    trigger: parseTrigger(value.trigger, fail), steps: withLastRun(rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), fail), ...fallback,
     skills: parseSkills(value.skills, fail),
   };
   try {

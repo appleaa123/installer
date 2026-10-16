@@ -8,11 +8,11 @@ import { approveByGrant, proposeIfEarned } from "./autonomy.js";
 import { askJudge, protectedFields, runContextTools, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
 import { needsApproval } from "./levels.js";
 import { pinnedSkill } from "./packs.js";
-import { fingerprint, saveStep, type RunRecord, type StepLog } from "./runs.js";
+import { fingerprint, newestStepOutput, saveStep, type RunRecord, type StepLog } from "./runs.js";
 import { TOKEN_ARG, invokeTool, prepareAction, requireTool, type ToolArgs, type ToolContext } from "./tools.js";
 import type { DataContract } from "./contract.js";
 import type { InstallState } from "./types.js";
-import type { WorkflowStep } from "./workflow.js";
+import type { ArgsTemplate, WorkflowStep } from "./workflow.js";
 
 /**
  * One step of a run (spec §10.2, D87). Tools act through Plan 4's gate (`invokeTool`): an L0 or L1 call runs; an
@@ -70,12 +70,21 @@ async function escalate(exec: Exec, record: RunRecord, step: string, prepared: P
   return { kind: "wait", approval: item.id };
 }
 
+/** Item 5: "last-run" becomes the newest inbox id the last run with a list read, or null on the first run. */
+async function lastRunArgs(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "tool" }): Promise<ArgsTemplate> {
+  if (step.last_run === undefined || typeof step.args === "string") return step.args;
+  const read = await newestStepOutput(exec.home, record, step.id, step.last_run, (output) => typeof (output as { newest_id?: unknown } | null)?.newest_id === "number");
+  const newest = typeof read === "object" && read !== null ? (read as { newest_id?: unknown }).newest_id : undefined;
+  return { ...step.args, after: typeof newest === "number" ? newest : null };
+}
+
 export async function runTool(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "tool" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const outputs: unknown[] = [];
   let actions = 0;
   const list = items(step, scope);
+  const template = await lastRunArgs(exec, record, step);
   for (const item of list) {
-    const args = argsFor(step.args, { ...scope, item }, step.id);
+    const args = argsFor(template, { ...scope, item }, step.id);
     const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
     if (needsApproval(prepared.level) && !exec.ctx.sandbox) {
       if (step.foreach !== undefined) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs an approval for each item; approve one call with an approve step instead`);

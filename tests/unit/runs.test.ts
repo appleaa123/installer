@@ -5,7 +5,7 @@ import { requestApproval } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { DEFAULT_TOOLS } from "../../src/core/tool-set.js";
 import { invokeTool, prepareAction, requireTool, toolContext } from "../../src/core/tools.js";
-import { RUNS_DIR, claimRun, fingerprint, listRuns, loadRun, loadStep, recordMissed, runForKey, runIdFor, saveStep, type RunRecord } from "../../src/core/runs.js";
+import { RUNS_DIR, claimRun, fingerprint, listRuns, loadRun, loadStep, newestStepOutput, recordMissed, runForKey, runIdFor, saveStep, type RunRecord } from "../../src/core/runs.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
@@ -62,5 +62,84 @@ describe("an approval a workflow asks for (D87)", () => {
     const edit = await prepareAction(ctx, requireTool(DEFAULT_TOOLS, "memo.edit"), { id: 1, text: "second" });
     const item = await requestApproval(home, { prepared: edit, why: "The digest says so", via: "runner", run: { workflow: "memo-digest", run_id: "2026-10-08-1a2b3c4d", step: "fix" } }, AT);
     expect(item.source).toEqual({ via: "runner", run: { workflow: "memo-digest", run_id: "2026-10-08-1a2b3c4d", step: "fix" } });
+  });
+});
+
+describe("newestStepOutput: where the inbox triage starts reading (item 5)", () => {
+  const at = (hour: number) => `2026-10-08T${String(hour).padStart(2, "0")}:00:00.000Z`;
+  const mailOut = (newest: number) => ({ messages: [], newest_id: newest });
+  /** A run of `memo-digest` at `hour`, with its mail and triage steps as given (undefined: the step never ran). */
+  async function past(home: string, hour: number, mail: number | undefined, triage: unknown, extra: Partial<RunRecord> = {}): Promise<RunRecord> {
+    const run = record(`k${hour}${extra.sandbox ? "s" : ""}`, { started_at: at(hour), status: "completed", ...extra });
+    await claimRun(home, run);
+    if (mail !== undefined) await saveStep(home, run, { step: "mail", status: "done", started_at: at(hour), finished_at: at(hour), duration_ms: 0, input_fingerprint: fingerprint(null), output: mailOut(mail) });
+    if (triage !== undefined) await saveStep(home, run, { step: "triage", status: "done", started_at: at(hour), finished_at: at(hour), duration_ms: 0, input_fingerprint: fingerprint(null), output: triage });
+    return run;
+  }
+  const now = (hour: number, extra: Partial<RunRecord> = {}) => record(`now${hour}`, { started_at: at(hour), ...extra });
+
+  it("takes the newest earlier run whose list was made, whatever its status", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    await past(home, 9, 7, { summary: "4 messages", calls: 1 }, { status: "waiting" });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(7));
+  });
+
+  it("a run whose triage ended with needs and no summary lists its mail again", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    await past(home, 9, 7, null, { status: "partial" });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+  });
+
+  it("a run paused between mail and triage lists its mail again", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    await past(home, 9, 7, undefined, { status: "partial" });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+  });
+
+  it("sandbox and live watermarks are kept separate", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "live", calls: 1 });
+    await past(home, 9, 7, { summary: "dry", calls: 1 }, { sandbox: true });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+    expect(await newestStepOutput(home, now(10, { sandbox: true }), "mail", "triage")).toEqual(mailOut(7));
+  });
+
+  it("an empty summary does not move the watermark (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    await past(home, 9, 7, { summary: "   ", calls: 0 });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+  });
+
+  it("falls back to an older run when the read step has no usable output (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    const skipped = await past(home, 9, undefined, { summary: "list", calls: 1 });
+    await saveStep(home, skipped, { step: "mail", status: "done", started_at: at(9), finished_at: at(9), duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
+    const usable = (output: unknown) => typeof (output as { newest_id?: unknown } | null)?.newest_id === "number";
+    expect(await newestStepOutput(home, now(10), "mail", "triage", usable)).toEqual(mailOut(3));
+  });
+
+  it("skips a damaged run, and lets any other error through (PR #59 review)", async () => {
+    const home = await makeTempHome();
+    await past(home, 8, 3, { summary: "3 messages", calls: 1 });
+    const damaged = await past(home, 9, 7, { summary: "list", calls: 1 });
+    const { writeFile, chmod } = await import("node:fs/promises");
+    const file = join(home, RUNS_DIR, "memo-digest", damaged.run_id, "steps", "mail.json");
+    await writeFile(file, JSON.stringify({ step: "mail", status: "strange" }));
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toEqual(mailOut(3));
+    await chmod(file, 0o000);
+    await expect(newestStepOutput(home, now(10), "mail", "triage")).rejects.toThrow();
+    await chmod(file, 0o600);
+  });
+
+  it("is null on the first run, and ignores later runs and the run itself", async () => {
+    const home = await makeTempHome();
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toBeNull();
+    await past(home, 11, 9, { summary: "later", calls: 1 });
+    expect(await newestStepOutput(home, now(10), "mail", "triage")).toBeNull();
   });
 });

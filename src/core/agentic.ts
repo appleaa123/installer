@@ -136,6 +136,8 @@ export async function resumeAgent(run: AgentRun, log: StepLog): Promise<StepOutc
     return continueAgent(run, [...before, { ...last, args: item.action.args, result }]);
   }
   if (item.status === "rejected") return continueAgent(run, [...before, { ...last, error: `a person rejected this call${item.decision?.reason ? `: ${item.decision.reason}` : ""}` }]);
-  await saveAgent(run, turns, { status: "failed", error: `approval ${id} is ${item.status}` });
-  return { kind: "stop", status: "failed", reason: `approval ${id} is ${item.status}` };
+  // PR #59 review: an expired call (a drafted reply nobody decided on in 24 hours) says what happened and what to do.
+  const reason = item.status === "expired" ? `approval ${id} was not approved within 24 hours, so nothing was sent; ask your agent in chat to draft it again` : `approval ${id} is ${item.status}`;
+  await saveAgent(run, turns, { status: "failed", error: reason });
+  return { kind: "stop", status: "failed", reason };
 }

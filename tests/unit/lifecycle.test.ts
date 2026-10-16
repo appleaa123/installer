@@ -18,6 +18,8 @@ import { makeTempHome } from "../helpers/temp-home.js";
 import { MEMO_DIGEST, writeWorkflow } from "../helpers/workflow-home.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { loadWorkflow, workflowIds } from "../../src/core/workflow.js";
+import { readConfig } from "../../src/core/data-source.js";
+import { workflowHash } from "../../src/core/homes.js";
 
 const AT = "2026-10-08T12:00:00.000Z";
 const NOTE = { workflow: "note", description: "Adds a memo each weekday morning", trigger: { cron: "0 8 * * 1-5", tz: "America/Toronto" }, steps: [{ id: "add", tool: "memo.add", args: { text: "Good morning" } }] };
@@ -285,5 +287,46 @@ describe("WORKFLOWS: skills for a workflow (9.12 item 2, D126 changed)", () => {
     const at = await home();
     await workflowCommand(at, "add", "count", JSON.stringify({ description: "Count.", tools: ["memo.list"] }), () => AT);
     expect(await raw(at, "count")).not.toHaveProperty("skills");
+  });
+});
+
+describe("a suggestion keeps its shape when the person changes the time (item 5)", () => {
+  const file = (at: string) => readConfig(at, join("workflows", "note", "workflow.json"));
+  const add = (at: string, words: Record<string, unknown>) => workflowCommand(at, "add", "note", JSON.stringify(words), () => AT);
+
+  it("workflow add <suggestion> with a trigger uses the person's time", async () => {
+    const at = await home();
+    await add(at, { trigger: { cron: "0 7 * * 1-5", tz: "Europe/Paris" } });
+    expect((await loadWorkflow(at, "note", DEFAULT_TOOLS)).trigger).toMatchObject({ kind: "cron", cron: "0 7 * * 1-5", tz: "Europe/Paris" });
+  });
+
+  it("a person's tz local becomes this computer's zone", async () => {
+    const at = await home();
+    await add(at, { trigger: { cron: "0 7 * * *", tz: "local" } });
+    expect((await loadWorkflow(at, "note", DEFAULT_TOOLS)).trigger).toMatchObject({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  });
+
+  it("the shape survives a trigger given at add", async () => {
+    const at = await home();
+    await add(at, { trigger: { cron: "0 7 * * *", tz: "local" } });
+    expect(await loadWorkflowState(at, "note")).toMatchObject({ shape: "note", content_hash: workflowHash(await file(at)) });
+  });
+
+  it("a later edit of the file still drops the shape", async () => {
+    const at = await home();
+    await add(at, { trigger: { cron: "0 7 * * *", tz: "local" } });
+    await writeConfig(at, join("workflows", "note", "workflow.json"), { ...((await file(at)) as Record<string, unknown>), description: "changed" });
+    expect((await loadWorkflowState(at, "note"))?.content_hash).not.toBe(workflowHash(await file(at)));
+  });
+
+  it.each([{ steps: [] }, { instructions: "x" }, { tools: ["memo.add"] }, { mode: "agentic" }])("a suggestion's value with steps or instructions is refused (%j)", async (words) => {
+    const at = await home();
+    await expect(add(at, words)).rejects.toThrow("may change only");
+    expect(await workflowIds(at)).toEqual([]);
+  });
+
+  it("refuses a trigger the runner cannot read", async () => {
+    const at = await home();
+    await expect(add(at, { trigger: { cron: "every morning" } })).rejects.toThrow("every morning");
   });
 });

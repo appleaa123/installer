@@ -132,3 +132,71 @@ describe("workflow add: the workflow's own skill (9.12 item 2)", () => {
   });
 });
 
+
+describe("workflow add: the shipped skill of a shape (item 5)", () => {
+  const TRIAGE = {
+    workflow: "inbox-triage", description: "Every morning, the mail since you last did this (or in the last 24 hours): what needs me.", mode: "typed", trigger: { manual: true },
+    steps: [{ id: "mail", tool: "channel.inbox", args: { after: "last-run" } }, { id: "triage", agent: { instructions: "Use the inbox-triage skill.", input: "${mail}", tools: ["memo.list"] } }],
+  };
+  async function shapeInstall(): Promise<{ home: string; work: string }> {
+    const { home, work } = await install();
+    await writePinnedSolution(home, JSON.stringify({ ...SOLUTION, workflows: [TRIAGE] }));
+    return { home, work };
+  }
+  const shipped = (id: string) => readFile(join(process.cwd(), "solutions", "shapes", id, "SKILL.md"), "utf8");
+
+  it("workflow add inbox-triage writes the shipped SKILL.md with the workflow id as name", async () => {
+    const { home, work } = await shapeInstall();
+    await workflowCommand(home, "add", "inbox-triage", undefined, () => AT);
+    const skill = await readFile(join(skillsDir(work), "inbox-triage", "SKILL.md"), "utf8");
+    expect(skill).toBe(await shipped("inbox-triage"));
+    expect(skill).toMatch(/^---\nname: inbox-triage\n/);
+  });
+
+  it("workflow add inbox-triage keeps the person's my_rules in references/my-rules.md", async () => {
+    const { home, work } = await shapeInstall();
+    await workflowCommand(home, "add", "inbox-triage", JSON.stringify({ my_rules: "Repairs at 12 Oak St come first." }), () => AT);
+    expect(await readFile(join(skillsDir(work), "inbox-triage", "references", "my-rules.md"), "utf8")).toContain("Repairs at 12 Oak St come first.");
+  });
+
+  it("workflow add writes references/examples.md, from the interview or None yet", async () => {
+    const { home, work } = await shapeInstall();
+    await workflowCommand(home, "add", "inbox-triage", JSON.stringify({ examples: "Tom asks for the lease copy: reply." }), () => AT);
+    expect(await readFile(join(skillsDir(work), "inbox-triage", "references", "examples.md"), "utf8")).toBe("# Examples for inbox-triage\n\nTom asks for the lease copy: reply.\n");
+    await add(home, "described", { description: "Sort the morning mail." });
+    expect(await readFile(join(skillsDir(work), "described", "references", "examples.md"), "utf8")).toContain("None yet");
+  });
+
+  it("refuses examples that are not text", async () => {
+    const { home } = await shapeInstall();
+    await expect(workflowCommand(home, "add", "inbox-triage", JSON.stringify({ examples: ["x"] }), () => AT)).rejects.toThrow('"examples" must be text');
+  });
+
+  it("a described workflow still gets the generic SKILL.md", async () => {
+    const { home, work } = await shapeInstall();
+    await add(home, "inbox-triage", { description: "My own way of sorting mail." });
+    const skill = await readFile(join(skillsDir(work), "inbox-triage", "SKILL.md"), "utf8");
+    expect(skill).toContain("Use for the owner's \"inbox-triage\" work, which TaskFollow also runs as a workflow: My own way of sorting mail");
+  });
+
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills name no TaskFollow tool or command (%s)", async (id) => {
+    const skill = await shipped(id);
+    expect(skill).not.toMatch(/\bchannel\.[a-z]|\btaskfollow\s|mcp__/);
+    expect(skill).toMatch(new RegExp(`^---\\nname: ${id}\\n`));
+  });
+
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills say since you last did this or the last 24 hours (%s)", async (id) => {
+    expect(await shipped(id)).toContain("since you last did this (or in the last 24 hours");
+  });
+
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills say how many messages wait (%s)", async (id) => {
+    expect(await shipped(id)).toContain("When the input says more messages wait, end the list with how many.");
+  });
+
+  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills keep the rules heading with the pointer on its own line (%s)", async (id) => {
+    const lines = (await shipped(id)).split("\n");
+    expect(lines).toContain("## The owner's own rules");
+    expect(lines.filter((line) => line.includes("references/"))).toEqual(["Read `references/my-rules.md` first. The owner's rules there win over anything general here."]);
+    expect((await shipped(id)).length).toBeLessThan(20000);
+  });
+});
