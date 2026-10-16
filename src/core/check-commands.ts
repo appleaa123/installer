@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { serveCheckPage } from "./check-page.js";
 import { abilities, loadChallenge, markChallenge, answerChallenge, startChallenge, type Need, type ResultKind } from "./checks.js";
 import { runnerCheck } from "./check-runner.js";
@@ -42,24 +41,6 @@ export function agentOf(state: InstallState | undefined, value: string | undefin
   }
   if (!state?.runtime?.profile) throw new InputError("No agent was found yet: run 'taskfollow probe' first, or name the agent being checked with --value '{\"agent\":\"<its name>\"}'");
   return { agent: state.runtime.profile, version: state.runtime.agent_version ?? null };
-}
-
-/** Best effort, POSIX only: the commands above this one, to annotate a mark (spec 5.1). */
-export function parentChain(pid: number = process.ppid, depth = 5): string[] {
-  if (process.platform === "win32") return [];
-  const chain: string[] = [];
-  let current = pid;
-  for (let step = 0; step < depth && current > 1; step += 1) {
-    try {
-      const line = execFileSync("/bin/ps", ["-o", "ppid=,comm=", "-p", String(current)], { encoding: "utf8", timeout: 2000 }).trim();
-      const [ppid, ...command] = line.split(/\s+/);
-      chain.push(command.join(" "));
-      current = Number(ppid);
-    } catch {
-      break;
-    }
-  }
-  return chain;
 }
 
 const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id: string, word: string) => string }>> = {
@@ -122,7 +103,7 @@ async function list(home: string): Promise<Raw> {
 export async function checkCommand(home: string, state: InstallState | undefined, args: readonly string[], flags: Raw, context: CheckContext): Promise<unknown> {
   const [sub, first, second] = args;
   if (sub === "start") return start(home, state, first, flags, context);
-  if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, parents: parentChain(), via: "cli", through: "mark" }, context.now()).then(view);
+  if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
   if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
   if (sub === "page") return page(home, first, context);
   if (sub === "home") return homeOf(home, state, first, flags, context);

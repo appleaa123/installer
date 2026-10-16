@@ -59,9 +59,9 @@ const DAY_MS = 86_400_000;
 const MAX_TRIES = 2;
 const ID = /^c[0-9a-f]{8}$/;
 
+/** Who sent a mark: an interactive terminal is labelled "was that you?" (D61's check); nothing else is inferred. */
 export interface Origin {
   readonly interactive: boolean;
-  readonly parents: readonly string[];
   readonly via?: string;
   readonly through?: Through;
 }

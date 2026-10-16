@@ -15,7 +15,7 @@ export const CHECK_TOOLS: readonly ToolDef[] = [
       return { id: textArg(args, "id", "check.ping"), word: textArg(args, "word", "check.ping") };
     },
     run: async (ctx, args) => {
-      const result = await markChallenge(ctx.home, args.id as string, args.word as string, { interactive: false, parents: [], via: ctx.via, through: "ping" }, ctx.now());
+      const result = await markChallenge(ctx.home, args.id as string, args.word as string, { interactive: false, via: ctx.via, through: "ping" }, ctx.now());
       return { result: result.result, reason: result.reason };
     },
   },

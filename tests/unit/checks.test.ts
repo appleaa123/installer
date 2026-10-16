@@ -8,7 +8,7 @@ import { makeTempHome } from "../helpers/temp-home.js";
 
 const AT = "2026-10-16T12:00:00.000Z";
 const later = (minutes: number) => new Date(Date.parse(AT) + minutes * 60_000).toISOString();
-const NOT_TTY = { interactive: false, parents: ["/usr/bin/node"] };
+const NOT_TTY = { interactive: false };
 const events = async (home: string) => (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { event: string }).event);
 
 describe("checks: challenges", () => {
@@ -36,7 +36,7 @@ describe("checks: challenges", () => {
   it("records a mark from an interactive terminal as not checked: was that you?", async () => {
     const home = await makeTempHome();
     const { challenge, word } = await startChallenge(home, { needs: ["answers"], test: "t1", agent: "a", agentVersion: null, ttlMs: 60_000, withWord: true }, AT);
-    const result = await markChallenge(home, challenge.id, word ?? "", { interactive: true, parents: [] }, AT);
+    const result = await markChallenge(home, challenge.id, word ?? "", { interactive: true }, AT);
     expect(result).toMatchObject({ result: "not-checked", reason: expect.stringContaining("interactive terminal") });
   });
 
