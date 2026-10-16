@@ -4,7 +4,7 @@ import { confinedPath } from "./actions.js";
 import { REASON_TOOL, summarize } from "./agent-hook.js";
 import { CALLS_DIR, REASON_NAME } from "./watch-record.js";
 import { listApprovals, type ApprovalItem } from "./approvals.js";
-import { listChannels } from "./channels.js";
+import { isCustomersOnly, listChannels } from "./channels.js";
 import { InputError } from "./inputs.js";
 import { StateCorruptError } from "./state.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
@@ -162,7 +162,8 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
     since,
     runs: rows,
     // 9.12 item 3: with no channel, a run's result waits here; nobody was told about a run that failed or was missed.
-    no_channel: (await listChannels(home)).length === 0,
+    // WhatsApp reaches customers, not the person (as in the report), so it does not count as telling them.
+    no_channel: (await listChannels(home)).every((config) => isCustomersOnly(config.channel)),
     next: "Run 'taskfollow why <run>' with a run id to see who did what in that run, and why",
   };
 }

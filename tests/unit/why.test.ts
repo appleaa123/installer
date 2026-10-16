@@ -140,4 +140,15 @@ describe("taskfollow why: each run's result (9.12 item 3, level 1)", () => {
     expect(text).toContain("(nobody was told: no channel)");
     expect(text).toMatch(/result: |failed/);
   });
+
+  it("still says nobody was told when the only channel is WhatsApp, which reaches customers (PR #45 review)", async () => {
+    const home = await runnerHome();
+    const { saveChannel } = await import("../../src/core/channels.js");
+    await saveChannel(home, { channel: "whatsapp", relay_url: "https://relay.example.com", phone_number_id: "1", display_number: "+1 555 0100", verified_at: AT });
+    await run(home, { workflow: "edit", version: 1, trigger: { manual: true }, steps: [{ id: "fix", tool: "memo.edit", args: { id: 99, text: "x" } }] }, AT);
+    expect(await whyCommand(home, "2026-10-14", () => LATER)).toMatchObject({ no_channel: true });
+    await saveChannel(home, { channel: "telegram", bot: { id: 999, username: "desk_test_bot" }, verified_at: AT });
+    expect(await whyCommand(home, "2026-10-14", () => LATER)).toMatchObject({ no_channel: false });
+  });
 });
+
