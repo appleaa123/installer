@@ -35,7 +35,7 @@ export interface CheckResult {
   /** T8 only: whether it ran while the person was away (around the set time, window closed), not "well after" (review H2). */
   readonly while_away?: boolean;
 }
-export type Through = "ping" | "mark" | "answer";
+export type Through = "ping" | "mark" | "answer" | "read-back";
 export type StoredResult = CheckResult & NumberedRecord;
 
 export interface Challenge {
@@ -178,8 +178,11 @@ async function resultsFor(home: string, challenge: Challenge, result: ResultKind
 /** Who answered: the agent from its shell, someone at an interactive terminal, or the person on their check page. */
 export type Answerer = "agent" | "terminal" | "person";
 
+/** Writing tests (T3): what counts is what TaskFollow reads back from the target, never a word sent back. */
+const READ_BACK: readonly string[] = ["t3f", "t3r"];
+
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
-const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7"];
+const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7", "t3f", "t3r"];
 
 /** A refusal that records nothing and leaves the challenge open with its tries untouched. */
 const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
@@ -195,6 +198,9 @@ function scheduleRefusal(challenge: Challenge, through: Through | undefined): st
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
   if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
     return stillOpen(challenge, "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", now);
+  }
+  if (READ_BACK.includes(challenge.test) && through !== "read-back") {
+    return stillOpen(challenge, "TaskFollow reads what was written itself: write it, then run 'taskfollow check answer <id> done'", now);
   }
   if (challenge.test === "t8" && answerer === "agent") {
     const refusal = scheduleRefusal(challenge, through);
@@ -216,6 +222,7 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
   if (challenge.test === "t8") return resultsFor(home, challenge, "yes-you-told-us", "A job on this computer marked it at or after the set time; whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell", now, via, through);
+  if (READ_BACK.includes(challenge.test)) return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: it read the word back from the place it named. Writing never decides where a workflow runs", now, via, through);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }
 
