@@ -67,7 +67,7 @@ export function scrub(value: unknown, known: readonly string[], fields: Readonly
 }
 
 /** Names and addresses this home knows about, longest first, so a full name is replaced before a part of it. */
-async function knownValues(home: string, state: InstallState, now: string): Promise<string[]> {
+export async function knownValues(home: string, state: InstallState, now: string): Promise<string[]> {
   const members = await listMembers(home, now);
   const channels = await listChannels(home);
   const report = await loadReportConfig(home);

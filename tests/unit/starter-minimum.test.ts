@@ -13,7 +13,7 @@ const state = (answers: Record<string, unknown>): InstallState => ({
   schema: 1, solution: { ref: "file:starter.json", id: STARTER.id, version: STARTER.version }, started_at: AT,
   steps: Object.fromEntries(Object.entries(answers).map(([id, value]) => [id, done(value)])),
 });
-const SOLO = { "mode.who": "me", "mode.name": "Owner", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" };
+const SOLO = { "mode.purpose": "install", "mode.who": "me", "mode.name": "Owner", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" };
 const visible = (answers: Record<string, unknown>) => visibleSteps(STARTER, state(answers)).map((step) => step.step_id);
 const channelSteps = (ids: string[]) => ids.filter((id) => id.startsWith("channels.") || id === "activate.gateway");
 
@@ -48,7 +48,7 @@ describe("the starter for a person on their own (9.12 item 3)", () => {
 });
 
 describe("the starter for a team (unchanged)", () => {
-  const TEAM = { "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" };
+  const TEAM = { "mode.purpose": "install", "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" };
 
   it("still has Telegram, the gateway and the team join step, and is never asked about Telegram", () => {
     const ids = visible(TEAM);
@@ -66,7 +66,7 @@ describe("the starter for a team (unchanged)", () => {
 describe("taskfollow add telegram for a team", () => {
   it("says Telegram is already part of the setup instead of asking to finish the install", async () => {
     const { addService } = await import("../../src/core/services.js");
-    const TEAM = { "mode.who": "team", "services.records": "none" };
+    const TEAM = { "mode.purpose": "install", "mode.who": "team", "services.records": "none" };
     await expect(addService({ solution: STARTER } as never, state(TEAM), "telegram")).rejects.toThrow("already part of this setup");
   });
 });
@@ -92,4 +92,22 @@ describe("the starter's suggested workflows", () => {
   it("end with their result when nobody joined a channel", () => {
     for (const flow of STARTER.workflows ?? []) expect(String(flow.instructions)).toContain("finish with the note as your summary");
   });
+
+describe("the consult path (item 7 Task 8, D163)", () => {
+  it("asks only the consultation's steps after the first question", () => {
+    expect(visible({ "mode.purpose": "consult" })).toEqual(["preflight.probe", "preflight.tools", "mode.purpose", "consult.choose", "consult.report", "consult.cleanup", "report.final"]);
+  });
+
+  it("keeps the install path as it was, without the consultation's steps", () => {
+    const ids = visible({ ...SOLO });
+    expect(ids).toContain("workflows.choose");
+    expect(ids.filter((id) => id.startsWith("consult."))).toEqual([]);
+  });
+
+  it("switches only a consultation to an install", async () => {
+    const { addService } = await import("../../src/core/services.js");
+    await expect(addService({ solution: STARTER } as never, state({ ...SOLO }), "install")).rejects.toThrow("not a consultation");
+  });
+});
+
 });

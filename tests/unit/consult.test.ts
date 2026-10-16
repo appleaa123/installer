@@ -1,0 +1,60 @@
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { abilities, recordResult } from "../../src/core/checks.js";
+import { consultCleanup, consultReport, restoreAfterConsult } from "../../src/core/consult.js";
+import { workflowCommand } from "../../src/core/lifecycle.js";
+import { writePinnedSolution } from "../../src/core/pin.js";
+import { loadState, saveState } from "../../src/core/state.js";
+import { workflowIds } from "../../src/core/workflow.js";
+import { runnerHome } from "../helpers/runner-home.js";
+
+/** Plan item 7 Task 8 (spec section 9): the consult leaves only its results, and its report is the client's to forward. */
+const AT = "2026-10-16T12:00:00.000Z";
+const SOLUTION = { id: "fixture-consult", version: "1.0.0", workflows: [], steps: [{ step_id: "report.final", phase: "REPORT", type: "auto", title: "Finish", why: "Finishes.", blocking: true, auto: { action: "noop" } }] };
+
+async function consultHome(): Promise<{ home: string; work: string }> {
+  const home = await runnerHome();
+  const work = await mkdtemp(join(tmpdir(), "consult-folder-"));
+  const state = await loadState(home);
+  if (state) await saveState(home, { ...state, work_dir: work, steps: { ...state.steps, "mode.name": { status: "done", at: AT, by: "human", value: "Marisol Okafor" } } });
+  await writePinnedSolution(home, JSON.stringify(SOLUTION));
+  await writeFile(join(work, "CLAUDE.md"), "# Mine\n");
+  await workflowCommand(home, "add", "brief", JSON.stringify({ description: "Each morning, tell Marisol Okafor what is in her inbox.", tools: ["memo.list"], my_rules: "Flag every repair." }), () => AT);
+  await recordResult(home, { need: "answers", workflow: "brief", result: "yes-you-told-us", reason: "You saw it", at: AT, agent: "fake-agent", agent_version: "9.9.9", test: "once" });
+  return { home, work };
+}
+
+describe("consult: the report and the clean-up (item 7 Task 8)", () => {
+  it("writes the report under the TaskFollow home's exports, scrubbed, with a note to read it before forwarding", async () => {
+    const { home } = await consultHome();
+    const { file } = await consultReport(home, (await loadState(home)) ?? undefined, AT);
+    expect(file.startsWith(join(home, "exports"))).toBe(true);
+    const text = await readFile(file, "utf8");
+    expect(text).toContain("Read it before forwarding");
+    expect(text).toContain("brief");
+    expect(text).toContain("Done once, now");
+    expect(text).not.toContain("Marisol Okafor");
+    expect(text).toContain("taskfollow add install");
+  });
+
+  it("removes the workflow's skill folder and the CLAUDE.md section, keeps results, workflows and rules", async () => {
+    const { home, work } = await consultHome();
+    const done = await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    expect(done.skill_folders).toHaveLength(1);
+    expect(await readdir(join(work, ".claude", "skills"))).toEqual([]);
+    expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toBe("# Mine\n");
+    expect(await workflowIds(home)).toEqual(["brief"]);
+    expect((await abilities(home)).length).toBeGreaterThan(0);
+  });
+
+  it("puts the workflow back with its own rules when the person continues to an install", async () => {
+    const { home, work } = await consultHome();
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    const restored = await restoreAfterConsult(home);
+    expect(restored.skill_folders).toEqual([join(work, ".claude", "skills", "brief")]);
+    expect(await readFile(join(work, ".claude", "skills", "brief", "references", "my-rules.md"), "utf8")).toContain("Flag every repair.");
+    expect(await readFile(join(work, "CLAUDE.md"), "utf8")).toContain("- **brief**");
+  });
+});

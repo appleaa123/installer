@@ -136,7 +136,7 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
   const STARTER = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
   const answer = (value: unknown): StepRecord => ({ status: "done", at: AT, by: "human", value });
   const starterState = (records: Record<string, StepRecord>): InstallState => ({ schema: 1, solution: { ref: "file:starter.json", id: "starter", version: STARTER.version }, started_at: AT, steps: records });
-  const SOLO = { "mode.who": answer("me"), "mode.always-on": answer("no"), "services.telegram": answer("none"), "services.email": answer("none") };
+  const SOLO = { "mode.purpose": answer("install"), "mode.who": answer("me"), "mode.always-on": answer("no"), "services.telegram": answer("none"), "services.email": answer("none") };
   const PUSH = { pushNote: "Claude Code Channels is a research preview: it needs --channels, an approved plugin and an open chat window", pushRead: "2026-10-16" };
 
   it("says level 1 in the agent's chat, and that speaking first was not checked, with the source", () => {
@@ -170,7 +170,7 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
     const yes = buildReport(STARTER, starterState({ ...SOLO, "mode.always-on": answer("yes") })).runs ?? "";
     expect(yes).toContain("Until a computer that stays on is set up");
     expect(yes).toContain("your own Claude plan");
-    expect(buildReport(STARTER, starterState({ "mode.who": answer("me") })).runs).toBeUndefined();
+    expect(buildReport(STARTER, starterState({ "mode.purpose": answer("install"), "mode.who": answer("me") })).runs).toBeUndefined();
   });
 
   it("does not lower the overall verdict for an install with no channel", () => {
