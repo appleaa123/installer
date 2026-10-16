@@ -6,7 +6,7 @@ import { CONNECTOR_PINS, CONNECTOR_SECRETS } from "./connectors.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeLiteral, acceptsModeQuestion } from "./mode.js";
 import { validateInput } from "./inputs.js";
-import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType, type StepWhen } from "./types.js";
+import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType, type StepWhen, type StepWhenAnswer } from "./types.js";
 
 export class SolutionError extends Error {
   constructor(message: string) {
@@ -116,9 +116,10 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
   return result as Partial<Pick<StepDef, "instructions" | "input" | "est_minutes" | "intent" | "auto" | "verify" | "hints" | "guide">>;
 }
 
-/** `when`: shown only when an earlier question was answered this way (D131); the question itself is checked in checkWhenReferences. */
-function parseWhen(value: unknown, where: string): StepWhen {
+/** One answer a condition looks at (D131); the question itself is checked in checkWhenReferences. */
+function parseWhenAnswer(value: unknown, where: string): StepWhenAnswer {
   if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
+  if (value.any !== undefined) throw new SolutionError(`${where}: an any cannot hold another any`);
   const step = text(value.step, `${where}.step`);
   const hasEquals = value.equals !== undefined;
   const hasIncludes = value.includes !== undefined;
@@ -126,8 +127,22 @@ function parseWhen(value: unknown, where: string): StepWhen {
   return { step, ...(hasEquals ? { equals: text(value.equals, `${where}.equals`) } : { includes: text(value.includes, `${where}.includes`) }) };
 }
 
+/** `when`: shown only when an earlier question was answered this way (D131), or when any of 2 to 8 such answers holds (9.12 item 3). */
+function parseWhen(value: unknown, where: string): StepWhen {
+  if (!isRecord(value) || value.any === undefined) return parseWhenAnswer(value, where);
+  if (!Array.isArray(value.any) || value.any.length < MIN_ANY || value.any.length > MAX_ANY) throw new SolutionError(`${where}.any must list 2 to 8 conditions`);
+  return { any: value.any.map((part, index) => parseWhenAnswer(part, `${where}.any[${index}]`)) };
+}
+
+const MIN_ANY = 2;
+const MAX_ANY = 8;
+
 /** A condition may only look back at an earlier choice that has options, and only for one of those options, so a step can never be hidden for ever by a typo. */
 function checkWhen(when: StepWhen, earlier: readonly StepDef[], label: string): void {
+  if ("any" in when) {
+    for (const part of when.any) checkWhen(part, earlier, label);
+    return;
+  }
   const asked = earlier.find((candidate) => candidate.type === "ask" && candidate.step_id === when.step);
   if (!asked) throw new SolutionError(`${label}: when.step must name an earlier ask step, got ${JSON.stringify(when.step)}`);
   const wanted = when.equals ?? when.includes ?? "";

@@ -29,6 +29,21 @@ describe("whenHolds (D131)", () => {
   });
 });
 
+describe("whenHolds with any (9.12 item 3)", () => {
+  const either = { any: [{ step: "who", equals: "team" }, { step: "telegram", equals: "telegram" }] };
+
+  it("is true when one of its parts holds, and false when none does", () => {
+    expect(whenHolds(either, state({ who: answered("team") }))).toBe(true);
+    expect(whenHolds(either, state({ who: answered("me"), telegram: answered("telegram") }))).toBe(true);
+    expect(whenHolds(either, state({ who: answered("me"), telegram: answered("none") }))).toBe(false);
+  });
+
+  it("counts a part whose question was never asked as false", () => {
+    expect(whenHolds(either, state({ who: answered("me") }))).toBe(false);
+    expect(whenHolds(either, state({}))).toBe(false);
+  });
+});
+
 describe("visibleSteps", () => {
   const solution: Solution = { id: "s", version: "1", steps: [step("pick"), step("only-a", { when: { step: "pick", equals: "a" } }), step("always")] };
 
