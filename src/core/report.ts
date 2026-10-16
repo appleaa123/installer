@@ -26,6 +26,64 @@ export interface Report {
   readonly skillswiki: boolean;
   /** Services the person did not choose and can add with `taskfollow add` (D134). */
   readonly can_add: readonly string[];
+  /** How the person is told (9.4's ladder): level 1 in the agent's chat, level 3 on a channel; and the next level as a gap. */
+  readonly told: Told;
+  /** Where scheduled runs happen (9.13 item 4); absent when the install never asked. */
+  readonly runs?: string;
+}
+
+export interface Told {
+  readonly level: 1 | 3;
+  readonly how: string;
+  readonly next_level: string;
+}
+
+/** What the agent's profile says about speaking first (a dated note, not a test: 9.4 level 2). */
+export interface ReportExtras {
+  readonly pushNote?: string;
+  readonly pushRead?: string;
+}
+
+const CHANNEL_NAMES: Readonly<Record<string, string>> = { telegram: "Telegram", email: "email", slack: "Slack" };
+/** WhatsApp reaches customers, not the person (INSTALL.md section 7), so it never counts as a way to tell them. */
+const PERSON_CHANNELS = Object.keys(CHANNEL_NAMES);
+
+function personChannels(rows: readonly { step: StepDef; record: StepRecord | undefined }[]): string[] {
+  const found: string[] = [];
+  for (const { step, record } of rows) {
+    const channel = step.verify?.check === "channel_verified" ? step.verify.args?.channel : undefined;
+    if (record?.status === "done" && typeof channel === "string" && PERSON_CHANNELS.includes(channel) && !found.includes(channel)) found.push(channel);
+  }
+  return found;
+}
+
+function toldOf(channels: readonly string[], extras: ReportExtras): Told {
+  const checked = extras.pushNote
+    ? `TaskFollow has not checked whether your agent can start a conversation while you are away (${extras.pushNote}; read ${extras.pushRead ?? "undated"}). Plan as if it cannot.`
+    : "Whether your agent can start a conversation while you are away is not checked for this agent. Plan as if it cannot.";
+  if (channels.length === 0) {
+    return {
+      level: 1,
+      how: "In your agent's chat, the next time you talk to it: scheduled results wait in the run record ('taskfollow why').",
+      next_level: `${checked} To be told at a set time while you are away, keep this computer on and add Telegram or email ('taskfollow add telegram').`,
+    };
+  }
+  const names = channels.map((channel) => CHANNEL_NAMES[channel] ?? channel);
+  const emailOnly = channels.length === 1 && channels[0] === "email";
+  return {
+    level: 3,
+    how: emailOnly ? "Results and alerts by email; approvals in your terminal (email cannot prove who sent a reply)." : `Results, alerts and approvals on ${names.join(" and ")}; approvals also in your terminal.`,
+    next_level: `${checked} Messages reach you on ${names.join(" and ")} while this computer is on.`,
+  };
+}
+
+const RUNS_HERE = "Scheduled runs happen on this computer while it is on and awake; a run it misses is skipped, not run late. They use your own Claude plan.";
+const RUNS_WANTED = "You asked for runs even when this computer is closed. Until a computer that stays on is set up (INSTALL.md section 10), scheduled runs happen here only while it is on and awake; a run it misses is skipped. They use your own Claude plan.";
+
+function runsOf(state: InstallState): string | undefined {
+  const answer = state.steps["mode.always-on"];
+  if (answer?.status !== "done") return undefined;
+  return answer.value === "yes" ? RUNS_WANTED : RUNS_HERE;
 }
 
 const HEADLINE: Readonly<Record<Overall, string>> = {
@@ -54,7 +112,7 @@ export function runtimeLimits(runtime: CapabilityMap | undefined): readonly stri
   ];
 }
 
-export function buildReport(solution: Solution, state: InstallState): Report {
+export function buildReport(solution: Solution, state: InstallState, extras: ReportExtras = {}): Report {
   const inView = visibleSteps(solution, state);
   const rows = inView.map((step) => ({ step, record: state.steps[step.step_id] }));
   const working = rows.filter(({ record }) => record?.status === "done").map(({ step }) => item(step, "done"));
@@ -76,6 +134,7 @@ export function buildReport(solution: Solution, state: InstallState): Report {
   return {
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
     working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined, can_add: addableOptions(solution, state),
+    told: toldOf(personChannels(rows), extras), ...(runsOf(state) ? { runs: runsOf(state) } : {}),
   };
 }
 
@@ -92,6 +151,8 @@ export function renderReport(report: Report): string {
   if (report.working.length > 0) lines.push(`✅ Working    ${report.working.map((entry) => entry.title).join(" · ")}`);
   const agent = agentLine(report);
   if (agent) lines.push(agent);
+  lines.push(`💬 Told       ${report.told.how}`, `             ${report.told.next_level}`);
+  if (report.runs) lines.push(`🕒 Runs       ${report.runs}`);
   if (report.can_add.length > 0) lines.push(`➕ Can add    ${report.can_add.map((option) => `${option.replace(/-/g, " ")} (taskfollow add ${option})`).join(" · ")}`);
   report.limited.forEach((entry, index) => lines.push(`${index === 0 ? "⚠️ Limited   " : "             "}${entry.title} — ${entry.detail}`));
   report.needs_you.forEach((entry, index) => lines.push(`${index === 0 ? "⛔ Needs you " : "             "}${index + 1}. ${entry.title} — ${entry.detail}`));

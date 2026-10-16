@@ -19,5 +19,6 @@
   "personal_settings": "claude",
   "skills_dirs": { "project": ".claude/skills", "user": "~/.claude/skills" },
   "instructions_file": "CLAUDE.md",
+  "push": { "note": "Claude Code Channels is a research preview: it needs --channels, an approved plugin and an open chat window; see code.claude.com/docs/en/channels", "read": "2026-10-16" },
   "tos_review": { "status": "ok", "note": "First-party CLI used headless by the client on their own account." }
 }
