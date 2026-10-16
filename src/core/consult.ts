@@ -7,6 +7,7 @@ import { summaryCommand } from "./check-summary.js";
 import { readConfig, writeConfig } from "./data-source.js";
 import { unregisterEverywhere } from "./disconnect.js";
 import { TOOLS_MCP_NAME } from "./register.js";
+import { EXPORTS_DIR } from "./uninstall.js";
 import { REFERENCES_DIR } from "./skills.js";
 import { knownValues, scrub } from "./support-bundle.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -21,7 +22,6 @@ import { loadWorkflow, workflowIds } from "./workflow.js";
  * skill folders back unchanged. Nothing of the client's agent settings is touched.
  */
 export const CONSULT_FILE = join("state", "consult.json");
-const EXPORTS_DIR = "exports";
 
 interface ConsultState {
   readonly rules: Readonly<Record<string, string>>;

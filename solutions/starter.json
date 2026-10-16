@@ -1027,7 +1027,7 @@
       "title": "Find the work worth automating",
       "why": "The consultation looks at your normal week, does the work once with you, and checks what your assistant can really do.",
       "blocking": true,
-      "intent": "Ask the person to walk you through a normal week, as INSTALL.md section 9b shows, then propose two to five workflows in plain words. Add each one they choose with 'taskfollow workflow add'. For each: run 'taskfollow check once <id>' and show the result, then run the checks its needs ask for, as INSTALL.md section 9c shows, and finish with 'taskfollow check summary <id>', shown to the person. Nothing is set up to run in a consultation.",
+      "intent": "Ask the person to walk you through a normal week, as INSTALL.md section 9b shows, then propose two to five workflows in plain words. Run 'taskfollow skills' and tell the person which listed skills fit each workflow and why; add each one they choose with 'taskfollow workflow add', passing the skills they confirm as \"skills\" and their own rules from the interview as \"my_rules\" in --value (INSTALL.md section 9). For each: run 'taskfollow check once <id>' and show the result, then run the checks its needs ask for, as INSTALL.md section 9c shows, and finish with 'taskfollow check summary <id>', shown to the person. Nothing is set up to run in a consultation.",
       "verify": {
         "check": "workflows_present"
       }
