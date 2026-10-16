@@ -89,6 +89,14 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
     await expect(failed).rejects.not.toThrow(/tg-real-secret|ghp_abc/);
   });
 
+  it("keeps one rules heading and no pointer to a references folder the zip does not have (review M1)", async () => {
+    const { home } = await install();
+    await readyForCowork(home, "Read my inbox and list what matters.");
+    const skill = readZip(await readFile((await deliver(home, "Read my inbox and list what matters.")).zip))[1]?.data.toString("utf8") ?? "";
+    expect(skill.match(/## The owner's own rules/g)).toHaveLength(1);
+    expect(skill).not.toContain("references/my-rules.md");
+  });
+
   it.each([
     ["a bot's name", "Ask owner_private_bot for help each morning."],
     ["a mail server", "Connect to imap.mailhost-example.com first."],

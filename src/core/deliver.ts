@@ -86,9 +86,14 @@ async function skillText(home: string, workflow: Workflow): Promise<string> {
   const folder = workDir ? join(workDir, ".claude", "skills", workflow.id) : undefined;
   const skill = folder ? await readOr(join(folder, SKILL_FILE)) : null;
   const rules = folder ? await readOr(join(folder, REFERENCES_DIR, RULES_FILE)) : null;
-  const base = skill ?? skillMarkdown(workflow.id, workflow.description);
-  return `${base.trimEnd()}\n\n## The owner's own rules\n\n${(rules ?? rulesMarkdown(workflow.id, undefined)).replace(/^# .*\n+/, "").trim()}\n`;
+  // Review M1: the zip has no references folder, so the pointer to it goes, and the rules sit under one heading.
+  const base = (skill ?? skillMarkdown(workflow.id, workflow.description)).split("\n").filter((line) => !line.includes(`${REFERENCES_DIR}/${RULES_FILE}`)).join("\n");
+  const body = (rules ?? rulesMarkdown(workflow.id, undefined)).replace(/^# .*\n+/, "").trim();
+  if (base.includes(RULES_HEADING)) return `${base.replace(RULES_HEADING, `${RULES_HEADING}\n\n${body}`).replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
+  return `${base.trimEnd()}\n\n${RULES_HEADING}\n\n${body}\n`;
 }
+
+const RULES_HEADING = "## The owner's own rules";
 
 export async function writeSkillZip(home: string, name: string, skill: string): Promise<string> {
   const workDir = (await loadState(home))?.work_dir ?? home;
