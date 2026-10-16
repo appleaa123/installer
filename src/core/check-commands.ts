@@ -19,6 +19,8 @@ export interface CheckContext {
   readonly now: () => string;
   /** Starts the person's page process (launchCheckPage); injected so tests do not leave a page running. */
   readonly launch: (home: string, id: string, word: string | undefined) => Promise<{ pid: number; opened: boolean }>;
+  /** Plants a self-addressed test email through TaskFollow's own email channel; false when it has none (tests inject it). */
+  readonly plant?: (home: string, subject: string, text: string) => Promise<boolean>;
 }
 
 const RESULT_WORDS: Readonly<Record<ResultKind, string>> = {
@@ -50,13 +52,14 @@ const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id:
 
 async function start(home: string, state: InstallState | undefined, test: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
   if (test === "describe") return describe(home, flags, context);
+  if (test === "t2") return (await import("./check-email.js")).startReadsEmail(home, state, flags, context);
   if (test === "t7") {
     const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
     const workflow = id ? await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS) : undefined;
     return runnerCheck(home, state, { now: context.now, ...(workflow ? { workflow } : {}) });
   }
   const spec = test ? TESTS[test] : undefined;
-  if (!spec) throw new InputError(`check start takes one of: ${[...Object.keys(TESTS), "t7", "describe"].join(", ")}`);
+  if (!spec) throw new InputError("check start takes one of: t1, t2, t5, t7, t8, describe");
   const { agent, version } = agentOf(state, flags.value as string | undefined);
   // Review S4: a result names only a workflow that exists, checked the way `describe` and `t7` check it.
   const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
@@ -107,6 +110,7 @@ export async function checkCommand(home: string, state: InstallState | undefined
   if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
   if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
   if (sub === "page") return page(home, first, context);
+  if (sub === "cannot") return (await import("./check-email.js")).cannotCommand(home, first, context.now());
   if (sub === "once") return (await import("./check-once.js")).onceCommand(home, state, first, flags, context);
   if (sub === "home") return homeOf(home, state, first, flags, context);
   if (sub === "list" || sub === undefined) return list(home);

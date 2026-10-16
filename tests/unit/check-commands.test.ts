@@ -57,7 +57,7 @@ describe("taskfollow check (D159)", () => {
 
   it("runs T7 when asked, and refuses an unknown test", async () => {
     const home = await runnerHome();
-    await expect(run(home, ["start", "t9"])).rejects.toThrow("t1, t5, t7, describe");
+    await expect(run(home, ["start", "t9"])).rejects.toThrow("t1, t2, t5, t7, t8, describe");
   });
 
   it("says where a workflow would run, decided by code", async () => {

@@ -106,7 +106,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
       return send(res, 200, page("check", "<h1>This word was already shown (a reload or another window can cause this)</h1><p>The test is cancelled, so nobody else can use the word. Ask your assistant to start the check again.</p>"));
     }
     await saveChallenge(home, { ...challenge, shown_at: now });
-    return send(res, 200, page("check", `<h1>Your word</h1><p class="word">${escapeHtml(options.word)}</p>${WARNING}<p>Do what your assistant's instructions say with this word. Then come back to <a href="${path}/confirm">the confirmation page</a> when it asks you to.</p>`));
+    const how = challenge.test === "t2" ? `<p>Send yourself an email from your phone (to the address your assistant reads) with exactly this subject:</p><p class="word">TASKFOLLOW-CHECK ${escapeHtml(challenge.id)} ${escapeHtml(options.word)}</p><p>Then tell your assistant you sent it, without saying the subject.</p>` : `<p>Do what your assistant's instructions say with this word. Then come back to <a href="${path}/confirm">the confirmation page</a> when it asks you to.</p>`;
+    return send(res, 200, page("check", `<h1>Your word</h1><p class="word">${escapeHtml(options.word)}</p>${WARNING}${how}`));
   }
   if (route === "/confirm") {
     if (challenge.opens_at && now < challenge.opens_at) return send(res, 409, confirmPage(challenge, path, now));
