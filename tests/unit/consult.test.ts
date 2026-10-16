@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { abilities, recordResult } from "../../src/core/checks.js";
-import { consultCleanup, consultReport, restoreAfterConsult } from "../../src/core/consult.js";
+import { consultCleanup, consultReport, consultReportPath, restoreAfterConsult } from "../../src/core/consult.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -38,6 +38,9 @@ describe("consult: the report and the clean-up (item 7 Task 8)", () => {
     expect(text).toContain("Done once, now");
     for (const leaked of ["Marisol Okafor", "Okafor Realty", "sam@example.com", "4165550199"]) expect(text).not.toContain(leaked);
     expect(text).toContain("taskfollow add install");
+    expect(await consultReportPath(home)).toBe(join("exports", "consult-report-2026-10-16.md"));
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    expect(await consultReportPath(home)).toBe(join("exports", "consult-report-2026-10-16.md"));
   });
 
   it("removes the workflow's skill folder and the CLAUDE.md section, keeps results, workflows and rules", async () => {

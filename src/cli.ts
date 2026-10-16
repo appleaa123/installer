@@ -395,7 +395,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   report: async ({ state, deps }, flags) => {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
     const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
-    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks });
+    const consultReport = await (await import("./core/consult.js")).consultReportPath(deps.home);
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}) });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },

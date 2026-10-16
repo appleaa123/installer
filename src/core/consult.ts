@@ -25,6 +25,8 @@ const EXPORTS_DIR = "exports";
 
 interface ConsultState {
   readonly rules: Readonly<Record<string, string>>;
+  /** Where the report was written, relative to the home; `taskfollow report` shows it (D163). */
+  readonly report?: string;
   readonly cleaned_at?: string;
   readonly mcp_removed?: boolean;
 }
@@ -61,6 +63,7 @@ export async function consultReport(home: string, state: InstallState | undefine
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   await writeFile(file, text, { mode: 0o600 });
   await appendAudit(home, { ts: now, actor: "engine", event: "consult.report", ref: "consult", payload: { workflows: ids.length } });
+  await writeConfig(home, CONSULT_FILE, { ...(await loadConsult(home)), report: join(EXPORTS_DIR, `consult-report-${now.slice(0, 10)}.md`) });
   return { file };
 }
 
@@ -77,7 +80,7 @@ export async function consultCleanup(home: string, state: InstallState | undefin
   const removed = await removeWritten(home);
   const swept = await sweepChecks(home, now, true);
   const unregistered = await unregisterEverywhere(home, state?.runtime?.profile, TOOLS_MCP_NAME);
-  const record: ConsultState = { rules, cleaned_at: now, mcp_removed: unregistered.unregistered };
+  const record: ConsultState = { ...(await loadConsult(home)), rules, cleaned_at: now, mcp_removed: unregistered.unregistered };
   await writeConfig(home, CONSULT_FILE, record);
   await appendAudit(home, { ts: now, actor: "engine", event: "consult.cleanup", ref: "consult", payload: { skill_folders: removed.skill_folders.length, swept, mcp_removed: unregistered.unregistered } });
   return { skill_folders: removed.skill_folders, agent_file: removed.agent_file, swept, mcp_removed: unregistered.unregistered };
@@ -85,9 +88,18 @@ export async function consultCleanup(home: string, state: InstallState | undefin
 
 const RULES_HEADING = /^# My rules for [^\n]*\n\n/;
 
+async function loadConsult(home: string): Promise<ConsultState> {
+  return ((await readConfig(home, CONSULT_FILE)) as ConsultState | null) ?? { rules: {} };
+}
+
+/** The consult report's path relative to the home, once written; for `taskfollow report`. */
+export async function consultReportPath(home: string): Promise<string | undefined> {
+  return (await loadConsult(home)).report;
+}
+
 /** After a consult, `taskfollow add install`: each workflow's skill folder comes back with its own rules, and the CLAUDE.md section. */
 export async function restoreAfterConsult(home: string): Promise<{ readonly skill_folders: readonly string[]; readonly agent_file: string | null }> {
-  const saved = ((await readConfig(home, CONSULT_FILE)) as ConsultState | null) ?? { rules: {} };
+  const saved = await loadConsult(home);
   const { roots } = await installTargets(home);
   const restored: string[] = [];
   for (const id of await workflowIds(home)) {

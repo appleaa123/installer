@@ -139,6 +139,18 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
   const SOLO = { "mode.purpose": answer("install"), "mode.who": answer("me"), "mode.always-on": answer("no"), "services.telegram": answer("none"), "services.email": answer("none") };
   const PUSH = { pushNote: "Claude Code Channels is a research preview: it needs --channels, an approved plugin and an open chat window", pushRead: "2026-10-16" };
 
+  it("after a finished consultation, says nothing is set up to run, names the report, and does not list the removed tool connection", () => {
+    const steps = Object.fromEntries(["preflight.probe", "preflight.tools", "consult.choose", "consult.report", "consult.cleanup", "report.final"].map((id) => [id, done]));
+    const state = starterState({ ...steps, "mode.purpose": answer("consult"), "consult.names": answer("none") });
+    const report = buildReport(STARTER, state, { consultReport: "exports/consult-report-2026-10-16.md" });
+    expect(report.consult).toEqual({ finished: true, report: "exports/consult-report-2026-10-16.md" });
+    expect(report.working.map((entry) => entry.step_id)).not.toContain("preflight.tools");
+    const text = renderReport(report);
+    expect(text).toMatch(/^✅ CONSULTATION FINISHED: nothing is set up to run/);
+    expect(text).toContain("📄 Report     exports/consult-report-2026-10-16.md");
+    expect(text).not.toContain("💬 Told");
+  });
+
   it("says level 1 in the agent's chat, and that speaking first was not checked, with the source", () => {
     const report = buildReport(STARTER, starterState(SOLO), PUSH);
     expect(report.told).toMatchObject({ level: 1, how: expect.stringContaining("the next time you talk to it") });
