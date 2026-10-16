@@ -139,7 +139,10 @@ async function resultsFor(home: string, challenge: Challenge, result: ResultKind
 }
 
 /** One answer to a challenge: the right word closes it; two wrong ones cancel it. The typed text is never kept. */
-export async function settleChallenge(home: string, challenge: Challenge, typed: string, interactive: boolean, now: string): Promise<StoredResult> {
+/** Who answered: the agent from its shell, someone at an interactive terminal, or the person on their check page. */
+export type Answerer = "agent" | "terminal" | "person";
+
+export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string): Promise<StoredResult> {
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
     const cancelled = tries >= MAX_TRIES;
@@ -147,14 +150,21 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
     return resultsFor(home, challenge, "not-checked", cancelled ? "The word did not match twice, so the test was cancelled; start it again" : "The word did not match; try once more", now);
   }
   await saveChallenge(home, { ...challenge, status: "done" });
-  if (interactive) return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
+  if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
+  if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now);
 }
 
 export async function markChallenge(home: string, id: string, word: string, origin: Origin, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive, now);
+  return settleChallenge(home, await openChallenge(home, id, now), word, origin.interactive ? "terminal" : "agent", now);
 }
 
 export async function answerChallenge(home: string, id: string, text: string, now: string): Promise<StoredResult> {
-  return settleChallenge(home, await openChallenge(home, id, now), text, false, now);
+  return settleChallenge(home, await openChallenge(home, id, now), text, "agent", now);
+}
+
+/** Ends a challenge without a result (the word was shown twice, or the person cancelled), with an audit entry. */
+export async function cancelChallenge(home: string, challenge: Challenge, why: string, now: string): Promise<void> {
+  await saveChallenge(home, { ...challenge, status: "cancelled" });
+  await appendAudit(home, { ts: now, actor: "engine", event: "check.cancelled", ref: `check:${challenge.id}`, payload: { why } });
 }
