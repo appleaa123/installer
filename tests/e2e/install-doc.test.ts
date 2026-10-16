@@ -290,7 +290,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -298,7 +298,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script, startArgs: [], env });
     expect(run.final.status).toBe("complete");
     const shown = JSON.stringify(run.calls.map((call) => call.stdout));
-    for (const hidden of ["mode.shared-work", "mode.always-on", "mode.decision-maker", "data.google", "data.connect", "data.map"]) expect(shown).not.toContain(hidden);
+    for (const hidden of ["mode.shared-work", "mode.decision-maker", "data.google", "data.connect", "data.map"]) expect(shown).not.toContain(hidden);
     const state = await loadState(home);
     expect(state).toMatchObject({ mode: "personal", roles: { decision_maker: "Sam" } });
     expect(state?.steps["data.google"]).toBeUndefined();
@@ -306,6 +306,22 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(report).not.toMatch(/decision maker/i);
     // Google may be offered under "Can add", but is never a step of this person's setup.
     expect(report.split("\n").filter((line) => !line.includes("Can add"))).not.toEqual(expect.arrayContaining([expect.stringMatching(/google/i)]));
+  });
+
+  it("a person on their own with no channel at all finishes the install with no channel step (9.12 item 3)", async () => {
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const alone = JSON.stringify([{ tool: "memo.list", args: {} }, { tool: "channel.list", args: {} }, { tool: "done", summary: "No memos this week" }]);
+    const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: alone };
+    const script = {
+      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
+    };
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script, startArgs: [], env });
+    expect(run.final.status).toBe("complete");
+    const shown = JSON.stringify(run.calls.map((call) => call.stdout));
+    for (const hidden of ["channels.telegram", "channels.gateway", "channels.join-solo", "activate.gateway"]) expect(shown).not.toContain(hidden);
   });
 
   /** The person's email steps, with a fake mail server: the page's hand-off is written to the keychain as the page would. */
@@ -332,7 +348,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
     const script = {
-      answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
       perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
     };
     const home = await makeTempHome();
@@ -352,7 +368,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
@@ -380,7 +396,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add whatsapp");
@@ -423,7 +439,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.who": "me", "mode.name": "Sam", "services.records": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add slack");

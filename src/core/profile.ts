@@ -42,6 +42,8 @@ export interface RuntimeProfile {
   readonly skills_dirs?: { readonly project?: string; readonly user?: string };
   /** The agent-level instructions file in the install folder (`CLAUDE.md`, `AGENTS.md`), where TaskFollow keeps one section. */
   readonly instructions_file?: string;
+  /** Whether the agent can start a conversation (9.4 level 2): a dated note from its documentation, never claimed as tested. */
+  readonly push?: { readonly note: string; readonly read: string };
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -181,6 +183,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
     ...personalPart(raw),
     ...skillsPart(raw),
+    ...(raw.push === undefined ? {} : { push: { note: str(obj(raw.push, "push").note, "push.note"), read: str(obj(raw.push, "push").read, "push.read") } }),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };
