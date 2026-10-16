@@ -28,6 +28,12 @@ describe("gap words: four parts for every need", () => {
     for (const text of all) expect(text).not.toMatch(/\b(protected|guaranteed|safe|secure|always holds)\b/i);
   });
 
+  it("states a remaining protection only under the condition that makes it true", () => {
+    const all = NEEDS.flatMap((need) => [gapWords(need, "not-checked"), gapWords(need, "no-tested")]).flatMap((gap) => (gap ? [gap.missing, gap.why, gap.without, ...gap.options] : []));
+    for (const text of all.filter((line) => /still appl/i.test(line))) expect(text).toMatch(/\b(when|if)\b[^.;]*still appl/i);
+    expect(gapWords("hooks", "not-checked")?.without).toBe("When the work goes through TaskFollow's tools, its approval step and the step's own list of tools still apply; this extra line does not.");
+  });
+
   it("lists options safest first: TaskFollow's own tool before draft-only before by hand", () => {
     const options = gapWords("asks-first", "not-checked")?.options ?? [];
     const at = (text: string) => options.findIndex((option) => option.includes(text));
