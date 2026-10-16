@@ -83,6 +83,8 @@ export async function uninstall(home: string, person: { interactive: boolean; as
   const profile = (await loadState(home))?.runtime?.profile;
   const unregistered = { [SKILLSWIKI_MCP_NAME]: await unregisterEverywhere(home, profile, SKILLSWIKI_MCP_NAME), [TOOLS_MCP_NAME]: await unregisterEverywhere(home, profile, TOOLS_MCP_NAME) };
   // 9.13 item 5: the workflow skill folders and the CLAUDE.md section TaskFollow wrote, and nothing else of the person's.
+  // Item 7a: open checks end and their test files, skills and tabs are removed with everything else TaskFollow wrote.
+  await (await import("./check-fresh.js")).sweepChecks(home, now(), true);
   const removed = await removeWritten(home);
   const secrets = await deleteSecrets(options.env);
   const commands = await osCommands(home, now, options);

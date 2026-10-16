@@ -1,4 +1,5 @@
 import { continueAgent, resumeAgent, type AgentRun } from "./agentic.js";
+import { noteContradiction, runnerStopReason } from "./check-fresh.js";
 import { pinnedSkill } from "./packs.js";
 import { loadProfileById } from "./profile.js";
 import { runSkillsText, skillRoots } from "./skills.js";
@@ -118,6 +119,8 @@ async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
     if (!(error instanceof InputError || error instanceof ToolRefusal || error instanceof ActionFailure)) throw error;
     const at = exec.ctx.now();
     await saveStep(exec.home, record, { step: step.id, status: "failed", started_at: at, finished_at: at, duration_ms: 0, input_fingerprint: fingerprint(null), error: error.message });
+    // Item 7a (review B7): a task whose agent did not finish contradicts the runner check for this workflow.
+    if (step.kind === "task" && error.message.startsWith("The agent did not finish the task")) await noteContradiction(exec.home, record.workflow, exec.state, at);
     return { kind: "stop", status: "failed", reason: `step '${step.id}' failed: ${error.message}`, drift: step.kind !== "agent" && step.kind !== "task" };
   }
 }
@@ -202,5 +205,8 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
   }
   const exec = await prepare(request, record);
   await auditRun(request.home, request.now(), "run.started", record, { trigger: record.trigger.kind, version: record.version, sandbox: record.sandbox });
+  // Item 7a (spec 8, review B6): a real run of a workflow whose runner check no longer holds stops here; sandbox runs never do.
+  const stop = record.sandbox ? null : await runnerStopReason(request.home, request.workflow.id, exec.state, request.now());
+  if (stop) return finish(exec, record, "failed", stop);
   return execute(exec, request.workflow, record);
 }
