@@ -195,6 +195,33 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** what each step printed, whether the list was right by your rules, and anything unexpected, word for word. (Task 33, the morning brief of item 4, stays open as your call.)
 
+### 38. Your Claude Code reads only the file TaskFollow chose (item 6a, D171, about 20 minutes)
+
+**Why:** invoice processing and meeting follow-up let your agent read one file TaskFollow picked, and nothing else. This was built and tested with a fake agent that runs TaskFollow's real gate; whether your real Claude Code reads a PDF with its own reader in a restricted run, and whether the gate sees the file's path, is proven only on it. Claude Code 2.1.295 or later. Claude prepares each command with you.
+
+1. Start a throwaway install `~/taskfollow-task38`, choose email and a Google Sheet (a new one), and connect the test Gmail. Before anything else, Claude records the checksum of `~/.claude/settings.json`.
+2. Add `invoice-processing`; connect and map its tab (`taskfollow connect invoice --sheet new`, `taskfollow map invoice`).
+3. From a different address, send the test Gmail one email with a small PDF invoice attached. Run its dry run: the agent's answer names the vendor, amount and due date from the PDF.
+4. `taskfollow why <run id>`: the call record shows one `Read` of the attachment's file name, allowed.
+5. Add `meeting-follow-up`; put one short note in the new `meeting-notes` folder of the install folder and run `taskfollow run meeting-follow-up`: the list of actions comes from that note, and the record shows one `Read` of it.
+6. Claude shows you a one-off task step that asks the agent to read a file the runner did not choose (for example the install folder's `CLAUDE.md`): the record shows that `Read` refused.
+
+**Clean up:** `claude mcp remove -s user installer`; inspect, then delete `~/.claude/projects/*taskfollow-task38*`; the settings checksum must equal step 1's; delete `~/taskfollow-task38` and the test sheet. Never run `taskfollow uninstall` there.
+
+**Paste back:** what each step printed, word for word, and whether any `Read` you did not expect went through.
+
+### 39. An invoice and a meeting, end to end (item 6a, D171, about 20 minutes, after task 38)
+
+**Why:** the invoice is money, so recording it needs the decision maker's yes; and the weekly list must add the amounts the way TaskFollow does, never the model. Same throwaway install as task 38 (or a new one set up the same way).
+
+1. With the invoice of task 38 still in the inbox (or a new one), run `invoice-processing` for real after its dry run is confirmed: one approval waits; approve it in your own terminal; the invoice is in the sheet's `invoice` tab with status `to check`.
+2. Add `invoices-due` and run it by hand (`taskfollow run invoices-due`): the list shows the invoice if it is due within 7 days (put a due date in the sheet that is), with its total, and says how many open invoices have no due date.
+3. Put a meeting note in `meeting-notes/` with two actions (one with a person and a date, one without), add the `action` tab (`taskfollow connect action --sheet new`, `taskfollow map action`), and run `meeting-follow-up`: one approval for both actions; after yes, both are in the `action` tab, the second with an empty owner and date.
+
+**Clean up:** as task 38.
+
+**Paste back:** what each step printed, word for word, and the rows in the sheet.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
