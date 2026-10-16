@@ -1,7 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { habits, noticeHabits } from "../../src/core/watch-notice.js";
+import { habits, noticeHabits, takeSuggestions } from "../../src/core/watch-notice.js";
+import { InputError } from "../../src/core/inputs.js";
+import { AUDIT_FILE } from "../../src/core/audit.js";
+import { readFile } from "node:fs/promises";
+const readAuditLines = async (home: string) => (await readFile(join(home, AUDIT_FILE), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { event: string });
 import { watchCommand } from "../../src/core/watch.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -64,8 +68,46 @@ describe("noticing work done often through the agent (D148)", () => {
   });
 });
 
+describe("a suggestion for a person no channel reaches (D164)", () => {
+  async function noticed(home: string) {
+    const settings = await env();
+    await watchCommand(home, { sub: "add", arg: "mcp:shopify", interactive: true }, () => NOW, settings);
+    await watchCommand(home, { sub: "suggest", arg: "Sam", interactive: true }, () => NOW, settings);
+    await callsOn(home, days(6), { tool: "mcp__shopify__get_order", what: "id" });
+  }
+  const unreachable = async () => {
+    throw new InputError("No joined member is called 'Sam'");
+  };
+
+  it("keeps the suggestion for the next session instead of losing it, and still makes it only once", async () => {
+    const home = await runnerHome();
+    await noticed(home);
+    expect(await noticeHabits(home, () => NOW, unreachable)).toEqual(["mcp:shopify"]);
+    expect(await noticeHabits(home, () => "2026-10-29T09:00:00.000Z", unreachable)).toEqual([]);
+    const shown = await takeSuggestions(home, NOW);
+    expect(shown).toEqual([{ at: NOW, text: expect.stringMatching(/I noticed .*shopify.* on 6 of the last 28 days/s) }]);
+    expect(await takeSuggestions(home, NOW)).toEqual([]);
+    const events = (await readAuditLines(home)).map((line) => line.event);
+    expect(events).toContain("watch.noticed");
+    expect(events).toContain("watch.noticed_shown");
+  });
+
+  it("keeps nothing when the message went out", async () => {
+    const home = await runnerHome();
+    await noticed(home);
+    await noticeHabits(home, () => NOW, async () => undefined);
+    expect(await takeSuggestions(home, NOW)).toEqual([]);
+  });
+
+  it("does not hide an unexpected failure", async () => {
+    const home = await runnerHome();
+    await noticed(home);
+    await expect(noticeHabits(home, () => NOW, async () => { throw new Error("disk full"); })).rejects.toThrow("disk full");
+  });
+});
+
 describe("the tick asks for the daily look (D148)", () => {
-  it("runs it, and a member who cannot be reached is reported, not fatal", async () => {
+  it("runs it; a member no channel reaches gets it at the next session, not an error", async () => {
     const { tick } = await import("../../src/core/tick.js");
     const home = await runnerHome();
     const settings = await env();
@@ -73,6 +115,7 @@ describe("the tick asks for the daily look (D148)", () => {
     await watchCommand(home, { sub: "suggest", arg: "Nobody", interactive: true }, () => NOW, settings);
     await callsOn(home, days(6), { tool: "mcp__shopify__get_order", what: "id" });
     const result = await tick(home, () => NOW);
-    expect(result.errors).toContainEqual(expect.stringMatching(/^notice: .*Nobody/));
+    expect(result.errors.filter((error) => error.startsWith("notice:"))).toEqual([]);
+    expect(await takeSuggestions(home, NOW)).toHaveLength(1);
   });
 });

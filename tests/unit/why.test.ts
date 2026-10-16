@@ -88,6 +88,21 @@ describe("taskfollow why (D138)", () => {
   });
 });
 
+describe("taskfollow why shows a suggestion no channel delivered, once (D164)", () => {
+  it("lists it in the run list and in the plain lines, then not again", async () => {
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    const { NOTICE_FILE } = await import("../../src/core/watch-notice.js");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await writeConfig(home, NOTICE_FILE, { checked: "2026-10-14", suggested: ["mcp:shopify"], waiting: [{ at: AT, text: "I noticed your agent used shopify on 6 of the last 28 days." }] });
+    const first = await whyCommand(home, undefined, () => LATER);
+    expect(first.suggestions).toEqual([{ at: AT, text: "I noticed your agent used shopify on 6 of the last 28 days." }]);
+    expect(renderWhy(first)).toContain("I noticed your agent used shopify");
+    const again = await whyCommand(home, undefined, () => LATER);
+    expect(again).not.toHaveProperty("suggestions");
+  });
+});
+
 describe("taskfollow why, as a person reads it", () => {
   it("shows one line per entry with its reason underneath, and one line per run", async () => {
     const { renderWhy } = await import("../../src/core/why.js");
