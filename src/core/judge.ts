@@ -71,7 +71,7 @@ export function profileBackend(profile: RuntimeProfile, cwd: string, timeoutMs?:
   return {
     name: "profile",
     ask: async (prompt, schema) => {
-      const result = await runHeadless(profile, { prompt, schema }, { cwd, ...(timeoutMs ? { timeoutMs } : {}) });
+      const result = await runHeadless(profile, { prompt, schema, ephemeral: true }, { cwd, ...(timeoutMs ? { timeoutMs } : {}) });
       if (!result.ok) return { ok: false, error: `the agent ${result.error}` };
       return result.structured !== undefined ? { ok: true, value: result.structured } : parseJsonAnswer(result.text);
     },

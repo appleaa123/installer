@@ -21,6 +21,8 @@ export interface RuntimeProfile {
     readonly error_path?: string;
     /** Appended to every headless call except the C6 probe, which uses allow_tool instead (D52, D54). */
     readonly tools_off?: readonly string[];
+    /** Flags for a call that must leave no transcript (D157), for example Claude Code's --no-session-persistence. */
+    readonly no_persist?: readonly string[];
     readonly allow_tool?: readonly string[];
     /** `jsonl`: one JSON event per line (Codex `exec --json`); the paths are read line by line. Default `json`. */
     readonly output?: "json" | "jsonl";
@@ -67,6 +69,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "detect.cmd": ["profile_dir"],
   "headless.cmd": ["profile_dir", "prompt"],
   "headless.tools_off": [],
+  "headless.no_persist": [],
   "headless.allow_tool": ["tool"],
   "schema.flag": ["schema_json", "schema_file"],
   "resume.flag": ["session_id"],
@@ -110,6 +113,7 @@ function headlessPart(raw: Raw): RuntimeProfile["headless"] {
     session_path: str(headless.session_path, "headless.session_path"),
     ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
     ...(headless.tools_off === undefined ? {} : { tools_off: argv(headless.tools_off, "headless.tools_off") }),
+    ...(headless.no_persist === undefined ? {} : { no_persist: argv(headless.no_persist, "headless.no_persist") }),
     ...(headless.allow_tool === undefined ? {} : { allow_tool: argv(headless.allow_tool, "headless.allow_tool", "{tool}") }),
     ...outputParts(headless),
   };

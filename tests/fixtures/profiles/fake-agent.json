@@ -8,6 +8,7 @@
     "result_path": "result",
     "session_path": "session_id",
     "error_path": "is_error",
+    "no_persist": ["--no-session-persistence"],
     "tools_off": ["--tools", ""],
     "allow_tool": ["--allowedTools", "{tool}"]
   },
