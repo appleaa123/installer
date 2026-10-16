@@ -14,6 +14,8 @@ export interface HeadlessRequest {
   readonly sessionId?: string;
   /** Exactly one tool the agent may call; replaces the profile's tools-off flags for this call (C6 probe, D54). */
   readonly allowTool?: string;
+  /** Judge and agent calls (D157): the agent keeps no transcript of what it was shown; the probe's resume check needs one. */
+  readonly ephemeral?: boolean;
 }
 
 export type HeadlessResult =
@@ -101,7 +103,8 @@ function baseArgv(profile: RuntimeProfile, request: HeadlessRequest): { readonly
 export function buildArgv(profile: RuntimeProfile, request: HeadlessRequest, schemaFile = ""): string[] {
   const { base, resume } = baseArgv(profile, request);
   const schema = request.schema && profile.schema ? fillTemplate(profile.schema.flag, { schema_json: JSON.stringify(request.schema), schema_file: schemaFile }) : [];
-  return [...base, ...toolArgs(profile, request), ...schema, ...resume];
+  const ephemeral = request.ephemeral ? [...(profile.headless.no_persist ?? [])] : [];
+  return [...base, ...toolArgs(profile, request), ...schema, ...ephemeral, ...resume];
 }
 
 /** The JSON answer: one object, or (JSON Lines) the lines that parse; null when nothing parses. */
