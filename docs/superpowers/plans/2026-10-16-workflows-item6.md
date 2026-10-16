@@ -29,6 +29,13 @@ The interview and the opportunity rule are operator text (level A). Discovery is
   3. **A suggestion's `--value`** carries only `trigger`, `skills` and `my_rules`. Anything else makes it a described workflow, which loses the shape (D159).
   4. **`when`** on a suggestion uses `{step, equals}` or `any`/`all` of those (`solution.ts` 131, 157). Item 5 moves the starter to 2.1.0.
 - **Every shape has both a `SHAPES` entry and a template** (`solutions/shapes/<id>/SKILL.md`). Item 6 adds one shape id, `invoices-due` (D166).
+- **Every shipped shape that reads or writes records needs Google Sheets.**
+  - `records.*` throws for a record type that is not connected (`records.ts` 47–48). Without Sheets the DATA phase never ran.
+  - So each of these suggestions carries `services.records`=`google-sheets` in its `when`: lead qualification, CRM update, invoice processing, invoices due and meeting follow-up.
+  - The owner's own tool is the described-workflow path (INSTALL.md 9e says so).
+- **Not offered in a consultation.** `services.records` is asked only in an install (`starter.json` 292–309, `when: mode.purpose = install`), so these `when`s never hold in a consult.
+  - This differs from item 5's inbox shapes, which a consult offers because they need no records.
+  - The consult interview may still name such work in words. The report shows it as work that needs a Google Sheet or the owner's own tool, through D163's four-part words for `writes:records`.
 - **6b depends on 6a** (the interview proposes the shapes 6a ships).
 
 ## Global Constraints
@@ -57,8 +64,10 @@ The interview and the opportunity rule are operator text (level A). Discovery is
 4. **Reading a file is confined to exact files TaskFollow's code chose:**
    - which files: the saved attachments named in the step's input, or the newest regular file in `<install folder>/meeting-notes/`, chosen by the runner;
    - each is `realpath`-checked inside its folder, and the size cap applies;
+   - the meeting-notes folder itself is `lstat`-checked and refused when it is a symbolic link;
    - its absolute path goes into `hook.json`, and the hook allows `Read` only for those paths;
    - the model never chooses a path.
+   - **Accepted limit:** a file swapped between the hook's `realpath` and Claude Code's read, by a process running as the same computer user (the same-user limit D159 records). Nothing more is claimed.
 5. **Discovery never sends anything to TaskFollow but a workflow the owner chose to add.** The skill reads only through the agent's own tools and only the sources the owner names. It never writes, sends or deletes, and names no TaskFollow command but `workflow add`, `workflow suggestions` and `skills`.
 6. **The owner's notes are never deleted.** Uninstall removes `meeting-notes/` only when TaskFollow created it and it is empty. Otherwise it leaves the folder and says so.
 
@@ -93,7 +102,7 @@ The agent connects one only when the owner picks the fallback for that workflow:
 
 - **Trigger:** `{"event":"message.received","from":"external","channel":"email"}`.
   - Email only, because a reply in the customer's thread (`reply_to`) exists only on email (`channel-tools.ts` 64), and the lead's key is an email address.
-  - `when`: `all` of `services.email`=`email` and `services.records`=`google-sheets`.
+  - `when`: `all` of `services.email`=`email` and `services.records`=`google-sheets` (Order and dependencies: every records shape).
 - **Known already? Both `lead` and `contact`, and that is sound only under this `when`.**
   - `records.find` throws on a record type that is not connected (`records.ts` 48).
   - `contact` is connected by the install's DATA phase exactly when `services.records` is `google-sheets`.
@@ -122,7 +131,7 @@ The agent connects one only when the owner picks the fallback for that workflow:
 9.6 row: *the owner says "note that X", or a message arrives → which record, and what changes → gated: the write, with a preview → reported: what changed.*
 
 - **Two ways in, one shape:**
-  - A message from the owner to their TaskFollow channel: `{"event":"message.received","from":"member"}`. `when`: `any` of `services.telegram`=`telegram`, `services.email`=`email`, `services.slack`=`slack`, `services.whatsapp`=`whatsapp`, as the starter already writes it.
+  - A message from the owner to their TaskFollow channel: `{"event":"message.received","from":"member"}`. `when`: `all` of two parts: `services.records`=`google-sheets`, and `any` of `services.telegram`=`telegram`, `services.email`=`email`, `services.slack`=`slack`, `services.whatsapp`=`whatsapp` (the `any` as the starter already writes it; an `all` may hold an `any`, `solution.ts` 157).
   - With no channel, the owner says it in chat, and the agent calls `records.update` itself through TaskFollow's tools (level 0, by hand). The same approval holds, because it goes through TaskFollow's tool, which T5 proves in chat.
 - **Steps:**
   1. `which` (`judge`): schema `{entity: string, key: string, changes: object, found: boolean, question: string}`.
@@ -149,13 +158,14 @@ The agent connects one only when the owner picks the fallback for that workflow:
 
 9.6 says invoice processing has *"the agent read the file itself"*, and meeting follow-up reads `files`. Today a task allows only MCP tools and `Bash(...)`, and `may_use` goes verbatim into `--allowedTools` (`agent-task.ts` 83), so a made-up rule would match nothing.
 
-- **The rule:** `may_use` may list the bare word `Read`. It passes to `--allowedTools` as `Read`, and `--tools` gains `Read`. A step that lists `Read` must say `read_from`, and the workflow is refused at load otherwise.
+- **The rule:** `may_use` may list the bare word `Read`. It passes to `--allowedTools` as `Read`, and `--tools` gains `Read`. A step that lists `Read` must say `read_from`, and a step with `read_from` must list `Read`; the workflow is refused at load otherwise.
 - **Which files: TaskFollow's code picks them; the model never names a path.**
-  - **`read_from: "attachments"`:** the saved attachments named in the step's interpolated input, exactly in D133's form (`ATTACHMENT_REF`, `attachments.ts` 17). Each is resolved with `realpath` and kept only if it is a regular file inside `realpath(<home>/data/inbox-files/)`.
-  - **`read_from: "meeting-notes"`:** the runner lists `<install folder>/meeting-notes/` and chooses the newest regular file by modification time. It skips directories, symbolic links (`lstat`), anything whose `realpath` is outside `realpath(<install folder>/meeting-notes/)`, and files over the attachment size cap (`MAX_ATTACHMENT_BYTES`, `mime.ts` 26).
-    - If there is no usable file, the step does not start the agent. The run ends with the plain message under "What the person sees", and nothing is spent.
+  - **`read_from: "attachments"`:** the saved attachments named in the step's interpolated input, exactly in D133's form (`ATTACHMENT_REF`, `attachments.ts` 17). Each is resolved through the existing `confinedPath` (`attachments.ts` 26, `actions.ts` 35), which refuses a link below the home. It is kept only if it is a regular file inside `realpath(<home>/data/inbox-files/)`.
+  - **`read_from: "meeting-notes"`:** the runner first `lstat`s `<install folder>/meeting-notes/` itself and refuses it when it is a symbolic link or not a folder. It then chooses the newest regular file by modification time. It skips directories and other non-files, symbolic links (`lstat`), anything whose `realpath` is outside `realpath(<install folder>/meeting-notes/)`, and files over the attachment size cap (`MAX_ATTACHMENT_BYTES`, `mime.ts` 26).
     - Without a known install folder (`state.work_dir`), the step fails in plain words.
-- **Handing them over:** the chosen absolute paths go into the hook config (`hook.json`, next to `may_use`), and into the agent's input as `files: [{name, path}]`.
+  - **For both kinds:** if no usable file is left, the step does not start the agent. The run ends with the plain message under "What the person sees", and nothing is spent.
+- **Handing them over:** the chosen absolute paths go into the hook config (`hook.json`, a new `files` list next to `may_use`), and into the agent's input as `files: [{name, path}]`. `loadHookConfig` (`agent-hook.ts` 44–50) validates `files` as a list of absolute paths and treats anything else as damaged settings, which blocks.
+- **Accepted limit:** between the hook's `realpath` check and Claude Code's own read, a process running as the same computer user could swap the file. This is the same-user limit D159 already records; nothing more is claimed.
 - **The hook:** a `Read` call passes only when its `file_path` is absolute and its `realpath` equals one of those paths. Everything else is refused: relative paths, `..`, links out, folders, any other file, and every `Read` when no file was listed. The call record keeps the file's name, never its content (D142).
 - **Why not `Bash(cat:*)`:** it is a valid rule today (`workflow.ts` 210), but it reads any file the computer user can read. The shapes never use it.
 - [ ] Failing tests:
@@ -168,7 +178,10 @@ The agent connects one only when the owner picks the fallback for that workflow:
   - `meeting-notes: a directory or other non-file entry is skipped`
   - `meeting-notes: an empty folder gives the plain message and starts no agent`
   - `meeting-notes: a file over the size cap is skipped`
-  - `a step listing Read without read_from is refused at load`
+  - `meeting-notes: a folder that is a symbolic link is refused`
+  - `attachments: no usable attachment starts no agent`
+  - `loadHookConfig refuses a files list that is not absolute paths`
+  - `a step listing Read without read_from, or read_from without Read, is refused at load`
   - `--allowedTools carries Read and --tools gains Read only when listed`
 
   Implement; pass; commit `feat(task): read exact files the runner chose`.
@@ -180,7 +193,7 @@ The agent connects one only when the owner picks the fallback for that workflow:
 
 9.6 row: *an email attachment (exists); the agent reads the file itself → vendor, amount, due date; **where the numbers go is the owner's call** (the agent asks; TaskFollow executes or flags a gap) → gated: recording it; anything paid is always a person → reported: due this week* (Task 5b).
 
-- **Trigger:** `{"event":"message.received","from":"external","channel":"email"}`; `when: {"step":"services.email","equals":"email"}`.
+- **Trigger:** `{"event":"message.received","from":"external","channel":"email"}`; `when`: `all` of `services.email`=`email` and `services.records`=`google-sheets`.
 - **Steps:**
   1. `read`: a `task` with `may_use: ["Read"]` and `read_from: "attachments"`; input: the message's attachment references; schema `{is_invoice, vendor, number, amount, currency, due, file}`.
   2. `save`: `approve records.create` on `invoice`; `when: read.is_invoice == true`. It is L3 because `amount` is financial.
@@ -205,21 +218,29 @@ The agent connects one only when the owner picks the fallback for that workflow:
 - `src/core/homes.ts`: `SHAPES["invoices-due"]`.
 - `solutions/shapes/invoices-due/SKILL.md`.
 - `solutions/starter.json`: suggestion `invoices-due`.
-- Tests in `tests/unit/calc.test.ts`, `tests/unit/homes.test.ts` and `tests/unit/workflow.test.ts`.
+- `src/core/runner-steps.ts`: `runCalc` passes the zone and the run's clock.
+- Tests in `tests/unit/calc-step.test.ts`, `tests/unit/homes.test.ts` and `tests/unit/workflow.test.ts`.
 
 D166 amends D159's six v1 shapes to seven, although the review advised cutting this.
 
 - **The `calc` filter, minimal.** `calc` gains an optional `where`, an object with at most these two kinds of keys:
   - `"<field>": ["<value>", …]` keeps rows whose field equals any listed value, exactly as text;
-  - `"due_within_days": N` (1–366) keeps rows whose `due` field is a date (`YYYY-MM-DD`) on or before today plus N days, in the workflow's time zone (today comes from the run's clock, as `previous` already does).
-
-  A row whose `due` is empty or not a date is not dropped silently: it is counted in a new `no_date` number. Anything else in `where` is refused at load. Without `where`, `calc` is unchanged.
+  - `"due_within_days": N` (1–366) keeps rows whose `due` field is a date (`YYYY-MM-DD`) on or before today plus N days. Overdue rows are kept.
+- **Today, without guessing a zone.** `runCalc` (`runner-steps.ts` 155) has no handle on the workflow's settings, so the zone comes from the workflow's trigger:
+  - `due_within_days` is accepted at load only when the trigger is cron, and the zone is its `trigger.tz`;
+  - any other trigger is refused at load in plain words.
+  - Today and the limit are built as `YYYY-MM-DD` text with `Intl.DateTimeFormat` in that zone, from the run's clock (`exec.ctx.now()`), and compared as text; never `Date.parse`.
+- **Rows without a date.** A row whose `due` is empty or not a `YYYY-MM-DD` date is excluded from the count and the sum, and counted in a new `no_date` number, so it is not dropped silently.
+- Anything else in `where` is refused at load. Without `where`, `calc` is unchanged.
 - **The shape:** `SHAPES["invoices-due"] = { needs: ["answers", "reads:records", "skills"], hardRule: false }`. It is report-only, so it may run in either home: Home 1 when T7 passes, Home 2 when T8 passes.
+- **Money on Home 2: list, never total.** On Home 2 the agent's own model would add the amounts, which D144 and INSTALL.md 9a.4 forbid ("never let a model add up money"). The shape keeps both homes, as D166 asks, and the template's `SKILL.md` says, for any run without TaskFollow's `calc`: *"List each invoice with its own amount and due date. Never add amounts up or give a total."*
+  - The Home 1 run gets its totals from `calc`, so it may say them.
+  - Keeping the shape on Home 1 only was rejected: D166 chose a report-only shape so it can run while the laptop is closed, and a list without a total keeps that within D144.
 - **The suggestion:**
   - Trigger: cron `0 8 * * 1`, `"tz":"local"`.
   - `when`: `services.records`=`google-sheets`.
   - Steps:
-    1. `open`: `tool records.find` on `invoice`, all rows (`records.find` matches one exact value per field, so it cannot select two statuses or a date range itself).
+    1. `open`: `tool records.find` on `invoice` with `limit: 100`. `records.find` matches one exact value per field, so it cannot select two statuses or a date range itself, and it returns at most 100 rows (`record-tools.ts` 15–16). The skill and the message therefore say *"the first 100 invoices in your sheet"* whenever 100 came back.
     2. `due`: `calc` from `${open}` with `where: {"status":["to check","approved to pay"],"due_within_days":7}`, `group_by: "currency"`, `sum: ["amount"]`.
     3. `say`: `judge`, writing the list in plain words with numbers only from `due`.
     4. The ending follows item 5's rule for inbox triage: `channel.notify` when the person has a channel; otherwise the run ends with the result, which waits for `why`.
@@ -227,9 +248,11 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
 - **Starter bookkeeping:** added in 6a's 2.2.0 with the other shapes; `invoices-due` is listed in INSTALL.md 9e.
 - [ ] Failing tests (filter first):
   - `calc where keeps any listed status`
-  - `calc where due_within_days keeps dates on or before today plus N in the workflow's zone`
-  - `calc where counts a row without a date in no_date`
+  - `calc where due_within_days keeps dates on or before today plus N in the trigger's zone, overdue included` (a clock near midnight UTC whose local date differs)
+  - `calc where counts a row without a date in no_date and leaves it out of count and sum`
   - `calc where refuses an unknown key at load`
+  - `due_within_days is refused at load for a workflow whose trigger is not cron`
+  - `the invoices-due template says to list amounts and never total them`
   - `calc without where is unchanged`
   - `invoices-due is report-only in decideHome and may go to the agent's scheduler after T8`
   - `invoices-due loads and records its shape`
@@ -251,25 +274,36 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
 
 9.6 row: *the owner gives the notes or transcript (minimum scope) → action items, owners, dates → gated: creating tasks; sending notes → reported: the list of actions.*
 
-- **Ways in (D166):**
-  - Pasted in chat: by hand, level 0, with the skill.
-  - Emailed by the owner to the TaskFollow address, as text or an attachment (D132): a variant with trigger `{"event":"message.received","from":"member","channel":"email"}` and `read_from: "attachments"`.
-  - **Dropped in `meeting-notes/`** in the install folder, then a manual run (`taskfollow run meeting-follow-up`), with `read_from: "meeting-notes"` (Task 4).
+- **One suggestion, one way into the runner** (within D166's "besides notes pasted in chat or emailed"):
+  - The shipped `meeting-follow-up` has a manual trigger and `read_from: "meeting-notes"`. The owner drops the notes in `meeting-notes/` in the install folder, then runs `taskfollow run meeting-follow-up` (or asks the agent to).
+  - Notes **pasted in chat, or emailed to the owner's agent**, are handled by hand in chat with the shape's skill (level 0). Creating tasks still goes through TaskFollow's `records.import` approval.
+  - There is no second suggestion id and no emailed variant: `--value` may change only `trigger`, `skills` and `my_rules`, so an emailed variant would need a second trigger and `read_from` it cannot carry.
+  - INSTALL.md 9e and "What the person sees" say this.
+  - `when`: `services.records`=`google-sheets`.
 - **The folder's lifecycle:**
-  - `workflow add meeting-follow-up` makes `<install folder>/meeting-notes/` when the install folder is known and the folder does not exist. It records `{path, created: true}` in `state/written.json`.
-  - An existing folder is used as it is and recorded with `created: false`.
-  - Without a known install folder, the add says so (like `noFolderNote`), and the email and chat ways still work.
+  - `workflow add meeting-follow-up` makes `<install folder>/meeting-notes/` when the install folder is known and nothing is there. It records `{path, created: true}` in `state/written.json`.
+  - An existing plain folder is used as it is and recorded with `created: false`.
+  - A path that is a symbolic link (`lstat`) or a file is refused in plain words. Nothing is written, as `addWorkflow` refuses before writing (H4).
+  - Without a known install folder, the add says so (like `noFolderNote`), and the chat way still works.
 - **Uninstall (D109, 9.13 item 5: TaskFollow removes what it wrote and keeps the owner's records):**
-  - The folder is removed only when it was `created: true`, is still a plain folder at the same `realpath`, and is empty.
-  - Otherwise it is left, and the uninstall output says so in `left`: *"meeting-notes/ was left: it holds your notes"* or *"…: TaskFollow did not create it"*.
-  - The consult cleanup follows the same rule.
+  - The folder is removed only when all of these hold: it was `created: true`; `lstat` shows a plain folder, not a link; it is at the same `realpath`; and it is empty.
+  - Otherwise it is left, and the uninstall output says so in `left`: *"meeting-notes/ was left: it holds your notes"*, *"…: TaskFollow did not create it"*, or *"…: it is no longer the folder TaskFollow made"*.
   - The owner's notes are never deleted.
+- **The consult cleanup and continuing after it:**
+  - The cleanup follows the same rule.
+  - Because `removeWritten` deletes `state/written.json` (`workflow-skill.ts` 154), a folder the cleanup left (it holds notes) would lose its `created` record. So `restoreAfterConsult` (`consult.ts` 101) records the folder again on `taskfollow add install`, with `created: true` only when the consult's own record said so, which the cleanup keeps in the consult file.
+  - (In practice the shape is not offered in a consult, Order and dependencies, but a hand-written `workflow add` there must still be safe.)
 - **Steps:**
-  1. `notes`: a `task` with `may_use: ["Read"]`; schema `{meeting: string, actions: [{id, what, owner, due}]}`, with `owner` and `due` allowed empty.
+  1. `notes`: a `task` with `may_use: ["Read"]` and `read_from: "meeting-notes"`. Schema `{meeting: string, actions: [{id, what, owner, due}], send_to: string, summary: string}`; `owner`, `due` and `send_to` may be empty.
   2. `tasks`: one `approve records.import` on `action` with `rows: ${notes.actions}`. That is one approval for the whole list, L2 when it only adds (`import-tools.ts` 114). In a described version, `agent_call` for the owner's task app instead.
-  3. `send`: `approve channel.send` of the notes to the people the owner's rules name. It is present only in the owner's version when they want it.
-- **Hard rule "ask"** (`SHAPES`): the check page's two questions (D159) decide. If the owner says it only sends the list to them, their version has no `tasks` or `send` step and is report-only (by hand or Home 1). It is not scheduled, so Home 2's scheduler is not offered, and the summary says so.
-- **INSTALL.md 9e:** one paragraph per shape, in plain words: what starts it, what it reads, what waits for the owner's yes, and where the result goes. Each ends with "if you already use a tool for this, tell me which, and I will use it instead of the sheet" (a described workflow).
+  3. `send`: `approve channel.send` of the summary to the one address the owner's rules name (`to: ${notes.send_to}`, for example a team list); `when: notes.send_to != ""`.
+- **Hard rule, by the floor.** The shipped shape has `approve` steps, so `codeFloor` makes it hard-rule before `SHAPES`'s `"ask"` is read (`homes.ts` 63).
+  - The check page's two questions (D159) apply only to a **described** version the owner writes without those steps, for example "just list the actions for me".
+  - The shipped shape runs on Home 1, or by hand. It is not scheduled, so Home 2's scheduler is not offered, and the summary says so.
+- **INSTALL.md 9e:**
+  - One paragraph per shape, in plain words: what starts it, what it reads, what waits for the owner's yes, and where the result goes.
+  - Each record-keeping shape says it needs the Google Sheet chosen at install. Each ends with "if you already use a tool for this, tell me which, and I will set it up with that tool instead" (the described-workflow path, sections 9 and 9a).
+  - For meeting follow-up: the folder, or pasting in chat.
 - [ ] Failing tests:
   - `meeting-follow-up loads and records its shape`
   - `workflow add makes meeting-notes/ and records created: true`
@@ -277,6 +311,11 @@ D166 amends D159's six v1 shapes to seven, although the review advised cutting t
   - `uninstall removes meeting-notes/ only when TaskFollow created it and it is empty`
   - `uninstall leaves a folder with notes and says so`
   - `uninstall leaves a folder TaskFollow did not create`
+  - `workflow add refuses a meeting-notes that is a symbolic link`
+  - `uninstall leaves a meeting-notes that became a symbolic link`
+  - `add install after a consult records the left folder again`
+  - `meeting-follow-up is hard-rule by the floor in decideHome`
+  - `every shape that uses records.* is offered only when Google Sheets was chosen, and none of them in a consultation`
   - `the notes schema allows an action with no owner or date`
   - `tasks is one approve of records.import with the actions as rows`
   - `no shipped suggestion has an approve or an L2/L3 tool step with foreach`
@@ -312,7 +351,7 @@ Rule 14, as written:
 
 > 14. When you notice work that repeats, in what the person asks you to do, in what a workflow's results show, or in a suggestion TaskFollow noticed, say so in one sentence and show the workflow you would set up: what starts it, what it reads, what it may change, and what waits for their yes. If they give feedback, change it and show it again. Add it only after they say yes; never create, change or turn on a workflow without one. Propose each kind of work once; propose it again only if they ask.
 
-The `CLAUDE.md` section gains one line: *"When you notice work that repeats, offer to set it up as a workflow (INSTALL.md, operator rule 14); nothing is created without the owner's yes."*
+The `CLAUDE.md` section gains one line: *"When you notice work that repeats, offer to set it up as a workflow (INSTALL.md, operator rule 14); nothing is created without the owner's yes."* This line is the one thing item 6 adds beyond D165's wording. It is kept because Claude Cowork reads `CLAUDE.md` (the D156 assumption, human task 36), while INSTALL.md is read only in a setup session.
 
 - [ ] Failing tests: `INSTALL.md has operator rule 14`; `the CLAUDE.md section has one opportunity line`. Implement; pass; commit `docs(install): the opportunity rule`.
 
@@ -361,7 +400,7 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
   - rule 14's text;
   - the discovery skill's place.
 - `docs/next-steps.md` build map rows 6a and 6b; INSTALL.md 9e.
-- **Human task 38 (owner, about 20 minutes):** on the real Claude Code:
+- **Human task 38 (owner, about 20 minutes):** on the real Claude Code, version 2.1.295 or later (the task command's minimum, D151):
   - a restricted task with `Read` reads a PDF invoice saved by the email channel, and the newest note in `meeting-notes/`;
   - the hook's record shows each file's name;
   - a path the runner did not choose is refused.
@@ -383,9 +422,12 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
   - *"CRM update: when you tell me 'note that …', finds the record and shows you the change; nothing is saved until you say yes."*
   - *"Invoice processing: when an invoice arrives by email, reads the vendor, the amount and the due date, and records it where you choose once you approve. It never pays anything."*
   - *"Invoices due: every Monday, the invoices still to pay this week, with their total."*
-  - *"Meeting follow-up: from your meeting notes (put them in the meeting-notes folder, email them to me, or paste them here), lists who does what by when; creating tasks and sending the notes wait for your yes."*
+  - *"Meeting follow-up: put your meeting notes in the meeting-notes folder and run it, and it lists who does what by when; creating tasks and sending the notes wait for your yes. Notes you paste here or email me, I handle with you in this chat."*
 - **Read refused** (call record and `why`): *"Refused: this step may read only the files TaskFollow gave it."*
-- **No meeting note:** *"There is no note in meeting-notes/ yet. Put the notes or transcript there as a file, email them to me, or paste them in this chat."*
+- **No meeting note:** *"There is no note in meeting-notes/ yet. Put the notes or transcript there as a file, or paste them in this chat."*
+- **No usable attachment:** *"This email has no attachment TaskFollow could hand over, so nothing was read."*
+- **Invoices due, 100 rows came back:** *"…from the first 100 invoices in your sheet."*
+- **A records workflow without Google Sheets** (the agent, from 9e): *"This one keeps records, and you didn't choose a Google Sheet at install. Tell me the tool you use and I'll set it up with that, or add a Google Sheet."*
 - **Meeting-notes folder left at uninstall:** *"meeting-notes/ was left: it holds your notes."*
 - **No tool for the job** (the agent, from 9.6): *"You don't have a tool for <leads | invoices | tasks> that I can use. I can keep them in a Google Sheet in your own account instead, or you can tell me the tool you use."*
 - **End of the interview:** *"Not sure what repeats in your week? Ask me to find your repetitive work any time."*
@@ -396,7 +438,7 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
 - **Several message workflows on one email.** Lead qualification, invoice processing and an order-questions workflow all start on `message.received`. Each runs, and each ends quietly when the message is not theirs. The cost is one judge or task per workflow per email. INSTALL.md 9e says so; item 6 does not change it.
 - **Read in a restricted task** may behave differently on the real Claude Code (task 38). If it does not work:
   - invoice processing falls back to the owner's own email tool in `may_use` (a described workflow);
-  - meeting follow-up keeps the chat and email-body ways;
+  - meeting follow-up keeps the chat way;
   - Task 4's `Read` is dropped.
 - **Invoices due on Home 2** needs the agent's own Sheets tool; without it, it stays on Home 1 or by hand, and the four-part page says so.
 - **Existing installs** pinned to an older starter have no `lead`, `invoice` or `action` record type until they start again with the new starter. The owner's test home is one of them.
@@ -431,3 +473,28 @@ D165 settled four parts: A, "I noticed" (D148/D164), unchanged; B, the interview
 - **B8:** tests assert schemas and `when`, not model behaviour.
 - **B9:** 6b after 6a, with its real file list.
 - **No finding rejected.** Each cited line was checked: `workflow.ts` 265, `runner-steps.ts` 80, `agent-task.ts` 83 and 99, `actions.ts` 35, `attachments.ts` 17, `channel-tools.ts` 64, `deliver.ts` 24 and 78, `import-tools.ts` 114, `solution.ts` 131 and 157.
+
+## Fable confirmation review of 2026-10-16 (at a549598), applied
+
+- **1 (records need Sheets):** every shape that uses `records.*` carries `services.records`=`google-sheets` in its `when`; crm-update uses an `all` of that and the any-channel answers. The owner's own tool is the described-workflow path (9e). These shapes are not offered in a consultation, because `services.records` is install-only; this differs from item 5's inbox shapes, which need no records (D163).
+- **2 (meeting follow-up):**
+  - The shipped shape is hard-rule by the floor (`homes.ts` 63); the check page's questions apply only to a described version.
+  - One suggestion: a manual trigger reading `meeting-notes/`. Notes pasted or emailed are handled by hand in chat.
+  - Its `send` is one approval to one address.
+- **3 (Read confinement):**
+  - The notes folder is `lstat`-checked at add, at run and at uninstall.
+  - Attachments go through `confinedPath`.
+  - No usable file means no agent run, for both kinds.
+  - `loadHookConfig` validates `files`.
+  - `Read` and `read_from` must come together.
+  - The same-user window between the hook's check and the read is an accepted limit (D159).
+- **4 (invoices due):**
+  - `limit: 100`, said in the message.
+  - The zone comes from the cron trigger's `tz`, and `due_within_days` is refused for other triggers. Dates are compared as `Intl`-built text; overdue rows are kept; `no_date` rows are left out of count and sum.
+  - On Home 2 the skill lists amounts and never totals them (D144), keeping D166's either-home.
+- **5:**
+  - The calc tests are in `calc-step.test.ts`.
+  - `restoreAfterConsult` records the notes folder again.
+  - Human task 38 needs Claude Code 2.1.295 or later.
+  - The `CLAUDE.md` line is named as the one addition beyond D165.
+- **No finding rejected.** One citation was corrected: `removeWritten` deletes `state/written.json` at `workflow-skill.ts` 154, not 160. The other cited lines match: `records.ts` 47–48, `homes.ts` 63, `attachments.ts` 26, `actions.ts` 35, `agent-hook.ts` 44–50, `record-tools.ts` 15–16, `runner-steps.ts` 155, `consult.ts` 101; consult skips `services.records` (`starter.json` 292–309).
