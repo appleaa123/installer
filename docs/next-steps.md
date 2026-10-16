@@ -50,7 +50,7 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 
 1. ~~Task 25~~ **done 2026-10-15**: one bug found and fixed (Claude Code's `StructuredOutput` tool), now on #31–#37; your MCP servers do load in restricted mode.
 2. ~~Task 26~~ **done 2026-10-15**: all six steps passed; an ask rule wins over an allow rule for the same command.
-3. **Task 28 (about 20 min), new.** Approve one product change on your test store, then let Claude Code make it (checks D151 on the real thing).
+3. ~~Task 28~~ **done 2026-10-16** (D167): the approved call worked on the real Claude Code; three fixes on #40.
 4. **Task 27 (about 1 hour).** WhatsApp with Meta's free test number and a free Cloudflare account.
 5. **Tasks 21–24, still open.** Real mailboxes (21), a Windows 11 PC (22), a real-person install test (23), a real Slack workspace (24).
 6. ~~Merge #31 → #38~~ **done 2026-10-15.**

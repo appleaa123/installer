@@ -119,6 +119,7 @@ describe("making the approved call (D151)", () => {
   });
 
   it("shows in why the person's approval before the call it allowed (task 28)", async () => {
+    // The approval is stamped with the fixed LATER; the call with the hook's real clock, so this holds while the clock is past LATER.
     const { home, run } = await approved([exact]);
     const why = (await whyCommand(home, run.run_id, () => LATER)) as { timeline: { at: string; who: string; what: string }[] };
     const approvedAt = why.timeline.findIndex((entry) => entry.who === "Owner" && entry.what.startsWith("approved"));
