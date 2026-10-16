@@ -42,7 +42,9 @@ export async function startScheduled(home: string, state: InstallState | undefin
   const skillWord = newWord();
   const canPlant = context.canPlant ?? (async (target: string) => (await loadChannel(target, "email").catch(() => null)) !== null);
   const plant = (await canPlant(home)) ? "taskfollow" : "person";
-  const { challenge } = await startChallenge(home, { needs: NEEDS, test: "t8", workflow: workflow.id, agent, agentVersion: version, ttlMs: Date.parse(scheduled) - Date.parse(now) + DAY_MS, opensAt: scheduled, word: `${emailWord} ${skillWord}`, details: { plant, scheduled_at: scheduled } }, now);
+  // Review B1: a mark on this computer can only come from a scheduler that runs here: the install's own probed agent, not Claude Code or Cowork (their schedules run in the cloud).
+  const local = state?.runtime?.profile === agent && agent !== "claude-code" && !/claude/i.test(agent) ? "yes" : "no";
+  const { challenge } = await startChallenge(home, { needs: NEEDS, test: "t8", workflow: workflow.id, agent, agentVersion: version, ttlMs: Date.parse(scheduled) - Date.parse(now) + DAY_MS, opensAt: scheduled, word: `${emailWord} ${skillWord}`, details: { plant, scheduled_at: scheduled, local_scheduler: local } }, now);
   const name = `taskfollow-check-${challenge.id}`;
   const zip = await writeSkillZip(home, name, skillText(name, challenge.id, skillWord));
   const at = new Date(scheduled).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

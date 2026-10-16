@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { serveCheckPage } from "../../src/core/check-page.js";
 import { checkCommand } from "../../src/core/check-commands.js";
-import { abilities, loadChallenge, markChallenge } from "../../src/core/checks.js";
+import { abilities, answerChallenge, loadChallenge, markChallenge } from "../../src/core/checks.js";
 import { loadState } from "../../src/core/state.js";
 import { readZip } from "../../src/core/zip.js";
 import { runnerHome } from "../helpers/runner-home.js";
@@ -115,12 +115,50 @@ describe("check T8: the agent's own scheduler (plan Task 10)", () => {
     expect(next).toContain("write it down");
   });
 
-  it("takes a mark from a job on this computer at or after the set time as tested, and before it as not a scheduler", async () => {
-    const first = await setup();
-    const mark = await markChallenge(first.home, first.out.id, `${first.emailWord} ${first.skillWord}`, { interactive: false, via: "cli", through: "mark" }, later(10));
-    expect(mark.result).toBe("yes-tested");
-    const second = await setup();
-    const early = await markChallenge(second.home, second.out.id, `${second.emailWord} ${second.skillWord}`, { interactive: false, via: "cli", through: "mark" }, later(3));
+  it("never settles a schedule check from the chat: check answer and check.ping are refused, the check stays open, no try is used (review B1)", async () => {
+    const { home, out, emailWord, skillWord, serve } = await setup();
+    await walk(serve);
+    const answered = await answerChallenge(home, out.id, `${emailWord} ${skillWord}`, later(11));
+    expect(answered).toMatchObject({ result: "not-checked", reason: expect.stringContaining("never settle a schedule check") });
+    const pinged = await markChallenge(home, out.id, `${emailWord} ${skillWord}`, { interactive: false, via: "mcp", through: "ping" }, later(11));
+    expect(pinged.result).toBe("not-checked");
+    expect(await loadChallenge(home, out.id)).toMatchObject({ status: "open", tries: 0 });
+    expect((await abilities(home)).filter((entry) => entry.challenge === out.id)).toEqual([]);
+  });
+
+  it("refuses a mark for an assistant whose schedule runs in the cloud, in plain words, and keeps the check open (review B1)", async () => {
+    const { home, out, emailWord, skillWord, serve } = await setup();
+    await walk(serve);
+    const mark = await markChallenge(home, out.id, `${emailWord} ${skillWord}`, { interactive: false, via: "cli", through: "mark" }, later(11));
+    expect(mark).toMatchObject({ result: "not-checked", reason: expect.stringContaining("runs in the cloud, so a command on this computer did not come from it") });
+    expect(await loadChallenge(home, out.id)).toMatchObject({ status: "open", tries: 0 });
+  });
+
+  it("takes a mark from this computer's own scheduler only after the window closed and at or after the set time, as 'you told us' grade at most (review B1)", async () => {
+    const local = async () => {
+      const home = await runnerHome();
+      await writeWorkflow(home, BRIEF);
+      const out = (await checkCommand(home, (await loadState(home)) ?? undefined, ["start", "t8"], { workflow: "brief", value: JSON.stringify({ agent: "fake-agent" }) }, ctx(true))) as { id: string; zip: string };
+      const emailWord = launched.at(-1)?.word ?? "";
+      const skillWord = /answer with exactly: (\S+)/.exec(readZip(await readFile(out.zip))[1]?.data.toString("utf8") ?? "")?.[1] ?? "";
+      const serve = async (now: string) => {
+        const page = await serveCheckPage(home, out.id, { word: emailWord, now: () => now, ttlMs: 60_000, plant: async (_home: string, subject: string) => (planted.push(subject), true) });
+        pages.push(page);
+        return page;
+      };
+      return { home, out, words: `${emailWord} ${skillWord}`, serve };
+    };
+    const first = await local();
+    expect((await loadChallenge(first.home, first.out.id))?.details?.local_scheduler).toBe("yes");
+    const tooSoon = await markChallenge(first.home, first.out.id, first.words, { interactive: false, via: "cli", through: "mark" }, later(11));
+    expect(tooSoon).toMatchObject({ result: "not-checked", reason: expect.stringContaining("close the assistant's window") });
+    expect(await loadChallenge(first.home, first.out.id)).toMatchObject({ status: "open", tries: 0 });
+    await walk(first.serve);
+    const mark = await markChallenge(first.home, first.out.id, first.words, { interactive: false, via: "cli", through: "mark" }, later(10));
+    expect(mark).toMatchObject({ result: "yes-you-told-us", reason: expect.stringContaining("whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell") });
+    const second = await local();
+    await walk(second.serve);
+    const early = await markChallenge(second.home, second.out.id, second.words, { interactive: false, via: "cli", through: "mark" }, later(3));
     expect(early).toMatchObject({ result: "not-checked", reason: expect.stringContaining("before the scheduled time") });
     expect((await loadChallenge(second.home, second.out.id))?.status).toBe("cancelled");
   });

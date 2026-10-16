@@ -162,9 +162,24 @@ export type Answerer = "agent" | "terminal" | "person";
 /** Tests of what the agent itself can do: the word was given to the agent, so a person typing it proves nothing (review S2). */
 const AGENT_TESTS: readonly string[] = ["t1", "t5", "t7"];
 
+/** A refusal that records nothing and leaves the challenge open with its tries untouched. */
+const stillOpen = (challenge: Challenge, reason: string, now: string): StoredResult => ({ id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id });
+
+/** T8 from the agent's side (review B1): only a mark from a scheduler on this computer, after the window closed, can count. */
+function scheduleRefusal(challenge: Challenge, through: Through | undefined): string | null {
+  if (through !== "mark") return "check answer and check.ping never settle a schedule check: the person confirms what arrived on their page";
+  if (!challenge.details?.closed_at) return "Not yet: the person must close the assistant's window on their page first (that is when the test email is planted)";
+  if (challenge.details.local_scheduler !== "yes") return "This assistant's schedule runs in the cloud, so a command on this computer did not come from it; confirm on your page";
+  return null;
+}
+
 export async function settleChallenge(home: string, challenge: Challenge, typed: string, answerer: Answerer, now: string, via?: string, through?: Through): Promise<StoredResult> {
   if (answerer === "person" && AGENT_TESTS.includes(challenge.test)) {
-    return { id: 0, need: challenge.needs[0] ?? "answers", result: "not-checked", reason: "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id };
+    return stillOpen(challenge, "This test checks what your agent can do, so the word must come back from your agent, not from you; the check stays open", now);
+  }
+  if (challenge.test === "t8" && answerer === "agent") {
+    const refusal = scheduleRefusal(challenge, through);
+    if (refusal) return stillOpen(challenge, refusal, now);
   }
   if (!challenge.word_salt || !challenge.word_hash || !verifyWord(typed, challenge.word_salt, challenge.word_hash)) {
     const tries = challenge.tries + 1;
@@ -181,6 +196,7 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
   if (TOOL_TESTS.includes(challenge.test) && through !== "ping") return resultsFor(home, challenge, "not-checked", "The word came by command, not through the tool, so it does not show that the agent can reach TaskFollow's tools", now, via, through);
+  if (challenge.test === "t8") return resultsFor(home, challenge, "yes-you-told-us", "A job on this computer marked it at or after the set time; whether that was the assistant's scheduler or a detached command, TaskFollow cannot tell", now, via, through);
   return resultsFor(home, challenge, "yes-tested", "TaskFollow saw it: the agent returned the word only this ability could give it", now, via, through);
 }
 
