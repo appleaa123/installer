@@ -49,6 +49,8 @@ export type NextResult =
 export interface Advanced {
   readonly state: InstallState;
   readonly result: NextResult;
+  /** Something the person should hear about the change (for example a skill folder that was not put back). */
+  readonly note?: string;
 }
 
 export type VerifyResult =

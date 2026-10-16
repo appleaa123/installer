@@ -121,6 +121,7 @@ describe("the doctor and the sweep (review B5)", () => {
     await saveChallenge(home, { ...challenge, details: { file } });
     await sweepChecks(home, NOW);
     expect((await loadChallenge(home, challenge.id))?.status).toBe("cancelled");
-    expect(await readdir(join(work, "taskfollow-check"))).toEqual([]);
+    // The empty test folder goes too (PR #55 review M3).
+    await expect(readdir(join(work, "taskfollow-check"))).rejects.toThrow();
   });
 });
