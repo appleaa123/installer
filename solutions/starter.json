@@ -1,6 +1,6 @@
 {
   "id": "starter",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "data_contract": {
     "entities": {
       "contact": {
@@ -675,6 +675,114 @@
             "input": {
               "rows": "${open.records}",
               "totals": "${due}"
+            },
+            "tools": [
+              "channel.list",
+              "channel.notify"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "workflow": "meeting-follow-up",
+      "when": {
+        "step": "services.records",
+        "equals": "google-sheets"
+      },
+      "description": "Put your meeting notes in the meeting-notes folder and run it, and it lists who does what by when; creating tasks and sending the notes wait for your yes. Notes you paste in the chat or email to your assistant, it handles with you in the chat.",
+      "mode": "typed",
+      "trigger": {
+        "manual": true
+      },
+      "steps": [
+        {
+          "id": "notes",
+          "task": {
+            "prompt": "Use the meeting-follow-up skill: read the meeting notes in files and list the action items: what is to be done, who does it and by when (YYYY-MM-DD), leaving owner or due empty when the notes do not say; never invent one. Give each action a short id made of the meeting's date and a number. Write a short summary of the notes. Set send_to to the one address the owner's rules say the notes go to, or leave it empty.",
+            "may_use": [
+              "Read"
+            ],
+            "read_from": "meeting-notes",
+            "output": {
+              "type": "object",
+              "properties": {
+                "meeting": {
+                  "type": "string"
+                },
+                "actions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "what": {
+                        "type": "string"
+                      },
+                      "owner": {
+                        "type": "string"
+                      },
+                      "due": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "what"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "send_to": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "meeting",
+                "actions",
+                "send_to",
+                "summary"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "id": "tasks",
+          "when": "len(notes.actions) > 0",
+          "approve": {
+            "tool": "records.import",
+            "args": {
+              "entity": "action",
+              "rows": "${notes.actions}"
+            },
+            "why": "Add the meeting's action items to your list"
+          }
+        },
+        {
+          "id": "send",
+          "when": "notes.send_to != \"\"",
+          "approve": {
+            "tool": "channel.send",
+            "args": {
+              "channel": "email",
+              "to": "${notes.send_to}",
+              "subject": "Notes: ${notes.meeting}",
+              "text": "${notes.summary}"
+            },
+            "why": "Send the meeting notes to the people your rules name"
+          }
+        },
+        {
+          "id": "report",
+          "agent": {
+            "instructions": "Use the meeting-follow-up skill: the result is the list of actions from the meeting, one line each with who does what by when (saying when the notes give no owner or date). Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
+            "input": {
+              "notes": "${notes}"
             },
             "tools": [
               "channel.list",

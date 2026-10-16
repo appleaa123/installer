@@ -1,4 +1,4 @@
-import { lstat, readdir, realpath } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rmdir } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { confinedPath } from "./actions.js";
 import { READ_TOOL } from "./agent-hook.js";
@@ -73,6 +73,32 @@ export async function notesFolder(workDir: string): Promise<string | null> {
   if (info.isSymbolicLink()) throw new InputError(`${folder} is a symbolic link, so TaskFollow will not read from it; make it a plain folder`);
   if (!info.isDirectory()) throw new InputError(`${folder} is not a folder; make it a plain folder for meeting notes`);
   return realpath(folder);
+}
+
+/** At `workflow add`: the meeting-notes folder, made when absent; refused (before anything is written) when it is a link or not a folder. */
+export async function prepareNotesFolder(workDir: string): Promise<{ readonly path: string; readonly created: boolean }> {
+  const existing = await notesFolder(workDir);
+  if (existing !== null) return { path: existing, created: false };
+  await mkdir(join(workDir, NOTES_DIR));
+  return { path: await realpath(join(workDir, NOTES_DIR)), created: true };
+}
+
+/**
+ * At uninstall and at the end of a consult (D109, 9.13 item 5): the folder goes only when TaskFollow made it, it is still
+ * that plain folder, and it is empty. The owner's notes are never deleted. Returns why it was left, or null.
+ */
+export async function removeNotesFolder(entry: { readonly path: string; readonly created: boolean }): Promise<string | null> {
+  let info;
+  try {
+    info = await lstat(entry.path);
+  } catch {
+    return null;
+  }
+  if (!info.isDirectory() || (await realpath(entry.path).catch(() => "")) !== entry.path) return "meeting-notes/ was left: it is no longer the folder TaskFollow made";
+  if (!entry.created) return "meeting-notes/ was left: TaskFollow did not create it";
+  if ((await readdir(entry.path)).length > 0) return "meeting-notes/ was left: it holds your notes";
+  await rmdir(entry.path);
+  return null;
 }
 
 /** The newest regular file in `<install folder>/meeting-notes/`, or null when there is none. */

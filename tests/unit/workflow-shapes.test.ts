@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { consultCleanup, restoreAfterConsult } from "../../src/core/consult.js";
 import { checkValues, contractTags } from "../../src/core/contract.js";
+import { NOTES_DIR } from "../../src/core/task-files.js";
+import { loadWritten, removeWritten } from "../../src/core/workflow-skill.js";
 import { recordResult, type CheckResult } from "../../src/core/checks.js";
 import { decideHome, SHAPES } from "../../src/core/homes.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
@@ -259,5 +262,129 @@ describe("invoices due each week (Task 5b, D166)", () => {
 
   it("the invoices-due template says to list amounts and never total them", () => {
     expect(readFileSync("solutions/shapes/invoices-due/SKILL.md", "utf8")).toContain("Never add amounts up or give a total yourself.");
+  });
+});
+
+describe("meeting follow-up and its notes folder (Task 6, D166)", () => {
+  const notesOf = async (home: string) => join((await loadState(home))?.work_dir ?? "", NOTES_DIR);
+
+  it("meeting-follow-up loads and records its shape: a manual run reading the newest note", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    expect((await added(home, "meeting-follow-up")).trigger).toEqual({ kind: "manual" });
+    expect((await loadWorkflowState(home, "meeting-follow-up"))?.shape).toBe("meeting-follow-up");
+    expect(step("meeting-follow-up", "notes")).toMatchObject({ kind: "task", task: { may_use: ["Read"], read_from: "meeting-notes", changes: false } });
+    expect(offered({ ...SOLO, "services.records": "google-sheets" })).toContain("meeting-follow-up");
+    expect(offered(SOLO)).not.toContain("meeting-follow-up");
+  });
+
+  it("the notes schema allows an action with no owner or date", () => {
+    const notes = step("meeting-follow-up", "notes");
+    if (notes?.kind !== "task") throw new Error("no notes task");
+    const action = ((notes.task.output as { properties: { actions: { items: { required: string[] } } } }).properties.actions.items);
+    expect(action.required).toEqual(["what"]);
+  });
+
+  it("tasks is one approve of records.import with the actions as rows, then one send to one address", () => {
+    expect(step("meeting-follow-up", "tasks")).toMatchObject({ kind: "approve", tool: "records.import", args: { entity: "action", rows: "${notes.actions}" } });
+    expect(step("meeting-follow-up", "send")).toMatchObject({ kind: "approve", tool: "channel.send", when: 'notes.send_to != ""', args: { to: "${notes.send_to}" } });
+    expectReportEnding("meeting-follow-up");
+  });
+
+  it("meeting-follow-up is hard-rule by the floor in decideHome", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    const workflow = await added(home, "meeting-follow-up");
+    const decided = await decideHome(home, workflow, { whileAway: false, runner: { agent: "fake-agent", version: "9.9.9" } }, AT);
+    expect(decided.why).toBeDefined();
+    expect(["runner", "draft-only", "by-hand"]).toContain(decided.home.home);
+    expect(decided.home.home).not.toBe("agent-scheduler");
+  });
+
+  it("workflow add makes meeting-notes/ and records created: true", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await added(home, "meeting-follow-up");
+    const folder = await notesOf(home);
+    expect((await lstat(folder)).isDirectory()).toBe(true);
+    expect((await loadWritten(home)).notes_folder).toEqual({ path: await realpath(folder), created: true });
+  });
+
+  it("an existing meeting-notes/ is recorded created: false", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await mkdir(await notesOf(home));
+    await added(home, "meeting-follow-up");
+    expect((await loadWritten(home)).notes_folder?.created).toBe(false);
+  });
+
+  it("workflow add refuses a meeting-notes that is a symbolic link, and writes nothing", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await symlink(await mkdtemp(join(tmpdir(), "elsewhere-")), await notesOf(home));
+    await expect(workflowCommand(home, "add", "meeting-follow-up", undefined, () => AT)).rejects.toThrow("symbolic link");
+    expect(await loadWorkflowState(home, "meeting-follow-up")).toBeNull();
+  });
+
+  it("uninstall removes meeting-notes/ only when TaskFollow created it and it is empty", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await added(home, "meeting-follow-up");
+    const removed = await removeWritten(home);
+    await expect(lstat(await notesOf(home))).rejects.toThrow();
+    expect(removed.left).toEqual([]);
+  });
+
+  it("uninstall leaves a folder with notes and says so", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await added(home, "meeting-follow-up");
+    await writeFile(join(await notesOf(home), "monday.md"), "Sam: send the quote by Friday.");
+    const removed = await removeWritten(home);
+    expect(await readFile(join(await notesOf(home), "monday.md"), "utf8")).toContain("Sam");
+    expect(removed.left).toEqual([{ path: await realpath(await notesOf(home)), why: "meeting-notes/ was left: it holds your notes" }]);
+  });
+
+  it("uninstall leaves a folder TaskFollow did not create", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await mkdir(await notesOf(home));
+    await added(home, "meeting-follow-up");
+    const removed = await removeWritten(home);
+    expect((await lstat(await notesOf(home))).isDirectory()).toBe(true);
+    expect(removed.left.map((entry) => entry.why)).toEqual(["meeting-notes/ was left: TaskFollow did not create it"]);
+  });
+
+  it("uninstall leaves a meeting-notes that became a symbolic link", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await added(home, "meeting-follow-up");
+    const folder = await notesOf(home);
+    await rm(folder, { recursive: true });
+    await symlink(await mkdtemp(join(tmpdir(), "elsewhere-")), folder);
+    const removed = await removeWritten(home);
+    expect((await lstat(folder)).isSymbolicLink()).toBe(true);
+    expect(removed.left.map((entry) => entry.why)).toEqual(["meeting-notes/ was left: it is no longer the folder TaskFollow made"]);
+  });
+
+  it("add install after a consult records the left folder again", async () => {
+    const home = await shapesHome(["meeting-follow-up"]);
+    await added(home, "meeting-follow-up");
+    await writeFile(join(await notesOf(home), "monday.md"), "notes");
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    expect((await loadWritten(home)).notes_folder).toBeUndefined();
+    await restoreAfterConsult(home);
+    expect((await loadWritten(home)).notes_folder).toEqual({ path: await realpath(await notesOf(home)), created: true });
+  });
+
+  it("every SHAPES id has a template", () => {
+    for (const id of Object.keys(SHAPES)) expect(readFileSync(`solutions/shapes/${id}/SKILL.md`, "utf8")).toContain(`name: ${id}`);
+  });
+
+  it("no shipped suggestion has an approve or an L2/L3 tool step with foreach", () => {
+    for (const flow of RAW.workflows) {
+      for (const raw of (flow.steps ?? []) as Record<string, unknown>[]) expect(raw.foreach === undefined || raw.tool === "channel.inbox" || raw.judge !== undefined).toBe(true);
+    }
+  });
+
+  it("every shipped shape loads, records its shape, and ends with report", async () => {
+    const ids = Object.keys(SHAPES);
+    const home = await shapesHome(ids);
+    for (const id of ids) {
+      await added(home, id);
+      expect((await loadWorkflowState(home, id))?.shape).toBe(id);
+      expect(shape(id).steps.filter((entryStep) => entryStep.kind === "agent")[0]?.id).toBe(["inbox-triage", "inbox-triage-replies"].includes(id) ? "triage" : "report");
+    }
   });
 });

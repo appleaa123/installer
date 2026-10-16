@@ -7,6 +7,7 @@ import { InputError } from "./inputs.js";
 import { loadProfileById, type RuntimeProfile } from "./profile.js";
 import { REFERENCES_DIR, SKILL_FILE, skillRoots, type SkillRoots } from "./skills.js";
 import { loadState } from "./state.js";
+import { removeNotesFolder } from "./task-files.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, workflowIds } from "./workflow.js";
 
@@ -30,6 +31,8 @@ export interface WrittenFolder {
 export interface Written {
   readonly skill_folders: readonly WrittenFolder[];
   readonly agent_file?: { readonly path: string; readonly created: boolean };
+  /** D171: the install folder's meeting-notes/ (its real path), and whether TaskFollow made it. */
+  readonly notes_folder?: { readonly path: string; readonly created: boolean };
 }
 
 export async function loadWritten(home: string): Promise<Written> {
@@ -164,6 +167,8 @@ export async function removeWritten(home: string): Promise<{ readonly skill_fold
     await rm(real, { recursive: true, force: true });
     removed.push(entry.path);
   }
+  const notesLeft = written.notes_folder ? await removeNotesFolder(written.notes_folder) : null;
+  if (notesLeft !== null && written.notes_folder) left.push({ path: written.notes_folder.path, why: notesLeft });
   const agentFile = written.agent_file ? await removeSection(written.agent_file.path, written.agent_file.created).catch((error: Error) => `left: ${error.message}`) : "absent";
   await rm(join(home, WRITTEN_FILE), { force: true });
   return { skill_folders: removed, left, agent_file: agentFile };

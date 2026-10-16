@@ -141,7 +141,7 @@ describe("INSTALL.md", () => {
     expect(starter.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
     expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "data.google", "data.connect", "channels.telegram", "activate.schedule"]));
     expect(starter.steps.map((step) => step.phase)).toEqual(expect.arrayContaining(["CHANNELS", "WORKFLOWS", "DRY_RUN", "ACTIVATE"]));
-    expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary", "weekly-note", "inbox-triage", "inbox-triage-replies", "lead-qualification", "crm-update", "invoice-processing", "invoices-due"]);
+    expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary", "weekly-note", "inbox-triage", "inbox-triage-replies", "lead-qualification", "crm-update", "invoice-processing", "invoices-due", "meeting-follow-up"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
     expect(usesSkillswiki(starter)).toBe(false);
   });
