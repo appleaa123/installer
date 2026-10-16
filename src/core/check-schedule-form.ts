@@ -16,6 +16,7 @@ const TITLE = "a check of your assistant's own schedule";
 const ok = (body: string): FormResult => ({ status: 200, title: TITLE, body });
 const time = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "the set time");
 const button = (path: string, route: string, label: string): string => `<form method="post" action="${path}${route}"><button type="submit">${escapeHtml(label)}</button></form>`;
+const LOST_WORD = "<p>The computer may have restarted, or the page was reopened, so it no longer has the test's word. Ask your assistant to start the check again.</p>";
 const cleanUp = (challenge: Challenge): string => `<p>${escapeHtml(coworkCleanUp("the TaskFollow check task", challenge.details?.skill ?? "the test skill"))}.</p>`;
 
 function checklist(challenge: Challenge, context: FormContext): FormResult {
@@ -27,8 +28,10 @@ function checklist(challenge: Challenge, context: FormContext): FormResult {
 <li>Check that the task shows in its list of scheduled tasks.</li></ol>${button(context.path, "/seen", "I see the task in its list")}`);
   }
   if (!details.closed_at) {
+    // Review H1: without its word (a restart, or a page reopened in the terminal) nothing can be planted or shown.
+    if (!context.word) return ok(`<h1>This page lost its word</h1>${LOST_WORD}`);
     const subject = details.plant === "person"
-      ? context.word ? `<p>Before you close the window, write down this subject. After closing it, send yourself an email from your phone with exactly this subject:</p><p class="word">${escapeHtml(subjectFor(challenge.id, context.word))}</p><p>Please write it down now and do not tell your assistant.</p>` : "<p>This page lost its word (the computer may have restarted). Ask your assistant to start the check again.</p>"
+      ? `<p>Before you close the window, write down this subject. After closing it, send yourself an email from your phone with exactly this subject:</p><p class="word">${escapeHtml(subjectFor(challenge.id, context.word))}</p><p>Please write it down now and do not tell your assistant.</p>`
       : "<p>When you have closed the window, TaskFollow sends the test email to your own address.</p>";
     return ok(`<h1>Now close the window</h1>${subject}<p>Close your assistant's window (and the laptop's lid, if you want it to run while the laptop is closed). Keep this page.</p>${button(context.path, "/closed", "I closed the window")}`);
   }
@@ -95,10 +98,17 @@ export const scheduledForm: CheckForm = {
     }
     if (route === "/closed") {
       if (!challenge.details?.seen_task) return checklist(challenge, context);
-      const next = { ...challenge, details: { ...(challenge.details ?? {}), closed_at: context.now } };
-      await saveChallenge(context.home, next);
-      const planted = context.word && challenge.details.plant !== "person" ? await plantAndAudit(context.home, context.plant ?? plantByChannel, challenge.id, context.word, "t8", context.now) : false;
-      const note = planted ? "TaskFollow has sent the test email to your own address." : "Now send yourself the email with the subject you wrote down, from your phone.";
+      if (!context.word) return ok(`<h1>This page lost its word</h1>${LOST_WORD}`);
+      const wantsPlant = challenge.details.plant !== "person";
+      const planted = wantsPlant ? await plantAndAudit(context.home, context.plant ?? plantByChannel, challenge.id, context.word, "t8", context.now) : false;
+      // Review H4: the window is closed either way; a failed plant becomes the person sending it from their phone now.
+      const plant: Record<string, string> = wantsPlant && !planted ? { plant: "person" } : {};
+      await saveChallenge(context.home, { ...challenge, details: { ...(challenge.details ?? {}), ...plant, closed_at: context.now } });
+      const note = planted
+        ? "TaskFollow has sent the test email to your own address."
+        : wantsPlant
+          ? `TaskFollow could not send the test email, so please send it yourself now, from your phone, with exactly this subject (and do not tell your assistant):</p><p class="word">${escapeHtml(subjectFor(challenge.id, context.word))}`
+          : "Now send yourself the email with the subject you wrote down, from your phone.";
       return ok(`<h1>Thank you</h1><p>${note}</p><p>The task runs at ${escapeHtml(time(challenge.opens_at))}. Come back to this page afterwards.</p>`);
     }
     if (route === "/confirm") return confirm(challenge, form, context);

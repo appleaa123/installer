@@ -1,4 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { AUDIT_FILE } from "../../src/core/audit.js";
+import { ActionFailure } from "../../src/core/failure.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { serveCheckPage } from "../../src/core/check-page.js";
 import { checkCommand } from "../../src/core/check-commands.js";
@@ -161,6 +164,34 @@ describe("check T8: the agent's own scheduler (plan Task 10)", () => {
     const early = await markChallenge(second.home, second.out.id, second.words, { interactive: false, via: "cli", through: "mark" }, later(3));
     expect(early).toMatchObject({ result: "not-checked", reason: expect.stringContaining("before the scheduled time") });
     expect((await loadChallenge(second.home, second.out.id))?.status).toBe("cancelled");
+  });
+
+  it("a reopened page that lost its word says so at the close step and does not mark the window closed (review H1)", async () => {
+    const { home, out } = await setup();
+    const page = await serveCheckPage(home, out.id, { now: () => AT, ttlMs: 60_000 });
+    pages.push(page);
+    const next = await (await post(`${page.url}/seen`)).text();
+    expect(next).toContain("lost its word");
+    expect(next).not.toContain("TaskFollow sends the test email");
+    const closed = await (await post(`${page.url}/closed`)).text();
+    expect(closed).toContain("lost its word");
+    expect((await loadChallenge(home, out.id))?.details?.closed_at).toBeUndefined();
+  });
+
+  it("when the plant fails, shows the subject to send from the phone instead of failing past the point of no return (review H4)", async () => {
+    const { home, out, emailWord } = await setup();
+    const page = await serveCheckPage(home, out.id, { word: emailWord, now: () => AT, ttlMs: 60_000, plant: async () => { throw new ActionFailure("No email secret is stored"); } });
+    pages.push(page);
+    await post(`${page.url}/seen`);
+    const response = await post(`${page.url}/closed`);
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).toContain(`TASKFOLLOW-CHECK ${out.id} ${emailWord}`);
+    expect(body).toContain("from your phone");
+    const challenge = await loadChallenge(home, out.id);
+    expect(challenge?.details).toMatchObject({ plant: "person" });
+    expect(challenge?.details?.closed_at).toBeDefined();
+    expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain("check.plant_failed");
   });
 
   it("ends with the clean-up steps in the app, never 'ask your assistant'", async () => {

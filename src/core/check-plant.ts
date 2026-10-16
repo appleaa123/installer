@@ -1,5 +1,7 @@
 import { appendAudit } from "./audit.js";
 import { loadChannel, openChannel } from "./channels.js";
+import { ActionFailure } from "./failure.js";
+import { InputError } from "./inputs.js";
 
 /**
  * Planting a test email (spec 5.2 T2 and T8, D160): TaskFollow's own email channel sends it to that channel's own
@@ -19,9 +21,20 @@ export const plantByChannel: Plant = async (home, subject, text) => {
   return true;
 };
 
-/** Plants through `plant` and audits it (never the word); false when TaskFollow has no way to send it. */
+/**
+ * Plants through `plant` and audits it (never the word); false when TaskFollow has no way to send it, or sending failed
+ * (a missing key, a refused sign-in): then the caller falls back to the person's page (review H4).
+ */
 export async function plantAndAudit(home: string, plant: Plant, id: string, word: string, test: string, now: string): Promise<boolean> {
-  if (!(await plant(home, subjectFor(id, word), PLANT_BODY))) return false;
+  let sent: boolean;
+  try {
+    sent = await plant(home, subjectFor(id, word), PLANT_BODY);
+  } catch (error) {
+    if (!(error instanceof ActionFailure || error instanceof InputError)) throw error;
+    await appendAudit(home, { ts: now, actor: "engine", event: "check.plant_failed", ref: `check:${id}`, payload: { test, why: error.message } });
+    return false;
+  }
+  if (!sent) return false;
   await appendAudit(home, { ts: now, actor: "engine", event: "check.planted", ref: `check:${id}`, payload: { test, to: "the channel's own address" } });
   return true;
 }

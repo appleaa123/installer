@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE } from "../../src/core/audit.js";
+import { ActionFailure } from "../../src/core/failure.js";
 import { serveCheckPage } from "../../src/core/check-page.js";
 import { plantByChannel } from "../../src/core/check-email.js";
 import { checkCommand } from "../../src/core/check-commands.js";
@@ -51,6 +52,17 @@ describe("check T2: reading email (plan Task 8)", () => {
     const stored = JSON.stringify(await abilities(home));
     expect(stored).not.toContain(word);
     expect(stored.toLowerCase()).not.toContain(word.toLowerCase());
+  });
+
+  it("falls back to the person's page when planting fails, and audits it without the word (review H4)", async () => {
+    const home = await runnerHome();
+    const failing = { interactive: false, now: () => AT, launch: async (_home: string, id: string, word: string | undefined) => (launched.push({ id, word }), { pid: 0, opened: true }), plant: async () => { throw new ActionFailure("No email secret is stored"); } };
+    const out = (await checkCommand(home, (await loadState(home)) ?? undefined, ["start", "t2"], {}, failing)) as { id: string; page: string };
+    expect(out.page).toContain("opened in the person's browser");
+    expect(launched).toHaveLength(1);
+    const audit = await readFile(join(home, AUDIT_FILE), "utf8");
+    expect(audit).toContain("check.plant_failed");
+    expect(audit).not.toContain(launched[0]?.word ?? "nothing");
   });
 
   it("opens the person's page with the word and the subject to send when TaskFollow cannot plant", async () => {
