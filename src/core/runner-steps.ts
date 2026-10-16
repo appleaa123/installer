@@ -36,7 +36,8 @@ export interface Exec {
 export type StepOutcome =
   | { readonly kind: "done"; readonly output: unknown; readonly actions: number; readonly needs_human: number; readonly urgent?: boolean }
   | { readonly kind: "wait"; readonly approval: number }
-  | { readonly kind: "stop"; readonly status: "partial" | "failed"; readonly reason: string; readonly drift?: boolean };
+  /** `completed` ends a run early with nothing to do and nobody needed (D171: no file to read). */
+  | { readonly kind: "stop"; readonly status: "completed" | "partial" | "failed"; readonly reason: string; readonly drift?: boolean };
 
 const now = (exec: Exec): string => exec.ctx.now();
 

@@ -1,4 +1,5 @@
-import { appendFile, open, readFile } from "node:fs/promises";
+import { appendFile, open, readFile, realpath } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { canonicalJson } from "./audit.js";
 
 /**
@@ -14,6 +15,8 @@ import { canonicalJson } from "./audit.js";
 export const REASON_TOOL = "mcp__installer__actions_reason";
 /** Claude Code's own tool that returns the answer when a run has `--json-schema`; it acts on nothing. */
 export const ANSWER_TOOL = "StructuredOutput";
+/** Claude Code's built-in file reader; a task may use it only on the files the runner chose (D171, task-files.ts). */
+export const READ_TOOL = "Read";
 /** Claude Code reads exit 2 from a hook as "block this call". */
 export const HOOK_BLOCK = 2;
 const SUMMARY_MAX = 200;
@@ -31,6 +34,8 @@ export interface HookConfig {
   readonly changes: boolean;
   /** D151: a person approved this one call; nothing else may run, and it may run once. */
   readonly exact?: { readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
+  /** D171: the absolute paths the runner chose; a `Read` of exactly one of them is the only read allowed. */
+  readonly files?: readonly string[];
 }
 
 export type Phase = "pre" | "post" | "failed";
@@ -51,7 +56,23 @@ export async function loadHookConfig(file: string): Promise<HookConfig> {
   }
   const exact = raw.exact;
   if (exact !== undefined && !(isRecord(exact) && typeof exact.tool === "string" && isRecord(exact.args))) throw new Error("The hook settings are damaged");
-  return { record: raw.record, may_use: raw.may_use as string[], changes: raw.changes, ...(exact === undefined ? {} : { exact: { tool: exact.tool as string, args: exact.args as Raw } }) };
+  const files = raw.files;
+  if (files !== undefined && !(Array.isArray(files) && files.every((path) => typeof path === "string" && isAbsolute(path)))) throw new Error("The hook settings are damaged");
+  return {
+    record: raw.record, may_use: raw.may_use as string[], changes: raw.changes,
+    ...(exact === undefined ? {} : { exact: { tool: exact.tool as string, args: exact.args as Raw } }), ...(files === undefined ? {} : { files: files as string[] }),
+  };
+}
+
+const READ_REFUSED = "This step may read only the files TaskFollow gave it.";
+
+/** D171: a Read of exactly one of the files the runner chose, checked after resolving links; nothing else. */
+async function decideRead(event: Raw, config: HookConfig): Promise<Decision> {
+  const input = event.tool_input;
+  const path = isRecord(input) && typeof input.file_path === "string" ? input.file_path : "";
+  if (!config.may_use.includes(READ_TOOL) || !isAbsolute(path) || !config.files?.length) return { allow: false, reason: READ_REFUSED };
+  const real = await realpath(path).catch(() => null);
+  return real !== null && config.files.includes(real) ? { allow: true } : { allow: false, reason: READ_REFUSED };
 }
 
 /** The file whose creation marks the approved call as made: next to the step's record, created at most once. */
@@ -92,6 +113,8 @@ export function matchesRule(rule: string, tool: string, input: unknown): boolean
 export function decide(event: Raw, config: HookConfig): Decision {
   const tool = typeof event.tool_name === "string" ? event.tool_name : "";
   if (tool === REASON_TOOL || tool === ANSWER_TOOL) return { allow: true };
+  // D171: Read is decided by its exact path (decideRead), before and never through matchesRule, which sees only the name.
+  if (tool === READ_TOOL) return { allow: false, reason: READ_REFUSED };
   if (!config.may_use.some((rule) => matchesRule(rule, tool, event.tool_input))) {
     return { allow: false, reason: `This step may only use: ${config.may_use.join(", ")}. Return what you found instead, or explain what a person should do.` };
   }
@@ -145,7 +168,7 @@ export async function handleHook(phase: Phase, stdin: string, config: HookConfig
   if (event.tool_name === ANSWER_TOOL) return { exit: 0, stdout: "" };
   let decision: Decision;
   try {
-    decision = phase !== "pre" ? { allow: true } : config.exact ? await decideExact(event, config.exact, config.record) : decide(event, config);
+    decision = phase !== "pre" ? { allow: true } : config.exact ? await decideExact(event, config.exact, config.record) : event.tool_name === READ_TOOL ? await decideRead(event, config) : decide(event, config);
   } catch {
     return { exit: HOOK_BLOCK, stdout: "", stderr: "TaskFollow could not check this tool call, so it was blocked." };
   }

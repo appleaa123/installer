@@ -5,12 +5,14 @@ import { confinedPath } from "./actions.js";
 import { runTask } from "./agent-task.js";
 import { interpolate, type Scope } from "./expressions.js";
 import { ActionFailure } from "./failure.js";
+import { InputError } from "./inputs.js";
 import { validateSchema } from "./json-schema.js";
 import { protectedFields, stripFields } from "./judge.js";
 import { loadProfileById, versionAtLeast } from "./profile.js";
 import { noteRunPassed } from "./check-fresh.js";
 import { auditRun, fingerprint, RUNS_DIR, saveStep, type RunRecord } from "./runs.js";
 import type { Exec, StepOutcome } from "./runner-steps.js";
+import { chooseAttachments, chooseNote, NO_ATTACHMENT, NO_NOTE, type ChosenFile, type ReadFrom } from "./task-files.js";
 import type { WorkflowStep } from "./workflow.js";
 
 /**
@@ -72,19 +74,41 @@ async function reachedOwnTools(path: string): Promise<boolean> {
   });
 }
 
+/** D171: the files the runner chose for this step; the model never names a path. */
+async function chosenFiles(exec: Exec, readFrom: ReadFrom, input: unknown): Promise<readonly ChosenFile[]> {
+  if (readFrom === "attachments") return chooseAttachments(exec.home, input);
+  const workDir = exec.state?.work_dir;
+  if (!workDir) throw new ActionFailure("TaskFollow does not know which folder this install was started from, so it cannot read meeting-notes/; paste the notes in the chat instead");
+  try {
+    const note = await chooseNote(workDir);
+    return note === null ? [] : [note];
+  } catch (error) {
+    if (error instanceof InputError) throw new ActionFailure(error.message);
+    throw error;
+  }
+}
+
 export async function runTaskStep(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "task" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const spec = step.task;
   if (record.sandbox && spec.changes) {
     await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
     return { kind: "done", output: null, actions: 0, needs_human: 0 };
   }
+  const interpolated = spec.input === undefined ? null : interpolate(spec.input, scope);
+  const files = spec.read_from === undefined ? undefined : await chosenFiles(exec, spec.read_from, interpolated);
+  if (files !== undefined && files.length === 0) {
+    // D171: no usable file, no agent run: the run ends with a plain message and nothing is spent.
+    await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
+    return { kind: "stop", status: "completed", reason: spec.read_from === "attachments" ? NO_ATTACHMENT : NO_NOTE };
+  }
   const profile = await profileFor(exec);
-  const input = stripFields(spec.input === undefined ? null : interpolate(spec.input, scope), protectedFields(exec.contract));
+  const stripped = stripFields(interpolated, protectedFields(exec.contract));
+  const input = files === undefined ? stripped : { ...(typeof stripped === "object" && stripped !== null && !Array.isArray(stripped) ? stripped : { input: stripped }), files };
   const path = await confinedPath(exec.home, callsFile(record, step.id));
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await saveStep(exec.home, record, { step: step.id, status: "failed", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(input), error: TASK_INTERRUPTED });
   const skills = await exec.skills();
-  const result = await runTask(exec.home, profile, { prompt: spec.prompt, input, may_use: spec.may_use, changes: spec.changes, output: spec.output, timeoutMs: spec.timeout_minutes * MINUTE_MS, record: path, skills }, {
+  const result = await runTask(exec.home, profile, { prompt: spec.prompt, input, may_use: spec.may_use, changes: spec.changes, output: spec.output, timeoutMs: spec.timeout_minutes * MINUTE_MS, record: path, skills, ...(files ? { files: files.map((file) => file.path) } : {}) }, {
     env: { ...(exec.env ?? process.env) },
   });
   await seal(exec, record, step.id, path);

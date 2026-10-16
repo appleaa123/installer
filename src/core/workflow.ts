@@ -5,6 +5,7 @@ import { isTimeZone, parseCron } from "./cron.js";
 import { conditionRoots, parseCondition, templateRoots } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { checkSchema } from "./json-schema.js";
+import { READ_FROM, READ_TOOL, type ReadFrom } from "./task-files.js";
 import type { ToolRegistry } from "./tools.js";
 
 /**
@@ -77,6 +78,8 @@ export interface TaskSpec {
   readonly changes: boolean;
   readonly output: Readonly<Record<string, unknown>>;
   readonly timeout_minutes: number;
+  /** D171: with `Read` in `may_use`, which files the runner chooses for the agent to read (task-files.ts). */
+  readonly read_from?: ReadFrom;
 }
 
 /** A calc step (D144): arithmetic on a list an earlier step produced; `compare` is usually `${previous.<step>}`. */
@@ -216,8 +219,9 @@ function parseMayUse(value: unknown, where: string, fail: (message: string) => n
   if (!Array.isArray(value) || value.length === 0) return fail(`${where}.may_use must list the tools the agent may use`);
   return value.map((rule, index) => {
     const at = `${where}.may_use[${index}]`;
+    if (rule === READ_TOOL) return rule;
     if (typeof rule !== "string" || !(MCP_RULE.test(rule) || BASH_RULE.test(rule))) {
-      return fail(`${at} must be mcp__<server>, mcp__<server>__<tool>, or Bash(...) with a command, for example Bash(shopify store execute:*)`);
+      return fail(`${at} must be mcp__<server>, mcp__<server>__<tool>, Bash(...) with a command, for example Bash(shopify store execute:*), or Read with read_from`);
     }
     if (rule.startsWith("mcp__installer")) return fail(`${at}: TaskFollow's own tools are used through tool and approve steps, not by a task`);
     return rule;
@@ -234,9 +238,14 @@ function parseTask(value: unknown, where: string, fail: (message: string) => nev
   const minutes = value.timeout_minutes ?? DEFAULT_TASK_MINUTES;
   if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TASK_MINUTES) return fail(`${where}.timeout_minutes must be a whole number from 1 to ${MAX_TASK_MINUTES}`);
   if (value.changes !== undefined && typeof value.changes !== "boolean") return fail(`${where}.changes must be true or false`);
+  const mayUse = parseMayUse(value.may_use, where, fail);
+  const readFrom = value.read_from;
+  if (readFrom !== undefined && !(READ_FROM as readonly unknown[]).includes(readFrom)) return fail(`${where}.read_from must be ${READ_FROM.join(" or ")}`);
+  if (mayUse.includes(READ_TOOL) !== (readFrom !== undefined)) return fail(`${where}: ${READ_TOOL} in may_use and read_from go together (the runner chooses the files to read)`);
   return {
-    prompt: text(value.prompt, `${where}.prompt`, fail), may_use: parseMayUse(value.may_use, where, fail), changes: value.changes === true,
+    prompt: text(value.prompt, `${where}.prompt`, fail), may_use: mayUse, changes: value.changes === true,
     output: value.output as Raw, timeout_minutes: minutes, ...(value.input === undefined ? {} : { input: value.input }),
+    ...(readFrom === undefined ? {} : { read_from: readFrom as ReadFrom }),
   };
 }
 
