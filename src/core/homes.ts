@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { appendAudit, canonicalJson } from "./audit.js";
-import { freshResult, type Need } from "./checks.js";
+import { freshResult, type CheckResult, type Need } from "./checks.js";
 import { readConfig } from "./data-source.js";
 import { needsApproval } from "./levels.js";
 import { loadWorkflowState, saveWorkflowState } from "./sandbox.js";
@@ -80,6 +80,11 @@ export async function confirmDescribed(home: string, workflow: string, hashOfDes
   await appendAudit(home, { ts: now, actor: "human", event: "check.described", ref: `workflow:${workflow}`, payload: { sends_to_others: answers.sendsToOthers, writes_or_deletes: answers.writesOrDeletes } });
 }
 
+/** The fresh scheduler result that `passed` would have used: the workflow's own, else the agent-wide one. */
+async function newestScheduler(home: string, who: AgentRef, now: string, workflow: string): Promise<CheckResult | null> {
+  return (await freshResult(home, "scheduler", who.agent, who.version, now, workflow)) ?? (await freshResult(home, "scheduler", who.agent, who.version, now));
+}
+
 async function passed(home: string, need: Need, who: AgentRef | undefined, now: string, workflow: string, accept: readonly string[]): Promise<boolean> {
   if (!who) return false;
   for (const scope of [workflow, undefined]) {
@@ -93,13 +98,15 @@ export async function decideHome(home: string, workflow: Workflow, wish: Wish, n
   const rule = await hardRule(home, workflow);
   const runnerOk = (await passed(home, "runner", wish.runner, now, workflow.id, ["yes-tested"])) && (await passed(home, "tools", wish.runner, now, workflow.id, ["yes-tested"]));
   const schedulerOk = await passed(home, "scheduler", wish.homeAgent, now, workflow.id, ["yes-tested", "yes-you-told-us"]);
+  // Review H2: "while you are away" only when the schedule's result says it ran then (around the set time, window closed).
+  const awayOk = schedulerOk && wish.homeAgent !== undefined && (await newestScheduler(home, wish.homeAgent, now, workflow.id))?.while_away === true;
   const missing: Need[] = [...(runnerOk ? [] : (["runner", "tools"] as Need[])), ...(schedulerOk || rule.hard ? [] : (["scheduler"] as Need[]))];
   if (rule.hard) {
     if (runnerOk) return { home: { home: "runner" }, why: `TaskFollow's runner, with its gate: ${rule.why}`, missing };
     return { home: { home: "draft-only" }, why: `Draft-only: ${rule.why}, and TaskFollow's runner is not tested for this agent; the agent prepares, you send`, missing };
   }
   const agentHome: Home | null = schedulerOk && wish.homeAgent ? { home: "agent-scheduler", agent: wish.homeAgent.agent } : null;
-  if (wish.whileAway && agentHome) return { home: agentHome, why: `Your agent's own schedule, so it runs while you are away: ${rule.why}`, missing };
+  if (wish.whileAway && agentHome && awayOk) return { home: agentHome, why: `Your agent's own schedule, so it runs while you are away: ${rule.why}`, missing };
   if (runnerOk) return { home: { home: "runner" }, why: `TaskFollow's runner, which keeps a record of each run: ${rule.why}`, missing };
   if (agentHome) return { home: agentHome, why: `Your agent's own schedule: ${rule.why}`, missing };
   return { home: { home: "by-hand" }, why: "Nothing that runs on a schedule is tested yet: ask your agent and it does it now", missing };

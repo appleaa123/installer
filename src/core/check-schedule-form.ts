@@ -48,14 +48,15 @@ function confirmation(challenge: Challenge, context: FormContext): FormResult {
 
 const SKILL_HONEST = "the message carried the skill's word; whether the task loads the skill on each run or copied it at setup, TaskFollow cannot tell";
 
-function outcomes(when: string): readonly { need: "scheduler" | "reads:email" | "skills"; result: ResultKind; reason: string }[] {
+function outcomes(when: string): readonly { need: "scheduler" | "reads:email" | "skills"; result: ResultKind; reason: string; while_away?: boolean }[] {
   if (when === "before") {
     const reason = "It arrived before the set time, so it cannot have come from the scheduled task";
     return [{ need: "scheduler", result: "not-checked", reason }, { need: "reads:email", result: "not-checked", reason }, { need: "skills", result: "not-checked", reason }];
   }
   const scheduler = when === "around" ? "You told us: it arrived around the set time, with the window closed" : "You told us: it arrived well after the set time, so it ran, but not while you were away (the computer may have been asleep)";
   return [
-    { need: "scheduler", result: "yes-you-told-us", reason: scheduler },
+    // Review H2: "well after" passes the schedule but not the wish to have it run while the person is away.
+    { need: "scheduler", result: "yes-you-told-us", reason: scheduler, while_away: when === "around" },
     { need: "reads:email", result: "yes-you-told-us", reason: "You told us: the scheduled task sent you the subject of the test email planted after the window closed" },
     { need: "skills", result: "yes-you-told-us", reason: `You told us: ${SKILL_HONEST}` },
   ];

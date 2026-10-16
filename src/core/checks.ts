@@ -227,9 +227,9 @@ export async function latestByNeed(home: string, agent: string): Promise<{ need:
 }
 
 /** A person's answer that is not a word (the work done once, the scheduled job's outcome): one result per need, then done. */
-export async function settleByPerson(home: string, challenge: Challenge, outcomes: readonly { readonly need: Need; readonly result: ResultKind; readonly reason: string }[], now: string): Promise<void> {
+export async function settleByPerson(home: string, challenge: Challenge, outcomes: readonly { readonly need: Need; readonly result: ResultKind; readonly reason: string; readonly while_away?: boolean }[], now: string): Promise<void> {
   await saveChallenge(home, { ...challenge, status: "done" });
   for (const outcome of outcomes) {
-    await recordResult(home, { need: outcome.need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result: outcome.result, reason: outcome.reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, through: "answer" });
+    await recordResult(home, { need: outcome.need, ...(challenge.workflow ? { workflow: challenge.workflow } : {}), result: outcome.result, reason: outcome.reason, at: now, agent: challenge.agent, agent_version: challenge.agent_version, test: challenge.test, challenge: challenge.id, through: "answer", ...(outcome.while_away === undefined ? {} : { while_away: outcome.while_away }) });
   }
 }

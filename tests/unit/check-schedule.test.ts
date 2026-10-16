@@ -90,6 +90,7 @@ describe("check T8: the agent's own scheduler (plan Task 10)", () => {
     expect(results.map((entry) => entry.result)).toEqual(expected);
     expect(results.find((entry) => entry.need === "scheduler")?.reason).toContain(phrase);
     expect(results.find((entry) => entry.need === "skills")?.reason ?? "").toMatch(when === "before" ? /before/ : /cannot tell/);
+    expect(results.find((entry) => entry.need === "scheduler")?.while_away).toBe(when === "around" ? true : when === "after" ? false : undefined);
   });
 
   it("records 'no, tested' for the scheduler only when the person says nothing arrived", async () => {
