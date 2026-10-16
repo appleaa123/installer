@@ -180,6 +180,21 @@ Each task says why it is needed and what to do, step by step.
 2. Ask: *"Which TaskFollow workflows do I have, and which skills does each use?"*
 3. Tell Claude whether the answer names your workflows (it read the section) or not. If not, the fallback is to paste the same section into the Cowork project's standing instructions.
 
+### 37. Your inbox triage on your own mailbox (item 5, D168, about 60 minutes, mostly waiting)
+
+**Why:** item 5 is done only when you use the inbox triage on your own mailbox (9.12 item 5). It was built and tested with a fake agent and a fake mailbox; this is the real thing, on your Claude Code (2.1.295 or later), in a throwaway install with your test Gmail and its app password (entered only on TaskFollow's own page; check that the address and the login on that page are the same account). Send the test emails **from a different address**. Claude prepares each command with you.
+
+1. Start a throwaway install `~/taskfollow-task37`, choose email, and connect the test Gmail. Before anything else, Claude records the checksum of `~/.claude/settings.json`.
+2. In the interview, say what in your mail matters to you (your rules) and give two or three real past emails, shortened, with what you expect for each.
+3. Add `inbox-triage` at a time a few minutes ahead, then `taskfollow check once inbox-triage`: say on the page whether the list was right by your rules.
+4. Send two or three test emails, let the scheduled run happen, and start a new session: the agent tells you the list (with no channel it comes from `taskfollow why`).
+5. Add `inbox-triage-replies` too (both only for this test; in real use you choose one), send one test email that asks a question, approve the one reply in your own terminal, and see it arrive in the same email conversation.
+6. Optional, Home 2: `taskfollow check deliver inbox-triage` to Claude Cowork and one scheduled brief on your phone.
+
+**Clean up:** `claude mcp remove -s user installer`; inspect, then delete `~/.claude/projects/*taskfollow-task37*`; the settings checksum must equal step 1's; delete `~/taskfollow-task37`. Never run `taskfollow uninstall` there. Revoke the app password in Google if you made one for this test.
+
+**Paste back:** what each step printed, whether the list was right by your rules, and anything unexpected, word for word. (Task 33, the morning brief of item 4, stays open as your call.)
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
