@@ -1,9 +1,13 @@
 # taskfollow
 
-TaskFollow helps a person automate their tasks and workflows and add skills to
-their own AI agent. It is a generic, agent-operated installer and runtime that
-deploys Skills Wiki solutions onto a client's own AI agent (Claude Code, Codex, OpenClaw,
-Hermes, Pi, …), then runs their workflows under enforced human approval.
+TaskFollow is a thin layer on top of the AI agent a business owner already has
+(Claude Code first). It does not change the agent or add capabilities to it; it
+makes that agent "vertical": step-by-step setup, finding and running the owner's
+workflows (a schedule and a run record), and reminding the agent which skills each
+workflow uses, from Skills Wiki or the agent's own skills. The agent's model gathers
+the inputs and decides; TaskFollow executes what it can or says plainly what is
+missing. Money, legal matters, messages to customers and deletes always ask a person.
+The v1 scope is `docs/scope-refresh.md`, section 9.
 
 **New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you.
 
@@ -12,7 +16,8 @@ The package is not published (`"private": true`).
 
 Who can use it today: a person on a **Mac** or on **Windows 11 (Preview)**, with
 **Node 22 or newer**, an AI agent such as Claude Code that follows
-[`INSTALL.md`](INSTALL.md), and their own Google account. A Skills Wiki account
+[`INSTALL.md`](INSTALL.md), and the one service a workflow reads (Telegram,
+email, Slack and a Google Sheet are optional). A Skills Wiki account
 is optional (INSTALL.md, section 11). Windows has not yet been tried on a real PC
 (human task 22) and has no always-on team host; Linux is untested.
 
