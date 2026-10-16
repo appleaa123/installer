@@ -404,6 +404,122 @@
           }
         }
       ]
+    },
+    {
+      "workflow": "crm-update",
+      "when": {
+        "all": [
+          {
+            "step": "services.records",
+            "equals": "google-sheets"
+          },
+          {
+            "any": [
+              {
+                "step": "mode.who",
+                "equals": "team"
+              },
+              {
+                "step": "services.telegram",
+                "equals": "telegram"
+              },
+              {
+                "step": "services.email",
+                "equals": "email"
+              },
+              {
+                "step": "services.slack",
+                "equals": "slack"
+              },
+              {
+                "step": "services.whatsapp",
+                "equals": "whatsapp"
+              }
+            ]
+          }
+        ]
+      },
+      "description": "When you tell me 'note that …', finds the record and shows you the change; nothing is saved until you say yes.",
+      "mode": "typed",
+      "trigger": {
+        "event": "message.received",
+        "from": "member"
+      },
+      "steps": [
+        {
+          "id": "which",
+          "judge": {
+            "instructions": "Use the crm-update skill: from the owner's note, find which record it is about (the entity and its key) and only the fields that change, as text. Use only field names the record has. When the note names no record you can tell, set found to false and ask the owner one short question.",
+            "input": {
+              "note": "${event.text}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "entity": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "found": {
+                  "type": "boolean"
+                },
+                "question": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "entity",
+                "key",
+                "changes",
+                "found",
+                "question"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "id": "current",
+          "when": "which.found == true",
+          "tool": "records.get",
+          "args": {
+            "entity": "${which.entity}",
+            "key": "${which.key}"
+          }
+        },
+        {
+          "id": "change",
+          "when": "which.found == true",
+          "approve": {
+            "tool": "records.update",
+            "args": {
+              "entity": "${which.entity}",
+              "key": "${which.key}",
+              "values": "${which.changes}"
+            },
+            "why": "Change the record as the owner noted"
+          }
+        },
+        {
+          "id": "report",
+          "agent": {
+            "instructions": "Use the crm-update skill: the result is one line saying which record changed and how, or the question for the owner when no record was found. Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
+            "input": {
+              "which": "${which}"
+            },
+            "tools": [
+              "channel.list",
+              "channel.notify"
+            ]
+          }
+        }
+      ]
     }
   ],
   "steps": [

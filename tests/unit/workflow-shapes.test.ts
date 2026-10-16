@@ -8,6 +8,8 @@ import { SHAPES } from "../../src/core/homes.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
 import { deriveLevel } from "../../src/core/levels.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
+import { startRun } from "../../src/core/runner.js";
+import { loadStep } from "../../src/core/runs.js";
 import { loadWorkflowState } from "../../src/core/sandbox.js";
 import { parseSolution } from "../../src/core/solution.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -131,5 +133,43 @@ describe("lead qualification (Task 2)", () => {
 
   it("report is the only agent step and says finish with the note as your summary", () => {
     expectReportEnding("lead-qualification");
+  });
+});
+
+describe("CRM update (Task 3)", () => {
+  it("crm-update loads and records its shape", async () => {
+    const home = await shapesHome(["crm-update"]);
+    expect((await added(home, "crm-update")).mode).toBe("typed");
+    expect((await loadWorkflowState(home, "crm-update"))?.shape).toBe("crm-update");
+  });
+
+  it("is offered with Google Sheets and a channel (a team always has one), never without Sheets", () => {
+    const sheets = { ...SOLO, "services.records": "google-sheets" };
+    expect(offered({ ...sheets, "services.telegram": "telegram" })).toContain("crm-update");
+    expect(offered({ ...sheets, "mode.who": "team" })).toContain("crm-update");
+    expect(offered(sheets)).not.toContain("crm-update");
+    expect(offered({ ...SOLO, "services.telegram": "telegram" })).not.toContain("crm-update");
+  });
+
+  it("starts on a member's message, and change is an approve step for records.update", () => {
+    expect(shape("crm-update").trigger).toMatchObject({ kind: "event", from: "member" });
+    expect(step("crm-update", "current")).toMatchObject({ kind: "tool", tool: "records.get", when: "which.found == true" });
+    expect(step("crm-update", "change")).toMatchObject({ kind: "approve", tool: "records.update", when: "which.found == true", args: { entity: "${which.entity}", key: "${which.key}", values: "${which.changes}" } });
+  });
+
+  it("with found false no records step runs and the result holds the question", async () => {
+    const home = await shapesHome(["crm-update"]);
+    const workflow = await added(home, "crm-update");
+    const question = "Which record do you mean: there is no contact named Sam.";
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ entity: "", key: "", changes: {}, found: false, question }, { tool: "done", summary: question }]));
+    const run = await startRun({ home, workflow, key: `crm-update:${AT}`, trigger: { kind: "manual", sample_event: { channel: "telegram", from: "owner", text: "note that Sam moved", untrusted: true, synthetic: true } }, now: () => AT, sandbox: true });
+    expect(run.status).toBe("completed");
+    expect((await loadStep(home, run, "current"))?.skipped).toBe(true);
+    expect((await loadStep(home, run, "change"))?.skipped).toBe(true);
+    expect((await loadStep(home, run, "report"))?.output).toMatchObject({ summary: question });
+  });
+
+  it("report is the only agent step and says finish with the note as your summary", () => {
+    expectReportEnding("crm-update");
   });
 });
