@@ -9,6 +9,7 @@ import { whyCommand } from "../../src/core/why.js";
 import { parseWorkflow } from "../../src/core/workflow.js";
 import { runnerHome } from "../helpers/runner-home.js";
 import { makeTempHome } from "../helpers/temp-home.js";
+import { writeWorkflow } from "../helpers/workflow-home.js";
 
 const AT = "2026-10-14T12:00:00.000Z";
 const LATER = "2026-10-14T12:05:00.000Z";
@@ -163,10 +164,26 @@ describe("taskfollow why: each run's result (9.12 item 3, level 1)", () => {
     const tool = await toolContext(home, "cli", DEFAULT_TOOLS, () => AT);
     await invokeTool(tool, "memo.add", { text: `first ${"a".repeat(300)}` });
     await invokeTool(tool, "memo.add", { text: "SECOND-MEMO-BODY" });
-    const record = await run(home, { workflow: "list", version: 1, trigger: { manual: true }, steps: [{ id: "memos", tool: "memo.list" }] }, AT);
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "memo.list", args: {} }]));
+    const steps = [{ id: "memos", tool: "memo.list" }, { id: "list", agent: { instructions: "Make the list.", input: "${memos}", tools: ["memo.list"], max_turns: 1 } }];
+    const triage = { workflow: "triage", version: 1, trigger: { manual: true }, steps };
+    await writeWorkflow(home, triage);
+    const record = await run(home, triage, AT);
     const why = await whyCommand(home, record.run_id, () => LATER);
     expect(String(why.result)).toContain("this run made no list");
     expect(String(why.result)).not.toContain("SECOND-MEMO-BODY");
+  });
+
+  it("why run id keeps a plain cut for a workflow that makes no list at all (PR #59 review)", async () => {
+    const home = await runnerHome();
+    const tool = await toolContext(home, "cli", DEFAULT_TOOLS, () => AT);
+    await invokeTool(tool, "memo.add", { text: `first ${"a".repeat(300)}` });
+    const list = { workflow: "list", version: 1, trigger: { manual: true }, steps: [{ id: "memos", tool: "memo.list" }] };
+    await writeWorkflow(home, list);
+    const record = await run(home, list, AT);
+    const why = await whyCommand(home, record.run_id, () => LATER);
+    expect(String(why.result)).toHaveLength(300);
+    expect(String(why.result)).not.toContain("made no list");
   });
 
   it("why run id of a run without a result is unchanged (item 5)", async () => {

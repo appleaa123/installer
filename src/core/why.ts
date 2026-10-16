@@ -10,6 +10,8 @@ import { StateCorruptError } from "./state.js";
 import { listRuns, listSteps, skipDamaged, type RunRecord, type StepLog } from "./runs.js";
 import { callsFile } from "./task-step.js";
 import { takeSuggestions } from "./watch-notice.js";
+import { DEFAULT_TOOLS } from "./tool-set.js";
+import { loadWorkflow } from "./workflow.js";
 
 /**
  * `taskfollow why` (D138): the record is the reference. Without an argument it lists the runs of the last day (or
@@ -212,8 +214,18 @@ async function resultOf(home: string, run: RunRecord, form: "list" | "run" | "on
   if (form !== "list" && summary !== undefined) return summary;
   const text = summary ?? JSON.stringify(output);
   const cut = text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT - 1)}…` : text;
-  if (form === "run") return `${cut} (this run made no list)`;
+  if (form === "run") return (await makesList(home, run.workflow)) ? `${cut} (this run made no list)` : cut;
   return form === "once" || cut === text ? cut : `${cut} (the whole result: taskfollow why ${run.run_id})`;
+}
+
+/** Whether the workflow has an agent step, the one that makes a list; false when its file cannot be read. */
+async function makesList(home: string, workflow: string): Promise<boolean> {
+  try {
+    return (await loadWorkflow(home, workflow, DEFAULT_TOOLS)).steps.some((step) => step.kind === "agent");
+  } catch (error) {
+    if (error instanceof InputError) return false;
+    throw error;
+  }
 }
 
 const RESULT_LIMIT = 300;
