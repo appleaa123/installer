@@ -1,5 +1,5 @@
 import { continueAgent, resumeAgent, type AgentRun } from "./agentic.js";
-import { noteContradiction, runnerStopReason } from "./check-fresh.js";
+import { firstStopNoticeToday, noteContradiction, runnerStopReason } from "./check-fresh.js";
 import { pinnedSkill } from "./packs.js";
 import { loadProfileById } from "./profile.js";
 import { runSkillsText, skillRoots } from "./skills.js";
@@ -125,13 +125,13 @@ async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   }
 }
 
-async function finish(exec: Exec, record: RunRecord, status: RunRecord["status"], reason?: string): Promise<RunRecord> {
+async function finish(exec: Exec, record: RunRecord, status: RunRecord["status"], reason?: string, quiet = false): Promise<RunRecord> {
   const { waiting_on: _waiting, reason: _old, ...rest } = record;
   const done: RunRecord = { ...rest, status, finished_at: exec.ctx.now(), ...(reason ? { reason } : {}) };
   await saveRun(exec.home, done);
   await auditRun(exec.home, exec.ctx.now(), "run.finished", done, { actions: done.actions, needs_human: done.needs_human, ...(reason ? { reason } : {}) });
   const where = `run ${done.run_id} of workflow '${done.workflow}'`;
-  if (status === "failed") await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'taskfollow run ${done.workflow}' runs it again.`);
+  if (status === "failed" && !quiet) await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'taskfollow run ${done.workflow}' runs it again.`);
   else if (done.needs_human > 0) await tellDecisionMaker(exec, done, `The ${where} has ${done.needs_human} judgement(s) that need a person; see runs/${done.workflow}/${done.run_id} in the engine home.`);
   return done;
 }
@@ -207,6 +207,6 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
   await auditRun(request.home, request.now(), "run.started", record, { trigger: record.trigger.kind, version: record.version, sandbox: record.sandbox });
   // Item 7a (spec 8, review B6): a real run of a workflow whose runner check no longer holds stops here; sandbox runs never do.
   const stop = record.sandbox ? null : await runnerStopReason(request.home, request.workflow.id, exec.state, request.now());
-  if (stop) return finish(exec, record, "failed", stop);
+  if (stop) return finish(exec, record, "failed", stop, !(await firstStopNoticeToday(request.home, request.workflow.id, request.now())));
   return execute(exec, request.workflow, record);
 }

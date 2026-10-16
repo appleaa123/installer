@@ -1,4 +1,6 @@
 import { readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { readConfig, writeConfig } from "./data-source.js";
 import { confinedPath } from "./actions.js";
 import { abilities, cancelChallenge, CHECKS_DIR, FRESH_DAYS, loadChallenge, recordResult, type Need, type StoredResult } from "./checks.js";
 import type { DoctorCheck, DoctorContext } from "./doctor-checks.js";
@@ -58,6 +60,32 @@ export async function noteContradiction(home: string, workflow: string, state: I
   const agent = state?.runtime?.profile;
   if (!agent) return;
   await recordResult(home, { need: "runner", workflow, result: "not-checked", reason: "A run's task did not finish in TaskFollow's runner, so this goes back to not checked until it is tested again", at: now, agent, agent_version: state?.runtime?.agent_version ?? null, test: "run" });
+}
+
+/**
+ * A real run that finished in TaskFollow's runner proves the runner again for that workflow, and TaskFollow's own tools
+ * when the agent reached them in that run (review 4 of PR #54): so a result goes stale only when the workflow has not
+ * run well for 30 days. Sandbox runs and workflows without declared needs refresh nothing.
+ */
+export async function noteRunPassed(home: string, workflow: string, state: InstallState | undefined, now: string, toolsReached: boolean): Promise<void> {
+  const declared = await loadWorkflowState(home, workflow);
+  if (!declared?.shape && !declared?.described) return;
+  const agent = state?.runtime?.profile;
+  if (!agent) return;
+  const base = { workflow, result: "yes-tested" as const, reason: `a real run through TaskFollow's runner finished on ${now.slice(0, 10)}`, at: now, agent, agent_version: state?.runtime?.agent_version ?? null, test: "run" };
+  await recordResult(home, { need: "runner", ...base });
+  if (toolsReached) await recordResult(home, { need: "tools", ...base });
+}
+
+const STOP_NOTICES = join("state", "stop-notices.json");
+
+/** Whether today's stop notice for this workflow is still to be sent (review 4): the decision maker hears it once a day, not on every tick. */
+export async function firstStopNoticeToday(home: string, workflow: string, now: string): Promise<boolean> {
+  const seen = ((await readConfig(home, STOP_NOTICES)) ?? {}) as Record<string, string>;
+  const day = now.slice(0, 10);
+  if (seen[workflow] === day) return false;
+  await writeConfig(home, STOP_NOTICES, { ...seen, [workflow]: day });
+  return true;
 }
 
 /** The doctor's view (review B5): it reports stale or failed runner checks; it never runs a check itself. */

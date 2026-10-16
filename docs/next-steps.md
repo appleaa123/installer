@@ -26,6 +26,11 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 1. ~~Build item 1, the spike~~ **done 2026-10-15 (task 29, D153):** a restricted task run loads only Claude Code's built-in skills, not the owner's, the folder's or plugins', and neither a `/skill` prefix nor `--add-dir` changes that. So the runner puts the workflow's skill text into the task prompt (9.5's fallback, like D83).
 2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall.
 3. ~~Build item 3, the bare-minimum install~~ **built (D155)**: Telegram optional for a person on their own, results in `why`, the session-start rule, the report's Told and Runs lines, the vision in README/START-HERE/INSTALL. Next: item 4, the level-B step.
+**Follow-ups (not yet planned):**
+
+- A weekly unattended re-check of T5 and preflight T7 for profile agents, in its own guarded tick pass with its own timeout and weekly marker (spec section 8, D162). Until then the doctor reports stale results and a real successful run refreshes `runner`/`tools`.
+- B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
+
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
 | Item | PR | Decision | Files | What you see |
