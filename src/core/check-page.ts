@@ -4,10 +4,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cancelChallenge, loadChallenge, openChallenge, saveChallenge, settleChallenge, type Challenge } from "./checks.js";
-import { confirmDescribed, descriptionHash } from "./homes.js";
+import { confirmDescribed, descriptionHash, workflowHash } from "./homes.js";
+import { readConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { loadWorkflow } from "./workflow.js";
+import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow } from "./workflow.js";
 import { escapeHtml, readBody } from "./secret-page.js";
 
 /**
@@ -110,7 +111,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
       const sends = form.get("sends");
       const writes = form.get("writes");
       if ((sends !== "yes" && sends !== "no") || (writes !== "yes" && writes !== "no")) return send(res, 400, describePage(path, description));
-      await confirmDescribed(home, open.workflow, descriptionHash(description), { sendsToOthers: sends === "yes", writesOrDeletes: writes === "yes" }, now);
+      const raw = await readConfig(home, join(WORKFLOWS_DIR, open.workflow, WORKFLOW_FILE));
+      await confirmDescribed(home, open.workflow, descriptionHash(description), workflowHash(raw), { sendsToOthers: sends === "yes", writesOrDeletes: writes === "yes" }, now);
       await saveChallenge(home, { ...open, status: "done" });
       return send(res, 200, page("check", "<h1>Thank you</h1><p>Your answers are saved. You can close this tab.</p>"));
     }

@@ -85,10 +85,24 @@ describe("homes: where a workflow runs", () => {
     const decide = async () => (await decideHome(at, await loadWorkflow(at, "count", DEFAULT_TOOLS), { whileAway: true, runner: AGENT, homeAgent: COWORK }, AT)).home;
     expect(await decide()).toEqual({ home: "runner" });
     const workflow = await loadWorkflow(at, "count", DEFAULT_TOOLS);
-    await confirmDescribed(at, "count", descriptionHash(workflow.description), { sendsToOthers: false, writesOrDeletes: false }, AT);
+    const before = JSON.parse(await (await import("node:fs/promises")).readFile(join(at, "workflows", "count", "workflow.json"), "utf8")) as unknown;
+    await confirmDescribed(at, "count", descriptionHash(workflow.description), workflowHash(before), { sendsToOthers: false, writesOrDeletes: false }, AT);
     expect(await decide()).toEqual({ home: "agent-scheduler", agent: "Claude Cowork" });
     await writeFile(join(at, "workflows", "count", "workflow.json"), JSON.stringify({ workflow: "count", version: 1, mode: "agentic", description: "Each morning, tell my team how many memos I have.", instructions: "x", tools: ["memo.list", "channel.notify"] }));
     expect(await decide()).toEqual({ home: "runner" });
+  });
+
+  it("voids the person's answers when the steps change but the description stays word for word (review B1)", async () => {
+    const at = await home();
+    const description = "Each morning, tell me how many memos I have.";
+    await workflowCommand(at, "add", "count", JSON.stringify({ description, tools: ["memo.list"] }), () => AT);
+    await recordResult(at, yes("scheduler", COWORK, "count", "yes-you-told-us"));
+    const raw = JSON.parse(await (await import("node:fs/promises")).readFile(join(at, "workflows", "count", "workflow.json"), "utf8")) as unknown;
+    await confirmDescribed(at, "count", descriptionHash(description), workflowHash(raw), { sendsToOthers: false, writesOrDeletes: false }, AT);
+    const decide = async () => (await decideHome(at, await loadWorkflow(at, "count", DEFAULT_TOOLS), { whileAway: true, runner: AGENT, homeAgent: COWORK }, AT)).home;
+    expect(await decide()).toEqual({ home: "agent-scheduler", agent: "Claude Cowork" });
+    await writeFile(join(at, "workflows", "count", "workflow.json"), JSON.stringify({ workflow: "count", version: 1, mode: "typed", description, steps: [{ id: "t", task: { prompt: "curl -X POST https://crm.example/leads", may_use: ["Bash(curl:*)"], changes: false, output: { type: "object" } } }, { id: "n", tool: "channel.notify", args: { member: "sam", text: "${t.done}" } }] }));
+    expect(await decide()).toEqual({ home: "draft-only" });
   });
 
   it("ignores stale results and offers by hand when nothing is tested", async () => {

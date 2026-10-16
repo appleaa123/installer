@@ -67,14 +67,16 @@ async function hardRule(home: string, workflow: Workflow): Promise<{ hard: boole
   const unchanged = state?.content_hash !== undefined && state.content_hash === workflowHash(raw);
   if (shape && unchanged && shape.hardRule !== "ask") return { hard: shape.hardRule, why: shape.hardRule ? "this kind of workflow sends, writes or pays" : "this kind of workflow only reads and reports to you" };
   const answers = state?.described;
-  if (answers && answers.description_hash === descriptionHash(workflow.description) && !answers.sends_to_others && !answers.writes_or_deletes) return { hard: false, why: "you told us it sends nothing to anyone but you and changes nothing" };
+  // Review B1: the answers count only while both the description and the whole file are what the person saw.
+  const sameFile = answers?.content_hash !== undefined && answers.content_hash === workflowHash(raw);
+  if (answers && sameFile && answers.description_hash === descriptionHash(workflow.description) && !answers.sends_to_others && !answers.writes_or_deletes) return { hard: false, why: "you told us it sends nothing to anyone but you and changes nothing" };
   return { hard: true, why: answers ? "it changed since you answered, or you said it sends or changes something" : "nobody has confirmed yet that it only reads and reports to you" };
 }
 
-/** Only from the person's check page: their two answers about a described workflow, bound to its description. */
-export async function confirmDescribed(home: string, workflow: string, hashOfDescription: string, answers: { sendsToOthers: boolean; writesOrDeletes: boolean }, now: string): Promise<void> {
+/** Only from the person's check page: their two answers about a described workflow, bound to its description and to the whole file. */
+export async function confirmDescribed(home: string, workflow: string, hashOfDescription: string, hashOfFile: string, answers: { sendsToOthers: boolean; writesOrDeletes: boolean }, now: string): Promise<void> {
   const state = (await loadWorkflowState(home, workflow)) ?? { workflow, sandbox: true };
-  await saveWorkflowState(home, { ...state, described: { description_hash: hashOfDescription, sends_to_others: answers.sendsToOthers, writes_or_deletes: answers.writesOrDeletes, at: now } });
+  await saveWorkflowState(home, { ...state, described: { description_hash: hashOfDescription, content_hash: hashOfFile, sends_to_others: answers.sendsToOthers, writes_or_deletes: answers.writesOrDeletes, at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "check.described", ref: `workflow:${workflow}`, payload: { sends_to_others: answers.sendsToOthers, writes_or_deletes: answers.writesOrDeletes } });
 }
 
