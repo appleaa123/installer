@@ -1,4 +1,5 @@
 import { settleByPerson, type Challenge } from "./checks.js";
+import { scheduledForm } from "./check-schedule-form.js";
 import { escapeHtml } from "./secret-page.js";
 
 /**
@@ -12,6 +13,8 @@ export interface FormContext {
   /** The word handed to this page process, when it has one (the email part of T8, for the person to plant). */
   readonly word?: string;
   readonly home: string;
+  /** Plants a self-addressed test email (T8, after the person closed the window); tests inject it. */
+  readonly plant?: (home: string, subject: string, text: string) => Promise<boolean>;
 }
 
 export interface FormResult {
@@ -47,4 +50,4 @@ const once: CheckForm = {
   },
 };
 
-export const FORMS: Readonly<Record<string, CheckForm>> = { once };
+export const FORMS: Readonly<Record<string, CheckForm>> = { once, t8: scheduledForm };

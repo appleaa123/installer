@@ -69,7 +69,7 @@ describe("check page: the confirmation, a separate page served from disk", () =>
   it("stays closed until it opens, then records what the person typed as 'you told us'", async () => {
     const home = await makeTempHome();
     let now = AT;
-    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 24 * 60 * 60_000, opensAt: later(10), withWord: true }, AT);
+    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t2", agent: "Claude Cowork", agentVersion: null, ttlMs: 24 * 60 * 60_000, opensAt: later(10), withWord: true }, AT);
     const page = await serve(home, challenge.id, undefined, () => now);
     expect(await (await fetch(`${page.url}/confirm`)).text()).toContain("opens at");
     expect((await post(`${page.url}/confirm`, `word=${encodeURIComponent(word ?? "")}`)).status).toBe(409);
@@ -82,7 +82,7 @@ describe("check page: the confirmation, a separate page served from disk", () =>
   it("audits a refusal on the person's page as the person, not the agent (review S6)", async () => {
     const home = await makeTempHome();
     let now = AT;
-    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 60_000, withWord: true }, AT);
+    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t2", agent: "Claude Cowork", agentVersion: null, ttlMs: 60_000, withWord: true }, AT);
     const page = await serve(home, challenge.id, undefined, () => now);
     now = later(5);
     await post(`${page.url}/confirm`, `word=${encodeURIComponent(word ?? "")}`);
@@ -92,7 +92,7 @@ describe("check page: the confirmation, a separate page served from disk", () =>
 
   it("reopens after a restart: a new server reads the same challenge from disk, with no word", async () => {
     const home = await makeTempHome();
-    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t8", agent: "Claude Cowork", agentVersion: null, ttlMs: 24 * 60 * 60_000, withWord: true }, AT);
+    const { challenge, word } = await startChallenge(home, { needs: ["scheduler"], test: "t2", agent: "Claude Cowork", agentVersion: null, ttlMs: 24 * 60 * 60_000, withWord: true }, AT);
     const first = await serve(home, challenge.id, word);
     first.close();
     const second = await serve(home, challenge.id);

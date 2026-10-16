@@ -1,10 +1,11 @@
-import { appendAudit } from "./audit.js";
 import { agentOf, CHECK_TTL_MS, type CheckContext } from "./check-commands.js";
-import { loadChannel, openChannel } from "./channels.js";
+import { plantAndAudit, plantByChannel, SUBJECT_PREFIX } from "./check-plant.js";
 import { openChallenge, settleByPerson, startChallenge, type Need } from "./checks.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import type { InstallState } from "./types.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
+
+export { plantByChannel, SUBJECT_PREFIX, subjectFor } from "./check-plant.js";
 
 /**
  * T2, reading email (spec 5.2, plan Task 8, D160). When TaskFollow has its own email channel, it plants the test
@@ -12,20 +13,8 @@ import { loadWorkflow, requireWorkflowId } from "./workflow.js";
  * it. That is a self-addressed test, not a message to a person, so it does not go through `deliver` (D79): the
  * connector's own send, audited without the word. Otherwise the person's page shows the subject to send themselves.
  */
-export const SUBJECT_PREFIX = "TASKFOLLOW-CHECK";
 const NEEDS: readonly Need[] = ["reads:email"];
-const BODY = "This is a test email from TaskFollow, sent to your own address to check that your assistant can read your email. You can delete it.";
 type Raw = Record<string, unknown>;
-
-/** TaskFollow's own plant: its email channel's send, to that channel's own address, nothing else. */
-export async function plantByChannel(home: string, subject: string, text: string): Promise<boolean> {
-  const config = await loadChannel(home, "email");
-  if (!config || config.channel !== "email") return false;
-  await (await openChannel(home, "email")).send({ to: config.address, subject, text });
-  return true;
-}
-
-export const subjectFor = (id: string, word: string): string => `${SUBJECT_PREFIX} ${id} ${word}`;
 
 export const answerInstruction = (id: string): string =>
   `Find the newest email whose subject starts with "${SUBJECT_PREFIX} ${id}" and run: taskfollow check answer ${id} '<the rest of that subject, after ${id}>'. If you cannot read email, run: taskfollow check cannot ${id}`;
@@ -34,10 +23,7 @@ export async function startReadsEmail(home: string, state: InstallState | undefi
   const { agent, version } = agentOf(state, typeof flags.value === "string" ? flags.value : undefined);
   const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
   const { challenge, word } = await startChallenge(home, { needs: NEEDS, test: "t2", ...(workflow ? { workflow } : {}), agent, agentVersion: version, ttlMs: CHECK_TTL_MS, withWord: true }, context.now());
-  const subject = subjectFor(challenge.id, word ?? "");
-  const plant = context.plant ?? plantByChannel;
-  if (await plant(home, subject, BODY)) {
-    await appendAudit(home, { ts: context.now(), actor: "engine", event: "check.planted", ref: `check:${challenge.id}`, payload: { test: "t2", to: "the channel's own address" } });
+  if (await plantAndAudit(home, context.plant ?? plantByChannel, challenge.id, word ?? "", "t2", context.now())) {
     return { id: challenge.id, test: "t2", instruction: answerInstruction(challenge.id), planted: "TaskFollow sent the test email to your own address; give it a minute to arrive" };
   }
   const launched = await context.launch(home, challenge.id, word);

@@ -75,6 +75,8 @@ function confirmPage(challenge: Challenge, path: string, now: string, descriptio
 
 export interface CheckPageOptions {
   readonly word?: string;
+  /** T8's plant after the person closed the window; tests inject it (the page process uses TaskFollow's email channel). */
+  readonly plant?: (home: string, subject: string, text: string) => Promise<boolean>;
   readonly now: () => string;
   readonly ttlMs: number;
 }
@@ -95,7 +97,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
   const now = options.now();
   const description = challenge.test === "describe" && challenge.workflow ? (await loadWorkflow(home, challenge.workflow, DEFAULT_TOOLS)).description : undefined;
   const form = FORMS[challenge.test];
-  if (form) return handleForm(req, res, form, challenge, { path, now, home, ...(options.word ? { word: options.word } : {}) }, route, origin);
+  if (form) return handleForm(req, res, form, challenge, { path, now, home, ...(options.word ? { word: options.word } : {}), ...(options.plant ? { plant: options.plant } : {}) }, route, origin);
   if (req.method === "GET" && route === "" && description !== undefined) return send(res, 200, confirmPage(challenge, path, now, description));
   if (req.method === "GET" && route === "") return send(res, 200, wordPage(challenge, path, Boolean(options.word) && !challenge.shown_at));
   if (req.method === "GET" && route === "/confirm") return send(res, 200, confirmPage(challenge, path, now, description));

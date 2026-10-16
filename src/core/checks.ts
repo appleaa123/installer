@@ -172,6 +172,11 @@ export async function settleChallenge(home: string, challenge: Challenge, typed:
     await saveChallenge(home, { ...challenge, tries, ...(cancelled ? { status: "cancelled" as const } : {}) });
     return resultsFor(home, challenge, "not-checked", cancelled ? "The word did not match twice, so the test was cancelled; start it again" : "The word did not match; try once more", now);
   }
+  // T8 (spec 5.2): a mark from a job on this computer counts only at or after the scheduled time; before it, it was not the scheduler.
+  if (challenge.test === "t8" && answerer === "agent" && challenge.opens_at && now < challenge.opens_at) {
+    await saveChallenge(home, { ...challenge, status: "cancelled" });
+    return resultsFor(home, challenge, "not-checked", "It ran before the scheduled time, so it was not the agent's scheduler; start the check again", now, via, through);
+  }
   await saveChallenge(home, { ...challenge, status: "done" });
   if (answerer === "terminal") return resultsFor(home, challenge, "not-checked", "The answer came from an interactive terminal: was that you? A person typing it does not show what the agent can do", now);
   if (answerer === "person") return resultsFor(home, challenge, "yes-you-told-us", "You told us: you typed the word you received", now);
