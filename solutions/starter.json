@@ -629,6 +629,60 @@
           }
         }
       ]
+    },
+    {
+      "workflow": "invoices-due",
+      "when": {
+        "step": "services.records",
+        "equals": "google-sheets"
+      },
+      "description": "Every Monday, the invoices still to pay this week (with their total when TaskFollow's runner makes the list; your assistant's own schedule lists each amount without adding them up).",
+      "mode": "typed",
+      "trigger": {
+        "cron": "0 8 * * 1",
+        "tz": "local"
+      },
+      "steps": [
+        {
+          "id": "open",
+          "tool": "records.find",
+          "args": {
+            "entity": "invoice",
+            "limit": 100
+          }
+        },
+        {
+          "id": "due",
+          "calc": {
+            "from": "${open.records}",
+            "group_by": "currency",
+            "sum": [
+              "amount"
+            ],
+            "where": {
+              "status": [
+                "to check",
+                "approved to pay"
+              ],
+              "due_within_days": 7
+            }
+          }
+        },
+        {
+          "id": "report",
+          "agent": {
+            "instructions": "Use the invoices-due skill: the result is the list of invoices still to pay that are due within 7 days, overdue ones first, each with its vendor, amount and due date, then the totals per currency and how many open invoices have no due date. Use only the numbers in totals; never add anything up yourself. When rows holds 100 invoices, say the list is from the first 100 invoices in the sheet. Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
+            "input": {
+              "rows": "${open.records}",
+              "totals": "${due}"
+            },
+            "tools": [
+              "channel.list",
+              "channel.notify"
+            ]
+          }
+        }
+      ]
     }
   ],
   "steps": [

@@ -43,7 +43,7 @@ describe("homes: the code floor", () => {
   });
 
   it("has every v1 shape, with replies, records and payments as hard rules", () => {
-    expect(Object.keys(SHAPES).sort()).toEqual(["crm-update", "inbox-triage", "inbox-triage-replies", "invoice-processing", "lead-qualification", "meeting-follow-up"]);
+    expect(Object.keys(SHAPES).sort()).toEqual(["crm-update", "inbox-triage", "inbox-triage-replies", "invoice-processing", "invoices-due", "lead-qualification", "meeting-follow-up"]);
     expect(SHAPES["inbox-triage"]?.hardRule).toBe(false);
     expect(SHAPES["meeting-follow-up"]?.hardRule).toBe("ask");
   });

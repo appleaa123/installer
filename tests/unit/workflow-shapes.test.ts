@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkValues, contractTags } from "../../src/core/contract.js";
-import { SHAPES } from "../../src/core/homes.js";
+import { recordResult, type CheckResult } from "../../src/core/checks.js";
+import { decideHome, SHAPES } from "../../src/core/homes.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
 import { deriveLevel } from "../../src/core/levels.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
@@ -32,8 +33,12 @@ const entry = (id: string): Record<string, unknown> => {
   const { when: _when, ...found } = RAW.workflows.find((flow) => flow.workflow === id) ?? {};
   return found;
 };
-/** A suggestion parsed as `workflow add` would load it once the person kept its trigger. */
-const shape = (id: string) => parseWorkflow({ ...entry(id), version: 1 }, id, DEFAULT_TOOLS);
+/** A suggestion parsed as `workflow add` would load it once the person kept its trigger ("local" becomes a zone, D130). */
+const shape = (id: string) => {
+  const found = entry(id);
+  const trigger = found.trigger as Record<string, unknown>;
+  return parseWorkflow({ ...found, version: 1, trigger: trigger.tz === "local" ? { ...trigger, tz: "America/Toronto" } : trigger }, id, DEFAULT_TOOLS);
+};
 const step = (id: string, stepId: string): WorkflowStep | undefined => shape(id).steps.find((entryStep) => entryStep.id === stepId);
 const done = (value: unknown): StepRecord => ({ status: "done", at: AT, by: "human", value });
 const answered = (answers: Record<string, unknown>): InstallState => ({
@@ -216,5 +221,43 @@ describe("invoice processing (Task 5)", () => {
 
   it("report is the only agent step and says finish with the note as your summary", () => {
     expectReportEnding("invoice-processing");
+  });
+});
+
+describe("invoices due each week (Task 5b, D166)", () => {
+  const RUNNER = { agent: "fake-agent", version: "9.9.9" };
+  const COWORK = { agent: "Claude Cowork", version: null };
+
+  it("invoices-due loads and records its shape, every Monday, offered only with Google Sheets", async () => {
+    const home = await shapesHome(["invoices-due"]);
+    expect((await added(home, "invoices-due")).trigger).toMatchObject({ kind: "cron", cron: "0 8 * * 1" });
+    expect((await loadWorkflowState(home, "invoices-due"))?.shape).toBe("invoices-due");
+    expect(offered({ ...SOLO, "services.records": "google-sheets" })).toContain("invoices-due");
+    expect(offered(SOLO)).not.toContain("invoices-due");
+  });
+
+  it("reads at most 100 invoices and keeps the open ones due within 7 days", () => {
+    expect(step("invoices-due", "open")).toMatchObject({ kind: "tool", tool: "records.find", args: { entity: "invoice", limit: 100 } });
+    expect(step("invoices-due", "due")).toMatchObject({ kind: "calc", calc: { from: "${open.records}", group_by: "currency", sum: ["amount"], where: { fields: { status: ["to check", "approved to pay"] }, due_within_days: 7 } } });
+  });
+
+  it("invoices-due is report-only in decideHome and may go to the agent's scheduler after T8", async () => {
+    const home = await shapesHome(["invoices-due"]);
+    const workflow = await added(home, "invoices-due");
+    await recordResult(home, { need: "scheduler", workflow: "invoices-due", result: "yes-you-told-us", reason: "you told us", at: AT, agent: "Claude Cowork", agent_version: null, test: "t8", while_away: true } satisfies CheckResult);
+    expect(SHAPES["invoices-due"]).toEqual({ needs: ["answers", "reads:records", "skills"], hardRule: false });
+    expect((await decideHome(home, workflow, { whileAway: true, runner: RUNNER, homeAgent: COWORK }, AT)).home).toEqual({ home: "agent-scheduler", agent: "Claude Cowork" });
+  });
+
+  it("the report step's input holds the calc output, and its instructions forbid adding up", () => {
+    const report = step("invoices-due", "report");
+    if (report?.kind !== "agent") throw new Error("no report step");
+    expect(report.agent.input).toEqual({ rows: "${open.records}", totals: "${due}" });
+    expect(report.agent.instructions).toContain("never add anything up yourself");
+    expectReportEnding("invoices-due");
+  });
+
+  it("the invoices-due template says to list amounts and never total them", () => {
+    expect(readFileSync("solutions/shapes/invoices-due/SKILL.md", "utf8")).toContain("Never add amounts up or give a total yourself.");
   });
 });

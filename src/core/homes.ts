@@ -22,6 +22,8 @@ export const SHAPES: Readonly<Record<string, { readonly needs: readonly Need[]; 
   "crm-update": { needs: ["answers", "reads:messages", "skills", "writes:records", "tools"], hardRule: true },
   "invoice-processing": { needs: ["answers", "reads:email-attachment", "skills", "writes:records", "tools"], hardRule: true },
   "meeting-follow-up": { needs: ["answers", "reads:files", "skills"], hardRule: "ask" },
+  // D166: the seventh shape, a weekly report of what is due; it only reads, so either home.
+  "invoices-due": { needs: ["answers", "reads:records", "skills"], hardRule: false },
 };
 
 export type Home = { readonly home: "runner" } | { readonly home: "agent-scheduler"; readonly agent: string } | { readonly home: "draft-only" } | { readonly home: "by-hand" };
