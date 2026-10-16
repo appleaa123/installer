@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { serveCheckPage } from "./check-page.js";
 import { abilities, loadChallenge, markChallenge, answerChallenge, startChallenge, type Need, type ResultKind } from "./checks.js";
+import { runnerCheck } from "./check-runner.js";
 import { InputError } from "./inputs.js";
+import { DEFAULT_TOOLS } from "./tool-set.js";
+import { loadWorkflow, requireWorkflowId } from "./workflow.js";
 import type { InstallState } from "./types.js";
 
 /**
@@ -62,8 +65,13 @@ const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id:
 };
 
 async function start(home: string, state: InstallState | undefined, test: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
+  if (test === "t7") {
+    const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
+    const workflow = id ? await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS) : undefined;
+    return runnerCheck(home, state, { now: context.now, ...(workflow ? { workflow } : {}) });
+  }
   const spec = test ? TESTS[test] : undefined;
-  if (!spec) throw new InputError(`check start takes one of: ${Object.keys(TESTS).join(", ")}`);
+  if (!spec) throw new InputError(`check start takes one of: ${[...Object.keys(TESTS), "t7"].join(", ")}`);
   const { agent, version } = agentOf(state, flags.value as string | undefined);
   const workflow = typeof flags.workflow === "string" ? flags.workflow : undefined;
   const { challenge, word } = await startChallenge(home, { needs: spec.needs, test: test as string, ...(workflow ? { workflow } : {}), agent, agentVersion: version, ttlMs: CHECK_TTL_MS, withWord: true }, context.now());

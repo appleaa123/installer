@@ -49,6 +49,11 @@ describe("taskfollow check (D159)", () => {
     await expect(run(home, ["page", challenge.id])).rejects.toThrow("in your own terminal");
   });
 
+  it("runs T7 when asked, and refuses an unknown test", async () => {
+    const home = await runnerHome();
+    await expect(run(home, ["start", "t9"])).rejects.toThrow("t1, t5, t7");
+  });
+
   it("lists results in plain words", async () => {
     const home = await runnerHome();
     const out = (await run(home, ["start", "t1"])) as { id: string; instruction: string };
