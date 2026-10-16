@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { serveCheckPage } from "./check-page.js";
 import { abilities, loadChallenge, markChallenge, answerChallenge, startChallenge, type Need, type ResultKind } from "./checks.js";
 import { runnerCheck } from "./check-runner.js";
+import { decideHome } from "./homes.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
@@ -12,11 +13,13 @@ import type { InstallState } from "./types.js";
  * person at their own terminal, and lists results. No output of a command an agent runs ever carries a page address.
  */
 export const CHECK_TTL_MS = 30 * 60_000;
-const SUBCOMMANDS = "start <t1|t5|t7>, mark <id> <word>, answer <id> <text>, page <id>, list";
+const SUBCOMMANDS = "start <t1|t5|t7|describe>, mark <id> <word>, answer <id> <text>, page <id>, home <workflow>, list";
 
 export interface CheckContext {
   readonly interactive: boolean;
   readonly now: () => string;
+  /** Starts the person's page process (launchCheckPage); injected so tests do not leave a page running. */
+  readonly launch: (home: string, id: string, word: string | undefined) => Promise<{ pid: number; opened: boolean }>;
 }
 
 const RESULT_WORDS: Readonly<Record<ResultKind, string>> = {
@@ -65,17 +68,38 @@ const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id:
 };
 
 async function start(home: string, state: InstallState | undefined, test: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
+  if (test === "describe") return describe(home, flags, context);
   if (test === "t7") {
     const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
     const workflow = id ? await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS) : undefined;
     return runnerCheck(home, state, { now: context.now, ...(workflow ? { workflow } : {}) });
   }
   const spec = test ? TESTS[test] : undefined;
-  if (!spec) throw new InputError(`check start takes one of: ${[...Object.keys(TESTS), "t7"].join(", ")}`);
+  if (!spec) throw new InputError(`check start takes one of: ${[...Object.keys(TESTS), "t7", "describe"].join(", ")}`);
   const { agent, version } = agentOf(state, flags.value as string | undefined);
   const workflow = typeof flags.workflow === "string" ? flags.workflow : undefined;
   const { challenge, word } = await startChallenge(home, { needs: spec.needs, test: test as string, ...(workflow ? { workflow } : {}), agent, agentVersion: version, ttlMs: CHECK_TTL_MS, withWord: true }, context.now());
   return { id: challenge.id, test, instruction: spec.instruction(challenge.id, word ?? ""), expires_at: challenge.expires_at };
+}
+
+/** The two questions about a described workflow, on the person's page (spec 7); the agent only learns that it opened. */
+async function describe(home: string, flags: Raw, context: CheckContext): Promise<Raw> {
+  const id = typeof flags.workflow === "string" ? flags.workflow : undefined;
+  if (!id) throw new InputError("check start describe needs --workflow <id>");
+  const workflow = await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS);
+  const { challenge } = await startChallenge(home, { needs: [], test: "describe", workflow: workflow.id, agent: "the person", agentVersion: null, ttlMs: CHECK_TTL_MS }, context.now());
+  const launched = await context.launch(home, challenge.id, undefined);
+  return { id: challenge.id, test: "describe", page: launched.opened ? "opened in the person's browser: ask them to answer the two questions there" : `ask the person to run 'taskfollow check page ${challenge.id}' in their own terminal` };
+}
+
+/** Where a workflow would run now, decided by code (spec 7). */
+async function homeOf(home: string, state: InstallState | undefined, id: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
+  const workflow = await loadWorkflow(home, requireWorkflowId(id), DEFAULT_TOOLS);
+  const runner = agentOf(state, undefined);
+  const named = typeof flags.value === "string" ? agentOf(state, flags.value) : undefined;
+  const whileAway = typeof flags.value === "string" && /"while_away"\s*:\s*true/.test(flags.value);
+  const decided = await decideHome(home, workflow, { whileAway, runner: { agent: runner.agent, version: runner.version }, ...(named ? { homeAgent: { agent: named.agent, version: named.version } } : {}) }, context.now());
+  return { workflow: workflow.id, home: decided.home, why: decided.why, missing: decided.missing };
 }
 
 /** The confirmation page in the person's own terminal (D61): its address is printed only there; it runs until it closes. */
@@ -101,6 +125,7 @@ export async function checkCommand(home: string, state: InstallState | undefined
   if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, parents: parentChain(), via: "cli" }, context.now()).then(view);
   if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
   if (sub === "page") return page(home, first, context);
+  if (sub === "home") return homeOf(home, state, first, flags, context);
   if (sub === "list" || sub === undefined) return list(home);
   throw new InputError(`check takes: ${SUBCOMMANDS}`);
 }

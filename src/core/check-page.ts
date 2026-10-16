@@ -4,7 +4,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { cancelChallenge, loadChallenge, openChallenge, saveChallenge, settleChallenge, type Challenge } from "./checks.js";
+import { confirmDescribed, descriptionHash } from "./homes.js";
 import { InputError } from "./inputs.js";
+import { DEFAULT_TOOLS } from "./tool-set.js";
+import { loadWorkflow } from "./workflow.js";
 import { escapeHtml, readBody } from "./secret-page.js";
 
 /**
@@ -51,9 +54,17 @@ function wordPage(challenge: Challenge, path: string, hasWord: boolean): string 
 <form method="post" action="${path}/show"><button type="submit">Show me the word</button></form><p class="note">The word is shown once. Reloading this page cancels the test.</p><p class="note">Check ${escapeHtml(challenge.id)}</p>`);
 }
 
-function confirmPage(challenge: Challenge, path: string, now: string): string {
+function describePage(path: string, description: string): string {
+  const question = (name: string, text: string) => `<p><strong>${escapeHtml(text)}</strong><br><label><input type="radio" name="${name}" value="yes" required> Yes</label> &nbsp; <label><input type="radio" name="${name}" value="no"> No</label></p>`;
+  return page("check", `<h1>Is this work only for you?</h1><p>This is the work you described, word for word:</p><blockquote>${escapeHtml(description)}</blockquote>
+<form method="post" action="${path}/confirm">${question("sends", "Does this send anything to anyone but you?")}${question("writes", "Does it write, change or delete anything anywhere?")}<button type="submit">Confirm</button></form>
+<p class="note">Two noes let it run on your agent's own schedule. Any yes keeps it in TaskFollow's runner, where a person approves what it sends, writes or deletes.</p>`);
+}
+
+function confirmPage(challenge: Challenge, path: string, now: string, description?: string): string {
   if (challenge.opens_at && now < challenge.opens_at) return page("check", `<h1>Not yet</h1><p>This page opens at ${escapeHtml(challenge.opens_at.slice(11, 16))} (UTC). Come back then; nothing is lost.</p>`);
   if (challenge.status !== "open") return page("check", "<h1>This check is finished</h1><p>You can close this tab.</p>");
+  if (challenge.test === "describe" && description !== undefined) return describePage(path, description);
   return page("check", `<h1>What did you receive?</h1>${WARNING}<form method="post" action="${path}/confirm"><p><label>The word you received<br><input name="word" autocomplete="off" required></label></p><button type="submit">Confirm</button></form>`);
 }
 
@@ -77,8 +88,10 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
   if (!challenge || !url.pathname.startsWith(path)) return send(res, 404, page("not found", "<h1>Not found</h1>"));
   const route = url.pathname.slice(path.length);
   const now = options.now();
+  const description = challenge.test === "describe" && challenge.workflow ? (await loadWorkflow(home, challenge.workflow, DEFAULT_TOOLS)).description : undefined;
+  if (req.method === "GET" && route === "" && description !== undefined) return send(res, 200, confirmPage(challenge, path, now, description));
   if (req.method === "GET" && route === "") return send(res, 200, wordPage(challenge, path, Boolean(options.word) && !challenge.shown_at));
-  if (req.method === "GET" && route === "/confirm") return send(res, 200, confirmPage(challenge, path, now));
+  if (req.method === "GET" && route === "/confirm") return send(res, 200, confirmPage(challenge, path, now, description));
   if (req.method !== "POST" || !sameOrigin(req, origin)) return send(res, 403, page("refused", "<h1>Refused</h1>"));
   if (route === "/show") {
     if (!options.word || challenge.shown_at || challenge.status !== "open") {
@@ -92,7 +105,16 @@ async function handle(req: IncomingMessage, res: ServerResponse, home: string, i
     if (challenge.opens_at && now < challenge.opens_at) return send(res, 409, confirmPage(challenge, path, now));
     const open = await openChallenge(home, id, now).catch(() => null);
     if (!open) return send(res, 409, page("check", "<h1>This check is finished or expired</h1>"));
-    const typed = new URLSearchParams(await readBody(req)).get("word") ?? "";
+    const form = new URLSearchParams(await readBody(req));
+    if (description !== undefined && open.workflow) {
+      const sends = form.get("sends");
+      const writes = form.get("writes");
+      if ((sends !== "yes" && sends !== "no") || (writes !== "yes" && writes !== "no")) return send(res, 400, describePage(path, description));
+      await confirmDescribed(home, open.workflow, descriptionHash(description), { sendsToOthers: sends === "yes", writesOrDeletes: writes === "yes" }, now);
+      await saveChallenge(home, { ...open, status: "done" });
+      return send(res, 200, page("check", "<h1>Thank you</h1><p>Your answers are saved. You can close this tab.</p>"));
+    }
+    const typed = form.get("word") ?? "";
     const result = await settleChallenge(home, open, typed, "person", now);
     const ok = result.result === "yes-you-told-us";
     return send(res, 200, page("check", ok ? "<h1>Thank you</h1><p>That matches. You can close this tab.</p>" : `<h1>That did not match</h1><p>${escapeHtml(result.reason)}</p><p><a href="${path}/confirm">Try again</a></p>`));

@@ -9,7 +9,7 @@ import { describeTools, invokeTool, toolContext } from "../../src/core/tools.js"
 import { runnerHome } from "../helpers/runner-home.js";
 
 const AT = "2026-10-16T12:00:00.000Z";
-const ctx = (interactive = false) => ({ interactive, now: () => AT });
+const ctx = (interactive = false) => ({ interactive, now: () => AT, launch: async () => ({ pid: 0, opened: true }) });
 const run = async (home: string, args: string[], flags: Record<string, string> = {}, interactive = false) => checkCommand(home, (await loadState(home)) ?? undefined, args, flags, ctx(interactive));
 
 describe("taskfollow check (D159)", () => {
@@ -51,7 +51,23 @@ describe("taskfollow check (D159)", () => {
 
   it("runs T7 when asked, and refuses an unknown test", async () => {
     const home = await runnerHome();
-    await expect(run(home, ["start", "t9"])).rejects.toThrow("t1, t5, t7");
+    await expect(run(home, ["start", "t9"])).rejects.toThrow("t1, t5, t7, describe");
+  });
+
+  it("says where a workflow would run, decided by code", async () => {
+    const home = await runnerHome();
+    const { writeWorkflow } = await import("../helpers/workflow-home.js");
+    await writeWorkflow(home, { workflow: "replies", version: 1, mode: "agentic", description: "Answer customers.", instructions: "x", tools: ["channel.send"] });
+    expect(await run(home, ["home", "replies"])).toMatchObject({ workflow: "replies", home: { home: "draft-only" }, missing: ["runner", "tools"] });
+  });
+
+  it("starts the two questions about a described workflow on the person's page only", async () => {
+    const home = await runnerHome();
+    const { writeWorkflow } = await import("../helpers/workflow-home.js");
+    await writeWorkflow(home, { workflow: "count", version: 1, mode: "agentic", description: "Count my memos.", instructions: "x", tools: ["memo.list"] });
+    const out = await run(home, ["start", "describe"], { workflow: "count" });
+    expect(out).toMatchObject({ test: "describe", page: expect.stringContaining("opened in the person's browser") });
+    expect(JSON.stringify(out)).not.toMatch(/127\.0\.0\.1|http:/);
   });
 
   it("lists results in plain words", async () => {

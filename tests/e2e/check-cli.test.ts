@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, writeFile, chmod, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +31,34 @@ describe("taskfollow check through the CLI (Review Focus 1)", () => {
     expect(marked.json).toMatchObject({ need: "answers", result: "yes, tested" });
     expect(runCli(["check", "list"], { home, env }).json).toMatchObject({ results: [expect.objectContaining({ result: "yes, tested" })] });
     expect(await readFile(log, "utf8").catch(() => "")).toBe("");
+  });
+
+  it("launches the person's page with no address in any output, file or opener log, under a hostile environment", async () => {
+    const home = await runnerHome();
+    const { writeWorkflow } = await import("../helpers/workflow-home.js");
+    await writeWorkflow(home, { workflow: "count", version: 1, mode: "agentic", description: "Count my memos.", instructions: "x", tools: ["memo.list"] });
+    const { env, log } = await hostileEnv();
+    const started = runCli(["check", "start", "describe", "--workflow", "count"], { home, env });
+    try {
+      expect(started.code).toBe(0);
+      expect(`${started.stdout}${started.stderr}`).not.toMatch(URL_LIKE);
+      expect(started.json).toMatchObject({ page: expect.stringContaining("taskfollow check page") });
+      let files = "";
+      try {
+        files = execFileSync("/usr/bin/grep", ["-rlE", "127\\.0\\.0\\.1:[0-9]+", home], { encoding: "utf8" }).trim();
+      } catch {
+        files = "";
+      }
+      expect(files).toBe("");
+      expect(await readFile(log, "utf8").catch(() => "")).toBe("");
+    } finally {
+      const id = (started.json as { id?: string }).id ?? "none";
+      try {
+        execFileSync("/usr/bin/pkill", ["-f", `check-serve ${id}`]);
+      } catch {
+        // already gone
+      }
+    }
   });
 
   it("refuses check-serve without the command that starts it, and prints no address", async () => {

@@ -15,6 +15,7 @@ import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, 
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { rm } from "node:fs/promises";
+import { workflowHash } from "./homes.js";
 import { restoreFile } from "./agent-file.js";
 import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
 import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, writeWorkflowSkill } from "./workflow-skill.js";
@@ -111,6 +112,8 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const folder = await plannedSkillFolder(roots, id);
   if (folder === null && rules !== undefined) throw new InputError(noFolderNote(profile, roots, workDirKnown));
   const final = folder === null ? raw : { ...raw, skills: [folder, ...owner.skills] };
+  // D159: a suggestion's shape lives in the workflow state with the file's hash, never in the file the agent writes.
+  const fromSuggestion = (await suggestions(home)).some((entry) => entry.workflow === id) && (value === undefined || parseWords(value).description === undefined);
   const workflow = parseWorkflow(final, id, DEFAULT_TOOLS);
   const before = await agentFileBefore(agentFile);
   const writtenBefore = await loadWritten(home);
@@ -118,7 +121,7 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
     if (folder) await writeWorkflowSkill(folder, id, workflow.description, rules);
     await refreshAgentFile(home, { workflow: id, description: workflow.description, skills: workflow.skills });
     await writeConfig(home, join(WORKFLOWS_DIR, id, WORKFLOW_FILE), final);
-    await saveWorkflowState(home, { workflow: id, sandbox: true });
+    await saveWorkflowState(home, { workflow: id, sandbox: true, ...(fromSuggestion ? { shape: id, content_hash: workflowHash(final) } : {}) });
     const written = await loadWritten(home);
     if (folder && roots.project) await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: id, path: folder, root: roots.project }] });
   } catch (error) {
@@ -196,7 +199,7 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   const run = state?.dry_run;
   if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskfollow dryrun ${id}' first`);
   if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskfollow dryrun ${id}' again`);
-  await saveWorkflowState(home, { workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
+  await saveWorkflowState(home, { ...state, workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.dry_run_confirmed", ref: `workflow:${id}`, payload: { by, version: run.version, run_id: run.run_id } });
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };
 }

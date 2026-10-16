@@ -50,7 +50,7 @@ import { addService } from "./core/services.js";
 import { installerVersion } from "./core/version.js";
 import { inventory } from "./core/skills.js";
 import { checkCommand } from "./core/check-commands.js";
-import { openWithSystem, serveCheckPage } from "./core/check-page.js";
+import { launchCheckPage, openWithSystem, serveCheckPage } from "./core/check-page.js";
 import { loadChallenge } from "./core/checks.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
@@ -455,7 +455,7 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "gateway-serve") return serveGateway(home);
   if (command === "check-serve") return checkServeCommand(home, requireArg(arg, command));
   if (command === "check") {
-    emit(process.stdout, await checkCommand(home, (await loadState(home)) ?? undefined, positionals.slice(1), { ...flags }, { interactive: process.stdin.isTTY === true, now: () => new Date().toISOString() }));
+    emit(process.stdout, await checkCommand(home, (await loadState(home)) ?? undefined, positionals.slice(1), { ...flags }, { interactive: process.stdin.isTTY === true, now: () => new Date().toISOString(), launch: (pageHome, id, word) => launchCheckPage(pageHome, id, word) }));
     return EXIT.OK;
   }
   if (Object.hasOwn(STANDALONE, command)) {

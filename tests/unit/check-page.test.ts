@@ -90,3 +90,25 @@ describe("check page: the confirmation, a separate page served from disk", () =>
     expect(done.status).toBe(200);
   });
 });
+
+describe("check page: is this work only for you? (spec 7)", () => {
+  it("shows the person's own description word for word and saves their two answers, bound to it", async () => {
+    const { runnerHome } = await import("../helpers/runner-home.js");
+    const { writeWorkflow } = await import("../helpers/workflow-home.js");
+    const { loadWorkflowState } = await import("../../src/core/sandbox.js");
+    const { descriptionHash } = await import("../../src/core/homes.js");
+    const home = await runnerHome();
+    const description = "Each morning, tell me <b>how many</b> memos I have.";
+    await writeWorkflow(home, { workflow: "count", version: 1, mode: "agentic", description, instructions: "x", tools: ["memo.list"] });
+    const { challenge } = await startChallenge(home, { needs: [], test: "describe", workflow: "count", agent: "the person", agentVersion: null, ttlMs: 60_000 }, AT);
+    const served = await serve(home, challenge.id);
+    const shown = await (await fetch(served.url)).text();
+    expect(shown).toContain("Each morning, tell me &#60;b&#62;how many&#60;/b&#62; memos I have.");
+    expect(shown).toContain("Does this send anything to anyone but you?");
+    expect((await post(`${served.url}/confirm`, "sends=no")).status).toBe(400);
+    expect((await post(`${served.url}/confirm`, "sends=no&writes=no")).status).toBe(200);
+    expect((await loadWorkflowState(home, "count"))?.described).toMatchObject({ description_hash: descriptionHash(description), sends_to_others: false, writes_or_deletes: false });
+    expect((await loadChallenge(home, challenge.id))?.status).toBe("done");
+  });
+});
+
