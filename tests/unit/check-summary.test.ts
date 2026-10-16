@@ -25,6 +25,14 @@ describe("check summary: the person's page for a workflow (plan Task 11)", () =>
     expect(out.home).toBe("draft-only");
   });
 
+  it("is not silent about reading for a described workflow built from task steps (review M4)", async () => {
+    const home = await runnerHome();
+    await writeWorkflow(home, { ...BRIEF, steps: [{ id: "look", task: { prompt: "Look at my inbox.", input: {}, may_use: ["mcp__gmail"], output: { type: "object" } } }] });
+    const out = await summary(home);
+    expect(out.text).toContain("Reads what this workflow starts from");
+    expect(out.text).toMatch(/Reads what this workflow starts from[^\n]*not checked/);
+  });
+
   it("shows the person's own sightings as 'you saw it', and Home 2 honestly", async () => {
     const home = await runnerHome();
     await writeWorkflow(home, BRIEF);

@@ -3,7 +3,7 @@ import type { Need } from "../../src/core/checks.js";
 import { gapLines, gapWords, labelFor } from "../../src/core/gap-words.js";
 
 /** Plan item 7 Task 7 (scope section 6): every no and not-checked line comes with four plain parts. */
-const NEEDS: Need[] = ["answers", "reads:email", "reads:email-attachment", "reads:files", "reads:records", "reads:messages", "writes:records", "writes:files", "skills", "tools", "runner", "scheduler", "asks-first", "hooks"];
+const NEEDS: Need[] = ["answers", "reads:described", "reads:chat", "reads:email", "reads:email-attachment", "reads:files", "reads:records", "reads:messages", "writes:records", "writes:files", "skills", "tools", "runner", "scheduler", "asks-first", "hooks"];
 
 describe("gap words: four parts for every need", () => {
   it.each(NEEDS)("%s has a label and the four parts for no and not checked, and nothing for a yes", (need) => {
@@ -17,6 +17,16 @@ describe("gap words: four parts for every need", () => {
     }
     expect(gapWords(need, "yes-tested")).toBeNull();
     expect(gapWords(need, "yes-you-told-us")).toBeNull();
+  });
+
+  it("names the right next step for each source and the schedule (review L1)", () => {
+    expect(gapWords("reads:email", "not-checked")?.options[0]).toContain("taskfollow check start t2");
+    expect(gapWords("reads:email-attachment", "not-checked")?.options[0]).toContain("taskfollow check start t2a");
+    expect(gapWords("reads:files", "not-checked")?.options[0]).toContain("taskfollow check start t2f");
+    expect(gapWords("reads:records", "not-checked")?.options[0]).toContain("taskfollow check start t2r");
+    expect(gapWords("reads:chat", "not-checked")?.options[0]).not.toMatch(/Connect/);
+    expect(gapWords("scheduler", "not-checked")?.options[0]).toContain("taskfollow check start t8");
+    expect(gapWords("something-new" as Need, "no-tested")?.missing).toMatch(/^TaskFollow checked, and it did not work/);
   });
 
   it("says a 'no' was tried and did not happen", () => {

@@ -51,7 +51,9 @@ async function needsOf(home: string, workflow: Workflow): Promise<Need[]> {
   const shape = state?.shape ? SHAPES[state.shape] : undefined;
   if (shape) return [...shape.needs];
   const reads = [...new Set(toolsOf(workflow).flatMap((tool) => (READS_BY_TOOL[tool] ? [READS_BY_TOOL[tool]] : [])))];
-  return ["answers", ...reads, "skills"];
+  // A task step reads through the person's own tools, which TaskFollow cannot name: say so instead of staying silent (review M4).
+  const described: Need[] = reads.length === 0 && workflow.steps.some((step) => step.kind === "task") ? ["reads:described"] : [];
+  return ["answers", ...reads, ...described, "skills"];
 }
 
 export async function summaryCommand(home: string, state: InstallState | undefined, id: string | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
