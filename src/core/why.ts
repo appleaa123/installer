@@ -12,6 +12,7 @@ import { callsFile } from "./task-step.js";
 import { takeSuggestions } from "./watch-notice.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow } from "./workflow.js";
+import { DATE, DAY, RUN_ID } from "./why-patterns.js";
 
 /**
  * `taskfollow why` (D138): the record is the reference. Without an argument it lists the runs of the last day (or
@@ -20,8 +21,6 @@ import { loadWorkflow } from "./workflow.js";
  * approvals (why they were asked, who decided). No model is asked; the person's agent can read this and explain it.
  */
 const DAY_MS = 86_400_000;
-export const RUN_ID = /^\d{4}-\d{2}-\d{2}-[0-9a-f]{8}$/;
-export const DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;
 const AGENT = "your agent";
 const ENGINE = "TaskFollow";
 
@@ -111,7 +110,6 @@ async function explainRun(home: string, record: RunRecord, now: string): Promise
 }
 
 const DIRECT = "your agent, directly (outside TaskFollow)";
-export const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** D146: the calls the agent made directly to watched services on one day, each with the reason it gave, if any. */
 async function directCalls(home: string, day: string): Promise<WhyEntry[]> {
