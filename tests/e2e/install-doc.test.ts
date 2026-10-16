@@ -62,6 +62,11 @@ describe("INSTALL.md", () => {
     }
   });
 
+  it("operator rule 11 says the why tool may be used instead of the command (D169)", () => {
+    const rule = DOC.slice(DOC.indexOf("11. At the start of each session"), DOC.indexOf("\n12. "));
+    expect(rule).toContain("If you reach TaskFollow through its tools rather than a shell, `approvals.list` and `why.show` with `since` set to that day give the same answers.");
+  });
+
   it("keeps one placeholder, for the optional Skills Wiki URL, after the optional section starts (D129)", () => {
     const optional = DOC.indexOf("## 11.");
     expect(optional).toBeGreaterThan(0);
