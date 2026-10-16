@@ -157,3 +157,10 @@ describe("taskfollow agent-hook, as Claude Code calls it (D137)", () => {
     expect(runCli(["agent-hook", "sideways", "/nonexistent/hook.json"], { input: "{}" }).code).toBe(2);
   });
 });
+
+describe("agent hook: a check word never stays in the call record (review S3)", () => {
+  it("masks the word of a check.ping call, however short", () => {
+    expect(summarize({ id: "c1234abcd", word: "OWL-7K3P" })).toBe('{"id":"c1234abcd","word":"[masked]"}');
+    expect(summarize({ id: "c1234abcd", word: "HERON-7K3P" })).not.toContain("HERON");
+  });
+});
