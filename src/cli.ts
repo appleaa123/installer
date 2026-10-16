@@ -53,7 +53,7 @@ import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requir
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import { serveStdio } from "./core/mcp-server.js";
-import { ProfileError, listBundledProfiles, loadProfile } from "./core/profile.js";
+import { ProfileError, listBundledProfiles, loadProfile, loadProfileById } from "./core/profile.js";
 import { runProbe } from "./core/probe.js";
 import { modelCommand } from "./core/model.js";
 import { runCommand } from "./core/run-commands.js";
@@ -370,7 +370,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   },
   resume: async ({ state, deps }) => (await resume(deps, state)).result,
   report: async ({ state, deps }, flags) => {
-    const report = buildReport(deps.solution, state);
+    const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
+    const report = buildReport(deps.solution, state, profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {});
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },

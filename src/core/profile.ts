@@ -21,6 +21,8 @@ export interface RuntimeProfile {
     readonly error_path?: string;
     /** Appended to every headless call except the C6 probe, which uses allow_tool instead (D52, D54). */
     readonly tools_off?: readonly string[];
+    /** Flags for a call that must leave no transcript (D157), for example Claude Code's --no-session-persistence. */
+    readonly no_persist?: readonly string[];
     readonly allow_tool?: readonly string[];
     /** `jsonl`: one JSON event per line (Codex `exec --json`); the paths are read line by line. Default `json`. */
     readonly output?: "json" | "jsonl";
@@ -42,6 +44,8 @@ export interface RuntimeProfile {
   readonly skills_dirs?: { readonly project?: string; readonly user?: string };
   /** The agent-level instructions file in the install folder (`CLAUDE.md`, `AGENTS.md`), where TaskFollow keeps one section. */
   readonly instructions_file?: string;
+  /** Whether the agent can start a conversation (9.4 level 2): a dated note from its documentation, never claimed as tested. */
+  readonly push?: { readonly note: string; readonly read: string };
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -65,6 +69,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "detect.cmd": ["profile_dir"],
   "headless.cmd": ["profile_dir", "prompt"],
   "headless.tools_off": [],
+  "headless.no_persist": [],
   "headless.allow_tool": ["tool"],
   "schema.flag": ["schema_json", "schema_file"],
   "resume.flag": ["session_id"],
@@ -108,6 +113,7 @@ function headlessPart(raw: Raw): RuntimeProfile["headless"] {
     session_path: str(headless.session_path, "headless.session_path"),
     ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
     ...(headless.tools_off === undefined ? {} : { tools_off: argv(headless.tools_off, "headless.tools_off") }),
+    ...(headless.no_persist === undefined ? {} : { no_persist: argv(headless.no_persist, "headless.no_persist") }),
     ...(headless.allow_tool === undefined ? {} : { allow_tool: argv(headless.allow_tool, "headless.allow_tool", "{tool}") }),
     ...outputParts(headless),
   };
@@ -181,6 +187,7 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
     ...personalPart(raw),
     ...skillsPart(raw),
+    ...(raw.push === undefined ? {} : { push: { note: str(obj(raw.push, "push").note, "push.note"), read: str(obj(raw.push, "push").read, "push.read") } }),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };

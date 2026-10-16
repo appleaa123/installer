@@ -29,6 +29,21 @@ describe("whenHolds (D131)", () => {
   });
 });
 
+describe("whenHolds with any (9.12 item 3)", () => {
+  const either = { any: [{ step: "who", equals: "team" }, { step: "telegram", equals: "telegram" }] };
+
+  it("is true when one of its parts holds, and false when none does", () => {
+    expect(whenHolds(either, state({ who: answered("team") }))).toBe(true);
+    expect(whenHolds(either, state({ who: answered("me"), telegram: answered("telegram") }))).toBe(true);
+    expect(whenHolds(either, state({ who: answered("me"), telegram: answered("none") }))).toBe(false);
+  });
+
+  it("counts a part whose question was never asked as false", () => {
+    expect(whenHolds(either, state({ who: answered("me") }))).toBe(false);
+    expect(whenHolds(either, state({}))).toBe(false);
+  });
+});
+
 describe("visibleSteps", () => {
   const solution: Solution = { id: "s", version: "1", steps: [step("pick"), step("only-a", { when: { step: "pick", equals: "a" } }), step("always")] };
 
@@ -42,3 +57,15 @@ describe("visibleSteps", () => {
     expect(stepVisible(solution.steps[1] as StepDef, state({ pick: answered("a") }))).toBe(true);
   });
 });
+
+describe("whenHolds with all (PR #45 review)", () => {
+  const soloWithChannel = { all: [{ step: "who", equals: "me" }, { any: [{ step: "email", equals: "email" }, { step: "slack", equals: "slack" }] }] };
+
+  it("holds only when every part holds", () => {
+    expect(whenHolds(soloWithChannel, state({ who: answered("me"), email: answered("email") }))).toBe(true);
+    expect(whenHolds(soloWithChannel, state({ who: answered("team"), email: answered("email") }))).toBe(false);
+    expect(whenHolds(soloWithChannel, state({ who: answered("me"), email: answered("none"), slack: answered("none") }))).toBe(false);
+    expect(whenHolds(soloWithChannel, state({ email: answered("email") }))).toBe(false);
+  });
+});
+

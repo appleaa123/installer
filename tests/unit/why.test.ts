@@ -96,3 +96,59 @@ describe("taskfollow why, as a person reads it", () => {
     expect(renderWhy({ since: AT, runs: [{ run_id: "2026-10-14-1a2b3c4d", workflow: "order-status", started_at: AT, status: "failed", reason: "x" }], next: "n" })).toBe("2026-10-14 12:00  2026-10-14-1a2b3c4d  order-status: failed (x)\n\nn");
   });
 });
+
+describe("taskfollow why: each run's result (9.12 item 3, level 1)", () => {
+  const run = async (home: string, value: Record<string, unknown>, at: string) =>
+    startRun({ home, workflow: parseWorkflow(value, String(value.workflow), DEFAULT_TOOLS), key: `${String(value.workflow)}:${at}`, trigger: { kind: "manual" }, now: () => at });
+  const listed = async (home: string) => (await whyCommand(home, "2026-10-14", () => LATER)).runs as { workflow: string; result?: string; status: string }[];
+
+  it("shows an agentic run's summary and a typed run's last output", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "Two memos need you today." }]));
+    await run(home, { workflow: "digest", version: 1, mode: "agentic", trigger: { manual: true }, instructions: "Read the memos.", tools: ["memo.list"] }, AT);
+    await run(home, { workflow: "list", version: 1, trigger: { manual: true }, steps: [{ id: "memos", tool: "memo.list" }] }, LATER);
+    const runs = await listed(home);
+    expect(runs.find((entry) => entry.workflow === "digest")?.result).toBe("Two memos need you today.");
+    expect(runs.find((entry) => entry.workflow === "list")?.result).toBe('{"memos":[]}');
+  });
+
+  it("cuts a long result at 300 characters", async () => {
+    const home = await runnerHome();
+    vi.stubEnv("FAKE_AGENT_JUDGE", JSON.stringify([{ tool: "done", summary: "x".repeat(400) }]));
+    await run(home, { workflow: "digest", version: 1, mode: "agentic", trigger: { manual: true }, instructions: "Read.", tools: ["memo.list"] }, AT);
+    const result = (await listed(home))[0]?.result ?? "";
+    expect(result).toHaveLength(300);
+    expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("shows no result, and does not fail, when a step file is damaged", async () => {
+    const home = await runnerHome();
+    const record = await run(home, { workflow: "list", version: 1, trigger: { manual: true }, steps: [{ id: "memos", tool: "memo.list" }] }, AT);
+    const { writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    await writeFile(join(home, "runs", "list", record.run_id, "steps", "memos.json"), "{");
+    const runs = await listed(home);
+    expect(runs[0]).toMatchObject({ workflow: "list" });
+    expect(runs[0]).not.toHaveProperty("result");
+  });
+
+  it("says nobody was told about a failed run when no channel exists", async () => {
+    const home = await runnerHome();
+    await run(home, { workflow: "edit", version: 1, trigger: { manual: true }, steps: [{ id: "fix", tool: "memo.edit", args: { id: 99, text: "x" } }] }, AT);
+    const { renderWhy } = await import("../../src/core/why.js");
+    const text = renderWhy(await whyCommand(home, "2026-10-14", () => LATER));
+    expect(text).toContain("(nobody was told: no channel)");
+    expect(text).toMatch(/result: |failed/);
+  });
+
+  it("still says nobody was told when the only channel is WhatsApp, which reaches customers (PR #45 review)", async () => {
+    const home = await runnerHome();
+    const { saveChannel } = await import("../../src/core/channels.js");
+    await saveChannel(home, { channel: "whatsapp", relay_url: "https://relay.example.com", phone_number_id: "1", display_number: "+1 555 0100", verified_at: AT });
+    await run(home, { workflow: "edit", version: 1, trigger: { manual: true }, steps: [{ id: "fix", tool: "memo.edit", args: { id: 99, text: "x" } }] }, AT);
+    expect(await whyCommand(home, "2026-10-14", () => LATER)).toMatchObject({ no_channel: true });
+    await saveChannel(home, { channel: "telegram", bot: { id: 999, username: "desk_test_bot" }, verified_at: AT });
+    expect(await whyCommand(home, "2026-10-14", () => LATER)).toMatchObject({ no_channel: false });
+  });
+});
+
