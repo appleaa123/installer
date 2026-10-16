@@ -176,7 +176,7 @@ taskfollow start --solution starter-skillswiki --url {{SKILLSWIKI_URL}}
 
 `taskfollow secret skillswiki` opens a page in the person's browser; they paste the API key from their dashboard and press Save, and it goes into the keychain without passing through you. Wait until the person says the page shows Done. `--url` is the MCP URL from their dashboard; it is not a secret. `taskfollow start` refuses to run while the key is missing and says so.
 
-3. Then repeat section 4 as usual. The extra steps connect your agent to Skills Wiki and ask the person to activate their combo in the dashboard.
+3. Then repeat section 4 as usual. The extra steps connect your agent to Skills Wiki and ask the person to activate their combo in the dashboard. This starter still needs Telegram, also for a person on their own: Telegram is optional only in the default starter.
 4. Judges use the text of each skill file as it was when first used. `taskfollow packs` lists these pins; when Skills Wiki has a new version, the doctor tries it in sandbox and only the decision maker switches to it, in their own terminal (`taskfollow packs switch <pack> --as <their name>`). `taskfollow learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
 
 ## Removing the connection
