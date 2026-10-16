@@ -336,3 +336,6 @@ Settled by the owner on 2026-10-16 after the research in `docs/research/2026-10-
 - **Claude Cowork and `CLAUDE.md`:** the owner expects Cowork reads it (*"Claude can't just use different mechanisms within their ecosystem"*); recorded as an assumption, checked in the final human session.
 - **Next:** a design spec for the doability check, reviewed from several angles, before items 4–7 are reworked around it.
 
+### 9.16 Note: the plain-agent comparison (2026-10-16, D161)
+
+Arm A of the comparison test, run by Claude on the owner's Claude Code: plain Claude Code kept an explicit "ask me first" rule in every headless run, but sent customer replies on its own whenever a scheduled job's instructions omitted the rule, including one answering a request to delete a person's records. TaskFollow's gate does not depend on the run's instructions; that is standing point 1 (`docs/research/2026-10-16-standing-points.md`). A note, not a scope change.
