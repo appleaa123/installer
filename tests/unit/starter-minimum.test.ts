@@ -55,6 +55,12 @@ describe("the starter for a team (unchanged)", () => {
     expect(ids).not.toContain("services.telegram");
     expect(channelSteps(ids)).toEqual(["channels.telegram-key", "channels.telegram", "channels.gateway", "channels.join", "activate.gateway"]);
   });
+
+  it("never asks a team that also chose email or Slack to link itself as a person on their own (PR #45 review)", () => {
+    const ids = channelSteps(visible({ ...TEAM, "services.email": "email", "services.slack": "slack" }));
+    expect(ids).toContain("channels.join");
+    expect(ids).not.toContain("channels.join-solo");
+  });
 });
 
 describe("taskfollow add telegram for a team", () => {

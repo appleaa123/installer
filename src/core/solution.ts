@@ -6,7 +6,7 @@ import { CONNECTOR_PINS, CONNECTOR_SECRETS } from "./connectors.js";
 import { ContractError, parseContract, type DataContract } from "./contract.js";
 import { MODE_ARGS, MODE_QUESTION_RULE, acceptsModeLiteral, acceptsModeQuestion } from "./mode.js";
 import { validateInput } from "./inputs.js";
-import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType, type StepWhen, type StepWhenAnswer } from "./types.js";
+import { INPUT_KINDS, PHASES, STEP_TYPES, type Phase, type Solution, type StepDef, type StepInput, type StepType, type StepWhen, type StepWhenAnswer, type StepWhenAny } from "./types.js";
 
 export class SolutionError extends Error {
   constructor(message: string) {
@@ -120,6 +120,7 @@ function optionalFields(value: Raw, where: string): Partial<Pick<StepDef, "instr
 function parseWhenAnswer(value: unknown, where: string): StepWhenAnswer {
   if (!isRecord(value)) throw new SolutionError(`${where} must be an object`);
   if (value.any !== undefined) throw new SolutionError(`${where}: an any cannot hold another any`);
+  if (value.all !== undefined) throw new SolutionError(`${where}: an any cannot hold an all`);
   const step = text(value.step, `${where}.step`);
   const hasEquals = value.equals !== undefined;
   const hasIncludes = value.includes !== undefined;
@@ -128,10 +129,24 @@ function parseWhenAnswer(value: unknown, where: string): StepWhenAnswer {
 }
 
 /** `when`: shown only when an earlier question was answered this way (D131), or when any of 2 to 8 such answers holds (9.12 item 3). */
-function parseWhen(value: unknown, where: string): StepWhen {
-  if (!isRecord(value) || value.any === undefined) return parseWhenAnswer(value, where);
+function parseAny(value: Record<string, unknown>, where: string): StepWhenAny {
   if (!Array.isArray(value.any) || value.any.length < MIN_ANY || value.any.length > MAX_ANY) throw new SolutionError(`${where}.any must list 2 to 8 conditions`);
   return { any: value.any.map((part, index) => parseWhenAnswer(part, `${where}.any[${index}]`)) };
+}
+
+/** An `all` part: one answer, or an any of answers; never another all (PR #45 review). */
+function parseAllPart(value: unknown, where: string): StepWhenAnswer | StepWhenAny {
+  if (isRecord(value) && value.all !== undefined) throw new SolutionError(`${where}: an all cannot hold another all`);
+  return isRecord(value) && value.any !== undefined ? parseAny(value, where) : parseWhenAnswer(value, where);
+}
+
+function parseWhen(value: unknown, where: string): StepWhen {
+  if (isRecord(value) && value.all !== undefined) {
+    if (!Array.isArray(value.all) || value.all.length < MIN_ANY || value.all.length > MAX_ANY) throw new SolutionError(`${where}.all must list 2 to 8 conditions`);
+    return { all: value.all.map((part, index) => parseAllPart(part, `${where}.all[${index}]`)) };
+  }
+  if (!isRecord(value) || value.any === undefined) return parseWhenAnswer(value, where);
+  return parseAny(value, where);
 }
 
 const MIN_ANY = 2;
@@ -139,8 +154,8 @@ const MAX_ANY = 8;
 
 /** A condition may only look back at an earlier choice that has options, and only for one of those options, so a step can never be hidden for ever by a typo. */
 function checkWhen(when: StepWhen, earlier: readonly StepDef[], label: string): void {
-  if ("any" in when) {
-    for (const part of when.any) checkWhen(part, earlier, label);
+  if ("any" in when || "all" in when) {
+    for (const part of "any" in when ? when.any : when.all) checkWhen(part, earlier, label);
     return;
   }
   const asked = earlier.find((candidate) => candidate.type === "ask" && candidate.step_id === when.step);

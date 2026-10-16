@@ -57,8 +57,16 @@ export interface StepWhenAnswer {
   readonly includes?: string;
 }
 
-/** A step's condition: one answer, or any of several (9.12 item 3), one level deep. */
-export type StepWhen = StepWhenAnswer | { readonly any: readonly StepWhenAnswer[] };
+/** Any of several answers (9.12 item 3). */
+export interface StepWhenAny {
+  readonly any: readonly StepWhenAnswer[];
+}
+/** All of several parts, each one answer or an any (PR #45 review: "a person on their own, and some channel"). */
+export interface StepWhenAll {
+  readonly all: readonly (StepWhenAnswer | StepWhenAny)[];
+}
+/** A step's condition: one answer, any of several, or all of several (each an answer or an any); never deeper. */
+export type StepWhen = StepWhenAnswer | StepWhenAny | StepWhenAll;
 
 export interface StepDef {
   readonly step_id: string;

@@ -57,3 +57,15 @@ describe("visibleSteps", () => {
     expect(stepVisible(solution.steps[1] as StepDef, state({ pick: answered("a") }))).toBe(true);
   });
 });
+
+describe("whenHolds with all (PR #45 review)", () => {
+  const soloWithChannel = { all: [{ step: "who", equals: "me" }, { any: [{ step: "email", equals: "email" }, { step: "slack", equals: "slack" }] }] };
+
+  it("holds only when every part holds", () => {
+    expect(whenHolds(soloWithChannel, state({ who: answered("me"), email: answered("email") }))).toBe(true);
+    expect(whenHolds(soloWithChannel, state({ who: answered("team"), email: answered("email") }))).toBe(false);
+    expect(whenHolds(soloWithChannel, state({ who: answered("me"), email: answered("none"), slack: answered("none") }))).toBe(false);
+    expect(whenHolds(soloWithChannel, state({ email: answered("email") }))).toBe(false);
+  });
+});
+

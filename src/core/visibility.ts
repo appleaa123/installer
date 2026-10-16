@@ -9,6 +9,7 @@ export function whenHolds(when: StepWhen | undefined, state: InstallState): bool
   if (!when) return true;
   // 9.12 item 3: any of several answers; a part whose question was never answered counts as false.
   if ("any" in when) return when.any.some((part) => whenHolds(part, state));
+  if ("all" in when) return when.all.every((part) => whenHolds(part, state));
   const record = state.steps[when.step];
   if (record?.status !== "done") return false;
   if (when.equals !== undefined) return record.value === when.equals;

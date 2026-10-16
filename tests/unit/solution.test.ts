@@ -166,6 +166,23 @@ describe("conditional steps and defaults (D131)", () => {
     expect(() => build(PICK, MANY, ask("dependent", { kind: "text" }, { when }), late)).toThrow(message);
   });
 
+  it("accepts all of several conditions, each one answer or an any (PR #45 review)", () => {
+    const when = { all: [{ step: "pick", equals: "a" }, { any: [{ step: "many", includes: "x" }, { step: "many", includes: "y" }] }] };
+    expect(build(PICK, MANY, ask("both", { kind: "text" }, { when })).steps[2]?.when).toEqual(when);
+  });
+
+  it.each([
+    ["is an empty all", { all: [] }, "2 to 8"],
+    ["is an all of one", { all: [{ step: "pick", equals: "a" }] }, "2 to 8"],
+    ["nests an all", { all: [{ all: [{ step: "pick", equals: "a" }, { step: "pick", equals: "b" }] }, { step: "pick", equals: "a" }] }, "cannot hold another all"],
+    ["holds an any that holds an all", { all: [{ step: "pick", equals: "a" }, { any: [{ all: [] }, { step: "pick", equals: "a" }] }] }, "cannot hold an all"],
+    ["has a part naming a later step", { all: [{ step: "pick", equals: "a" }, { step: "late", equals: "a" }] }, "earlier ask step"],
+    ["has a part asking for a value that is not an option", { all: [{ step: "pick", equals: "a" }, { any: [{ step: "pick", equals: "z" }, { step: "pick", equals: "a" }] }] }, "one of its options"],
+  ])("refuses an all that %s", (_what, when, message) => {
+    const late = ask("late", { kind: "choice", options: ["a"] });
+    expect(() => build(PICK, MANY, ask("dependent", { kind: "text" }, { when }), late)).toThrow(message);
+  });
+
   it("refuses a condition on a step that is not a choice", () => {
     expect(() => build(ask("name", { kind: "text" }), ask("dependent", { kind: "text" }, { when: { step: "name", equals: "a" } }))).toThrow("single choice");
   });
