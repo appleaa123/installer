@@ -23,6 +23,111 @@
             "type": "text"
           }
         }
+      },
+      "lead": {
+        "key": "email",
+        "fields": {
+          "name": {
+            "type": "text",
+            "tags": [
+              "personal"
+            ],
+            "required": true
+          },
+          "email": {
+            "type": "email",
+            "tags": [
+              "personal"
+            ]
+          },
+          "source": {
+            "type": "text"
+          },
+          "status": {
+            "type": "enum",
+            "options": [
+              "new",
+              "qualified",
+              "not a fit",
+              "waiting"
+            ]
+          },
+          "next_step": {
+            "type": "text"
+          },
+          "notes": {
+            "type": "text"
+          }
+        }
+      },
+      "invoice": {
+        "key": "id",
+        "fields": {
+          "id": {
+            "type": "text",
+            "required": true
+          },
+          "vendor": {
+            "type": "text",
+            "required": true
+          },
+          "amount": {
+            "type": "money",
+            "tags": [
+              "financial"
+            ],
+            "required": true
+          },
+          "currency": {
+            "type": "text"
+          },
+          "due": {
+            "type": "date"
+          },
+          "status": {
+            "type": "enum",
+            "options": [
+              "to check",
+              "approved to pay",
+              "paid"
+            ]
+          },
+          "file": {
+            "type": "file_ref"
+          }
+        }
+      },
+      "action": {
+        "key": "id",
+        "fields": {
+          "id": {
+            "type": "text",
+            "required": true
+          },
+          "what": {
+            "type": "text",
+            "required": true
+          },
+          "owner": {
+            "type": "text",
+            "tags": [
+              "personal"
+            ]
+          },
+          "due": {
+            "type": "date"
+          },
+          "meeting": {
+            "type": "text"
+          },
+          "status": {
+            "type": "enum",
+            "options": [
+              "open",
+              "done"
+            ]
+          }
+        }
       }
     }
   },
