@@ -24,13 +24,15 @@ Last full test run: 135 files, 1,868 tests, twice in a row with no failures (aft
 The full rewrite of this file from section 9 comes once the current scope is finished (9.13 item 2, after #40). Until then, v1 progress is kept here.
 
 1. ~~Build item 1, the spike~~ **done 2026-10-15 (task 29, D153):** a restricted task run loads only Claude Code's built-in skills, not the owner's, the folder's or plugins', and neither a `/skill` prefix nor `--add-dir` changes that. So the runner puts the workflow's skill text into the task prompt (9.5's fallback, like D83).
-2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall. Next: item 3, the bare-minimum install.
+2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall.
+3. ~~Build item 3, the bare-minimum install~~ **built (D155)**: Telegram optional for a person on their own, results in `why`, the session-start rule, the report's Told and Runs lines, the vision in README/START-HERE/INSTALL. Next: item 4, the level-B step.
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
 | Item | PR | Decision | Files | What you see |
 |---|---|---|---|---|
 | 1, spike | #43 | D153 | `docs/testing/task29-spike.sh` | (test only) |
 | 2, skills | #44 | D154 | `src/core/skills.ts`, `workflow-skill.ts`, `agent-file.ts`, `lifecycle.ts` (workflow add), `runner.ts` + `agent-task.ts`/`judge.ts`/`agentic.ts` (prompts), `uninstall.ts` | `taskfollow skills`; `.claude/skills/<workflow>/` and a "TaskFollow workflows" section in `CLAUDE.md` in the install folder; "The skill '…' could not be read" when a run fails on a skill |
+| 3, bare minimum | (`feat/bare-minimum`) | D155 | `solutions/starter.json` 1.9.0, `src/core/solution.ts` + `visibility.ts` (`any`), `services.ts`, `why.ts`, `report.ts`, `profiles/claude-code.json` (`push`), INSTALL.md, START-HERE.md, README.md | the Telegram question; "💬 Told" and "🕒 Runs" in `taskfollow report`; "result:" and "(nobody was told: no channel)" in `taskfollow why` |
 
 3. **Waiting on you:** merge #42 (section 9.14); say when task 28 is ready, so #40 can be brought up to date and merged (9.14 steps 1–3); item 5 (inbox triage) waits for #40.
 
