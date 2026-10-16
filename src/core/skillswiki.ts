@@ -54,11 +54,13 @@ export async function activeComboSlug(target: McpTarget): Promise<string | null>
   return typeof slug === "string" && slug !== "" && isRecord(outcome.value.combo) ? slug : null;
 }
 
-/** True when any `skill` field inside the raw workflow records names a Skills Wiki skill. */
+const isWikiRef = (item: unknown): boolean => typeof item === "string" && item.startsWith("skillswiki:");
+
+/** True when any `skill` field, or any entry of a `skills` list (9.12 item 2), inside the raw workflow records names a Skills Wiki skill. */
 function namesSkillswikiSkill(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(namesSkillswikiSkill);
   if (!isRecord(value)) return false;
-  return Object.entries(value).some(([key, item]) => (key === "skill" && typeof item === "string" && item.startsWith("skillswiki:")) || namesSkillswikiSkill(item));
+  return Object.entries(value).some(([key, item]) => (key === "skill" && isWikiRef(item)) || (key === "skills" && Array.isArray(item) && item.some(isWikiRef)) || namesSkillswikiSkill(item));
 }
 
 /** A solution needs `start --url` when a step calls Skills Wiki or a bundled workflow's judge names one of its skills. */

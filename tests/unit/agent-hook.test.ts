@@ -157,3 +157,68 @@ describe("taskfollow agent-hook, as Claude Code calls it (D137)", () => {
     expect(runCli(["agent-hook", "sideways", "/nonexistent/hook.json"], { input: "{}" }).code).toBe(2);
   });
 });
+
+const AT = () => "2026-10-15T10:00:00.000Z";
+
+describe("an approved agent call: exactly that call, once (D151)", () => {
+  const APPROVED = { id: "gid://shopify/Product/1", title: "Blue mug", status: "ACTIVE" };
+  async function exactConfig(): Promise<HookConfig> {
+    const dir = await makeTempHome();
+    return { record: join(dir, "publish.calls.jsonl"), may_use: ["mcp__shopify__productUpdate"], changes: true, exact: { tool: "mcp__shopify__productUpdate", args: APPROVED } };
+  }
+  const run = (cfg: HookConfig, tool: string, input: unknown) => handleHook("pre", JSON.stringify(pre(tool, input)), cfg, AT);
+
+  it("allows the approved call with the same arguments in any key order, and only once", async () => {
+    const cfg = await exactConfig();
+    expect(await run(cfg, "mcp__shopify__productUpdate", { status: "ACTIVE", title: "Blue mug", id: "gid://shopify/Product/1" })).toEqual({ exit: 0, stdout: "" });
+    await expect(readFile(cfg.record.replace(/\.calls\.jsonl$/, ".made"), "utf8")).resolves.toBeDefined();
+    const again = await run(cfg, "mcp__shopify__productUpdate", APPROVED);
+    expect(JSON.parse(again.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("already made") });
+  });
+
+  it("refuses changed arguments, extra arguments and other tools, and tells the agent the approved call", async () => {
+    const cfg = await exactConfig();
+    for (const [tool, input] of [["mcp__shopify__productUpdate", { ...APPROVED, title: "Red mug" }], ["mcp__shopify__productUpdate", { ...APPROVED, vendor: "x" }], ["mcp__shopify__productDelete", { id: APPROVED.id }], ["Bash", { command: "shopify store execute" }]] as const) {
+      const out = await run(cfg, tool, input);
+      expect(JSON.parse(out.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: "deny", permissionDecisionReason: expect.stringContaining('"title":"Blue mug"') });
+    }
+    const lines = (await readFile(cfg.record, "utf8")).trim().split("\n");
+    expect(lines).toHaveLength(4);
+    await expect(readFile(cfg.record.replace(/\.calls\.jsonl$/, ".made"), "utf8")).rejects.toThrow();
+  });
+
+  it("still lets the agent give its reason and its answer", async () => {
+    const cfg = await exactConfig();
+    expect(await run(cfg, REASON_TOOL, { tool: "mcp__shopify__productUpdate", why: "approved" })).toEqual({ exit: 0, stdout: "" });
+    expect(await run(cfg, ANSWER_TOOL, { done: true })).toEqual({ exit: 0, stdout: "" });
+  });
+
+  it("blocks the call when it cannot mark the approved call as made", async () => {
+    const cfg = { ...(await exactConfig()), record: "/nonexistent-dir/x/publish.calls.jsonl" };
+    expect(await run(cfg, "mcp__shopify__productUpdate", APPROVED)).toMatchObject({ exit: 2 });
+  });
+
+  it("reads the approved call from its settings file", async () => {
+    const cfg = await exactConfig();
+    const file = join(cfg.record, "..", "hook.json");
+    await writeFile(file, JSON.stringify(cfg));
+    const { loadHookConfig } = await import("../../src/core/agent-hook.js");
+    expect(await loadHookConfig(file)).toEqual(cfg);
+  });
+});
+
+describe("a tool that answers with an error (D151)", () => {
+  it("is recorded as failed, not ok", async () => {
+    const dir = await makeTempHome();
+    const cfg: HookConfig = { record: join(dir, "calls.jsonl"), may_use: ["mcp__shopify__productUpdate"], changes: true };
+    await handleHook("post", JSON.stringify({ ...pre("mcp__shopify__productUpdate", { id: 1 }), hook_event_name: "PostToolUse", tool_response: { isError: true, content: [{ type: "text", text: "not found" }] } }), cfg, AT);
+    expect(JSON.parse((await readFile(cfg.record, "utf8")).trim())).toMatchObject({ tool: "mcp__shopify__productUpdate", outcome: "failed" });
+  });
+});
+
+describe("agent hook: a check word never stays in the call record (review S3)", () => {
+  it("masks the word of a check.ping call, however short", () => {
+    expect(summarize({ id: "c1234abcd", word: "OWL-7K3P" })).toBe('{"id":"c1234abcd","word":"[masked]"}');
+    expect(summarize({ id: "c1234abcd", word: "HERON-7K3P" })).not.toContain("HERON");
+  });
+});

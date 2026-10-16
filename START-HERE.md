@@ -1,10 +1,10 @@
 # Start here
 
-This page is for you, not for your computer. It gets you from nothing to a helper who sets everything up for you. You do not need to know anything technical. You will need:
+This page is for you, not for your computer. TaskFollow turns the AI assistant you already have into one that knows your work: it sets itself up step by step, finds the jobs you repeat, runs them for you, and always asks you before anything is sent, paid or deleted. This page gets you from nothing to a helper who sets everything up for you. You do not need to know anything technical. You will need:
 
 - a **Mac** or a **Windows 11** computer,
 - an account with Anthropic that can use **Claude Code** (it is the helper; a paid Claude plan works),
-- the **Telegram** app on your phone with an account (your assistant reaches you there), and your own **Google account** if you keep your contacts in a Google Sheet. The helper asks what you use and tells you what you need,
+- the **Telegram** app on your phone only if you want messages there when you are away from the computer (without it, your assistant tells you everything in its own chat), and your own **Google account** if you keep your contacts in a Google Sheet. The helper asks what you use and tells you what you need,
 - some time without interruptions. If you get stuck, you can stop and carry on later.
 
 ## 1. Install Node

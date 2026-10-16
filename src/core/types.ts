@@ -48,13 +48,25 @@ export interface Check {
 }
 
 /** A step that shows only when an earlier question was answered a certain way (D131). */
-export interface StepWhen {
+/** One condition on an earlier answer (D131). */
+export interface StepWhenAnswer {
   readonly step: string;
   /** For a single choice: the option that must have been chosen. */
   readonly equals?: string;
   /** For a multiple choice: the option that must be among those chosen. */
   readonly includes?: string;
 }
+
+/** Any of several answers (9.12 item 3). */
+export interface StepWhenAny {
+  readonly any: readonly StepWhenAnswer[];
+}
+/** All of several parts, each one answer or an any (PR #45 review: "a person on their own, and some channel"). */
+export interface StepWhenAll {
+  readonly all: readonly (StepWhenAnswer | StepWhenAny)[];
+}
+/** A step's condition: one answer, any of several, or all of several (each an answer or an any); never deeper. */
+export type StepWhen = StepWhenAnswer | StepWhenAny | StepWhenAll;
 
 export interface StepDef {
   readonly step_id: string;

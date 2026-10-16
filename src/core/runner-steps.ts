@@ -1,4 +1,5 @@
-import { getApproval, requestApproval, type PreparedAction } from "./approvals.js";
+import { makeApprovedCall, prepareAgentCall } from "./agent-call.js";
+import { getApproval, isAgentCall, requestApproval, type PreparedAction } from "./approvals.js";
 import { calculate } from "./calc.js";
 import { interpolate, lookup, type Scope } from "./expressions.js";
 import { InputError } from "./inputs.js";
@@ -26,6 +27,8 @@ export interface Exec {
   readonly state: InstallState | undefined;
   readonly contract: DataContract | null;
   readonly backend: () => Promise<JudgeBackend>;
+  /** The workflow's skills block for this run's prompts (9.12 item 2, D153), loaded once on first use; null without skills. */
+  readonly skills: () => Promise<string | null>;
   /** The environment a task step's agent starts from (narrowed further by agent-task.ts). */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -107,7 +110,7 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
     const itemScope = { ...scope, item };
     const input = stripFields(spec.input === undefined ? (item ?? null) : interpolate(spec.input, itemScope), hidden);
     const context = (await runContextTools(exec.ctx, spec, itemScope)).map((call) => ({ ...call, result: stripFields(call.result, hidden) as ContextCall["result"] }));
-    const outcome = await askJudge(backend, spec, input, context, skill);
+    const outcome = await askJudge(backend, spec, input, context, skill, await exec.skills());
     inputs.push(input);
     calls.push(...context);
     if (outcome.status === "ok") outputs.push(outcome.value);
@@ -122,6 +125,14 @@ export async function runJudge(exec: Exec, record: RunRecord, step: WorkflowStep
 
 export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowStep & { kind: "approve" }, scope: Scope, startedAt: string): Promise<StepOutcome> {
   const args = argsFor(step.args, scope, step.id);
+  if (step.agent_call) {
+    const prepared = prepareAgentCall(step.id, step.tool, args);
+    if (exec.ctx.sandbox) {
+      await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output: null, skipped: true });
+      return { kind: "done", output: null, actions: 0, needs_human: 0 };
+    }
+    return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent || record.urgent === true, startedAt, policy: false });
+  }
   const prepared = await prepareAction(exec.ctx, requireTool(exec.ctx.registry, step.tool), args);
   if (!needsApproval(prepared.level)) throw new InputError(`Step '${step.id}': ${step.tool} is ${prepared.level} and needs no approval; make it a tool step`);
   if (exec.ctx.sandbox) {
@@ -137,6 +148,7 @@ export async function checkApproval(exec: Exec, record: RunRecord, log: StepLog)
   const id = log.approval ?? 0;
   const item = await getApproval(exec.home, id, now(exec));
   if (item.status === "pending") return { kind: "wait", approval: id };
+  if (item.status === "approved" && item.token && isAgentCall(item)) return makeApprovedCall(exec, record, log, item, item.token);
   if (item.status === "approved" && item.token) {
     const output = await invokeTool(exec.ctx, item.action.tool, { ...item.action.args, [TOKEN_ARG]: item.token });
     await save(exec, record, { ...log, status: "done", output });

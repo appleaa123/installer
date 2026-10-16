@@ -211,9 +211,15 @@ export async function approveItem(home: string, id: number, decider: Decider, no
 }
 
 /** Edit = the person's version of the action, approved as edited: new hash, new level, the original kept (§11.5). */
+/** D151: TaskFollow's own tools are named like `memo.add`; a call to the agent's own MCP tool is `mcp__<server>__<tool>`. */
+export const isAgentCall = (item: ApprovalItem): boolean => item.action.tool.startsWith("mcp__");
+/** An edit would make it a call nobody approved as a whole; the person rejects it and the workflow drafts it again. */
+export const AGENT_CALL_NO_EDIT = "A call to the agent's own tool cannot be edited: reject it, then run the workflow again with the change";
+
 export async function editItem(home: string, id: number, prepared: PreparedAction, decider: Decider, now: string): Promise<ApprovalItem> {
   const required = requiredRole(prepared.level) ?? "member";
   const item = await openForDecision(home, id, decider, now, required);
+  if (isAgentCall(item)) return refuseDecision(home, item, decider.name, AGENT_CALL_NO_EDIT, now);
   if (prepared.tool !== item.action.tool) throw new InputError(`Approval item ${id} is for ${item.action.tool}; an edit can change its arguments, not the tool`);
   const edited: ApprovalItem = {
     ...item, status: "approved", token: newToken(id), level: prepared.level, required_role: required,

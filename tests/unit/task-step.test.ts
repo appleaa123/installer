@@ -89,6 +89,8 @@ describe("running a task step (D139)", () => {
     await saveStep(home, record, { step: "lookup", status: "failed", started_at: AT, finished_at: AT, duration_ms: 0, input_fingerprint: "x", error: TASK_INTERRUPTED });
     const run = await resumeRun(request(home), record);
     expect(run).toMatchObject({ status: "failed", reason: expect.stringContaining("may already have acted") });
+    expect(run.reason).toContain("'taskfollow why ");
+    expect(run.reason).not.toContain("--run");
     expect(await agentRan()).toBe(false);
   });
 
@@ -101,6 +103,17 @@ describe("running a task step (D139)", () => {
     const home2 = await runnerHome();
     const run = await startRun({ ...request(home2, changing, { sandbox: true }), key: `order-fix:${AT}` });
     expect(await loadStep(home2, run, "fix")).toMatchObject({ status: "done", output: null, skipped: true });
+  });
+
+  it("fails the run before the agent starts when the agent is older than task steps need", async () => {
+    const home = await runnerHome();
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, agent_version: "8.0.0" } });
+    script({ order_found: true });
+    const run = await startRun(request(home));
+    expect(run).toMatchObject({ status: "failed", reason: expect.stringContaining("older than 9.0.0") });
+    expect(await agentRan()).toBe(false);
   });
 
   it("fails the run in plain words when the person's agent cannot run task steps", async () => {

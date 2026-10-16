@@ -95,3 +95,20 @@ describe("workflows in the engine home", () => {
     await expect(loadWorkflow(home, "broken", DEFAULT_TOOLS)).rejects.toThrow("Workflow 'broken': workflow.json is not valid JSON");
   });
 });
+
+describe("a workflow's skills (9.12 item 2, D154)", () => {
+  it("reads local folders and skillswiki references, and has none by default", () => {
+    expect(parse(MEMO_DIGEST).skills).toEqual([]);
+    expect(parse({ ...MEMO_DIGEST, skills: ["/x/.claude/skills/a", "skillswiki:p/s/SKILL.md"] }).skills).toEqual(["/x/.claude/skills/a", "skillswiki:p/s/SKILL.md"]);
+  });
+
+  it.each([
+    [["relative/skill"], "must be a folder path from 'taskfollow skills'"],
+    [["skillswiki:p"], "must be a folder path from 'taskfollow skills'"],
+    [["/a", "/a"], "lists '/a' twice"],
+    [Array.from({ length: 11 }, (_, index) => `/s/${index}`), "at most 10 skills"],
+    ["/a", "skills must be a list"],
+  ])("refuses %j", (skills, message) => {
+    expect(() => parse({ ...MEMO_DIGEST, skills })).toThrow(message);
+  });
+});

@@ -22,6 +22,15 @@ describe("the command that hands a task to Claude Code (D139)", () => {
     for (const phase of ["PreToolUse", "PostToolUse", "PostToolUseFailure"]) expect(settings.hooks[phase]?.[0]?.hooks[0]?.timeout).toBe(30);
   });
 
+  it("blocks the call when the gate itself fails or times out (Claude Code lets it through otherwise)", async () => {
+    const settings = JSON.parse(hookSettings("/h/hook.json", "/n/node", "/t/cli.js", "darwin")) as { hooks: Record<string, { hooks: { onFailure?: string }[] }[]> };
+    expect(settings.hooks.PreToolUse?.[0]?.hooks[0]?.onFailure).toBe("block");
+    // onFailure needs Claude Code 2.1.295 or later: the task command says so; the rest of TaskFollow works with older ones.
+    const claude = await loadProfileById("claude-code");
+    expect(claude.task?.min_version).toBe("2.1.295");
+    expect(claude.min_version).toBe("2.1.0");
+  });
+
   it("runs restricted, with no prompts, no saved transcript, and only the step's tools plus the reason tool", async () => {
     const profile = await loadProfileById("claude-code");
     const argv = buildTaskArgv(profile, await request(), { settingsJson: "{}", mcpConfig: "{}" });
@@ -76,7 +85,8 @@ describe("a task run with the agent's own tools, through the hook (fake agent)",
     const result = await runTask(home, await fakeProfile(), req, { env: { ...process.env, FAKE_AGENT_TASK: JSON.stringify(script), FAKE_AGENT_HOME: home } });
     expect(result).toMatchObject({ ok: true, structured: { order_found: true, status: "shipped" } });
     const record = await lines(req.record);
-    expect(record.map((line) => [line.tool, line.outcome ?? "reason"])).toEqual([
+    // A reason line is recognised by its reason_for field (a failed reason call also carries outcome "failed").
+    expect(record.map((line) => [line.tool, line.reason_for !== undefined ? "reason" : line.outcome])).toEqual([
       [REASON_TOOL, "reason"],
       ["mcp__shopify__get_order", "ok"],
       ["mcp__shopify__create_refund", "refused"],

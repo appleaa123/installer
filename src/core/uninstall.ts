@@ -6,6 +6,7 @@ import { CHANNEL_IDS } from "./channels.js";
 import { CONNECTOR_SECRETS } from "./connectors.js";
 import { unregisterEverywhere } from "./disconnect.js";
 import { stopWatching } from "./watch.js";
+import { removeWritten } from "./workflow-skill.js";
 import { ActionFailure } from "./failure.js";
 import { stopGateway } from "./gateway-process.js";
 import { serviceCommand, type ServiceOptions } from "./host-service.js";
@@ -21,7 +22,7 @@ import { loadState } from "./state.js";
 /**
  * `taskfollow uninstall` (spec §16.4, D34, D109): removes the engine's body and keeps the records. In order: pause, so
  * nothing goes out from here on (D101); stop the gateway; remove the agent's MCP registrations (`skillswiki`,
- * `installer`); delete the keychain items the engine stored; delete the schedule and boot service files it wrote
+ * `installer`); remove the workflow skill folders and the CLAUDE.md section it wrote (9.13 item 5); delete the keychain items the engine stored; delete the schedule and boot service files it wrote
  * under the home; audit it; export the audit to `exports/`. It prints the OS commands that unload what a person
  * loaded, because the engine never changes the OS itself. Business records (the client's sheets and mailboxes,
  * `data/`, run logs) are not touched, and the home stays until the person deletes it. Only a person, in a terminal.
@@ -81,11 +82,15 @@ export async function uninstall(home: string, person: { interactive: boolean; as
   const gateway = (await stopGateway(home, now)).status;
   const profile = (await loadState(home))?.runtime?.profile;
   const unregistered = { [SKILLSWIKI_MCP_NAME]: await unregisterEverywhere(home, profile, SKILLSWIKI_MCP_NAME), [TOOLS_MCP_NAME]: await unregisterEverywhere(home, profile, TOOLS_MCP_NAME) };
+  // 9.13 item 5: the workflow skill folders and the CLAUDE.md section TaskFollow wrote, and nothing else of the person's.
+  // Item 7a: open checks end and their test files, skills and tabs are removed with everything else TaskFollow wrote.
+  await (await import("./check-fresh.js")).sweepChecks(home, now(), true);
+  const removed = await removeWritten(home);
   const secrets = await deleteSecrets(options.env);
   const commands = await osCommands(home, now, options);
-  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, secrets, watch_removed: watch } });
+  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, removed, secrets, watch_removed: watch } });
   return {
-    status: "uninstalled", gateway, unregistered, secrets, audit_export: await exportAudit(home, now()), commands,
+    status: "uninstalled", gateway, unregistered, removed, secrets, audit_export: await exportAudit(home, now()), commands,
     kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above"],
     note: "Run the printed commands in your own terminal to unload what was loaded into the OS; once you have kept the audit export, delete the home folder yourself.",
   };

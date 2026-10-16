@@ -1,4 +1,8 @@
 import { continueAgent, resumeAgent, type AgentRun } from "./agentic.js";
+import { firstStopNoticeToday, noteContradiction, runnerStopReason } from "./check-fresh.js";
+import { pinnedSkill } from "./packs.js";
+import { loadProfileById } from "./profile.js";
+import { runSkillsText, skillRoots } from "./skills.js";
 import { ToolRefusal, getApproval } from "./approvals.js";
 import { holds, interpolate, type Scope } from "./expressions.js";
 import { ActionFailure } from "./failure.js";
@@ -44,7 +48,17 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
   const ctx = { ...(await toolContext(request.home, "runner", DEFAULT_TOOLS, request.now)), sandbox: record.sandbox, run: `${record.workflow}/${record.run_id}` };
   const state = (await loadState(request.home)) ?? undefined;
   let backend: Promise<JudgeBackend> | undefined;
-  return { home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)), ...(request.env ? { env: request.env } : {}) };
+  let skills: Promise<string | null> | undefined;
+  const loadSkills = async (): Promise<string | null> => {
+    if (request.workflow.skills.length === 0) return null;
+    const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
+    const roots = profile ? skillRoots(profile, state?.work_dir, request.env ?? process.env) : {};
+    return runSkillsText(request.workflow.skills, roots, (ref) => pinnedSkill(request.home, state?.skillswiki?.url, ref, request.now(), record.shadow));
+  };
+  return {
+    home: request.home, ctx, state, contract: await loadPinnedContract(request.home), backend: () => (backend ??= judgeBackend(request.home, state, request.env)),
+    skills: () => (skills ??= loadSkills()), ...(request.env ? { env: request.env } : {}),
+  };
 }
 
 /** The data a run starts from: `run`, and `event` (the inbox message, untrusted) for an event trigger. */
@@ -78,8 +92,8 @@ async function runStep(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
   const log = await loadStep(exec.home, record, step.id);
   if (log?.status === "waiting" && step.kind === "agent") return resumeAgent(agentRun(exec, record, step.id, step.agent, log.input, log.started_at), log);
   if (log?.status === "waiting") return checkApproval(exec, record, log);
-  if (step.kind === "task" && log?.status === "failed" && log.error === TASK_INTERRUPTED) {
-    return { kind: "stop", status: "failed", reason: `step '${step.id}': ${TASK_INTERRUPTED}, so the agent may already have acted. Check with 'taskfollow why --run ${record.run_id}' before running it again` };
+  if (log?.status === "failed" && log.error === TASK_INTERRUPTED) {
+    return { kind: "stop", status: "failed", reason: `step '${step.id}': ${TASK_INTERRUPTED}, so the agent may already have acted. Check with 'taskfollow why ${record.run_id}' before running it again` };
   }
   if (step.when !== undefined && !holds(step.when, scope)) {
     await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: startedAt, duration_ms: 0, input_fingerprint: fingerprint(null), output: null, skipped: true });
@@ -105,17 +119,19 @@ async function guarded(exec: Exec, record: RunRecord, step: WorkflowStep, scope:
     if (!(error instanceof InputError || error instanceof ToolRefusal || error instanceof ActionFailure)) throw error;
     const at = exec.ctx.now();
     await saveStep(exec.home, record, { step: step.id, status: "failed", started_at: at, finished_at: at, duration_ms: 0, input_fingerprint: fingerprint(null), error: error.message });
+    // Item 7a (review B7): a task whose agent did not finish contradicts the runner check for this workflow.
+    if (step.kind === "task" && error.message.startsWith("The agent did not finish the task")) await noteContradiction(exec.home, record.workflow, exec.state, at);
     return { kind: "stop", status: "failed", reason: `step '${step.id}' failed: ${error.message}`, drift: step.kind !== "agent" && step.kind !== "task" };
   }
 }
 
-async function finish(exec: Exec, record: RunRecord, status: RunRecord["status"], reason?: string): Promise<RunRecord> {
+async function finish(exec: Exec, record: RunRecord, status: RunRecord["status"], reason?: string, quiet = false): Promise<RunRecord> {
   const { waiting_on: _waiting, reason: _old, ...rest } = record;
   const done: RunRecord = { ...rest, status, finished_at: exec.ctx.now(), ...(reason ? { reason } : {}) };
   await saveRun(exec.home, done);
   await auditRun(exec.home, exec.ctx.now(), "run.finished", done, { actions: done.actions, needs_human: done.needs_human, ...(reason ? { reason } : {}) });
   const where = `run ${done.run_id} of workflow '${done.workflow}'`;
-  if (status === "failed") await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'taskfollow run ${done.workflow}' runs it again.`);
+  if (status === "failed" && !quiet) await tellDecisionMaker(exec, done, `The ${where} failed: ${reason ?? "unknown reason"}. It is not retried by itself; 'taskfollow run ${done.workflow}' runs it again.`);
   else if (done.needs_human > 0) await tellDecisionMaker(exec, done, `The ${where} has ${done.needs_human} judgement(s) that need a person; see runs/${done.workflow}/${done.run_id} in the engine home.`);
   return done;
 }
@@ -189,5 +205,8 @@ export async function startRun(request: RunRequest): Promise<RunRecord> {
   }
   const exec = await prepare(request, record);
   await auditRun(request.home, request.now(), "run.started", record, { trigger: record.trigger.kind, version: record.version, sandbox: record.sandbox });
+  // Item 7a (spec 8, review B6): a real run of a workflow whose runner check no longer holds stops here; sandbox runs never do.
+  const stop = record.sandbox ? null : await runnerStopReason(request.home, request.workflow.id, exec.state, request.now());
+  if (stop) return finish(exec, record, "failed", stop, !(await firstStopNoticeToday(request.home, request.workflow.id, request.now())));
   return execute(exec, request.workflow, record);
 }

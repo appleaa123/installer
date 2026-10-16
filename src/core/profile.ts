@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export class ProfileError extends Error {
@@ -21,6 +21,8 @@ export interface RuntimeProfile {
     readonly error_path?: string;
     /** Appended to every headless call except the C6 probe, which uses allow_tool instead (D52, D54). */
     readonly tools_off?: readonly string[];
+    /** Flags for a call that must leave no transcript (D157), for example Claude Code's --no-session-persistence. */
+    readonly no_persist?: readonly string[];
     readonly allow_tool?: readonly string[];
     /** `jsonl`: one JSON event per line (Codex `exec --json`); the paths are read line by line. Default `json`. */
     readonly output?: "json" | "jsonl";
@@ -35,9 +37,20 @@ export interface RuntimeProfile {
   readonly mcp_register?: { readonly cmd: readonly string[] };
   readonly mcp_remove?: { readonly cmd: readonly string[] };
   /** A task step's command (D139): the agent with its own tools, limited to `{may_use}`, under the hook in `{settings_json}`. */
-  readonly task?: { readonly cmd: readonly string[] };
+  readonly task?: { readonly cmd: readonly string[]; readonly min_version?: string };
+  /**
+   * T6b (item 7a): one unattended call under the person's OWN settings, nothing pre-allowed, nothing able to prompt;
+   * the agent's JSON output lists what its own rules denied. `min_version`: the oldest version with that flag.
+   */
+  readonly asks?: { readonly cmd: readonly string[]; readonly min_version?: string };
   /** The person's own settings TaskFollow knows how to edit for watching and always-ask (D146, D147); none for other agents. */
   readonly personal_settings?: "claude";
+  /** The agent's own skill folders (9.12 item 2): `project` relative to the install folder, `user` may start with `~/`. */
+  readonly skills_dirs?: { readonly project?: string; readonly user?: string };
+  /** The agent-level instructions file in the install folder (`CLAUDE.md`, `AGENTS.md`), where TaskFollow keeps one section. */
+  readonly instructions_file?: string;
+  /** Whether the agent can start a conversation (9.4 level 2): a dated note from its documentation, never claimed as tested. */
+  readonly push?: { readonly note: string; readonly read: string };
   readonly tos_review: { readonly status: "ok" | "pending" | "blocked"; readonly note: string };
   /** Folder the profile file was loaded from; fills {profile_dir} in commands. */
   readonly dir: string;
@@ -61,6 +74,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "detect.cmd": ["profile_dir"],
   "headless.cmd": ["profile_dir", "prompt"],
   "headless.tools_off": [],
+  "headless.no_persist": [],
   "headless.allow_tool": ["tool"],
   "schema.flag": ["schema_json", "schema_file"],
   "resume.flag": ["session_id"],
@@ -68,6 +82,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   "mcp_register.cmd": ["profile_dir", "name", "config_json"],
   "mcp_remove.cmd": ["profile_dir", "name"],
   "task.cmd": ["profile_dir", "prompt", "may_use", "tools", "settings_json", "mcp_config"],
+  "asks.cmd": ["profile_dir", "prompt"],
 };
 
 function argv(value: unknown, where: string, ...placeholders: string[]): readonly string[] {
@@ -104,6 +119,7 @@ function headlessPart(raw: Raw): RuntimeProfile["headless"] {
     session_path: str(headless.session_path, "headless.session_path"),
     ...(headless.error_path === undefined ? {} : { error_path: str(headless.error_path, "headless.error_path") }),
     ...(headless.tools_off === undefined ? {} : { tools_off: argv(headless.tools_off, "headless.tools_off") }),
+    ...(headless.no_persist === undefined ? {} : { no_persist: argv(headless.no_persist, "headless.no_persist") }),
     ...(headless.allow_tool === undefined ? {} : { allow_tool: argv(headless.allow_tool, "headless.allow_tool", "{tool}") }),
     ...outputParts(headless),
   };
@@ -137,10 +153,31 @@ function optionalParts(raw: Raw): Pick<RuntimeProfile, "schema" | "resume"> {
   };
 }
 
+/** `min_version`: the oldest agent the task command works with (its gate needs newer hook settings than plain calls). */
+function taskPart(task: Raw): NonNullable<RuntimeProfile["task"]> {
+  return { cmd: argv(task.cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}"), ...(task.min_version === undefined ? {} : { min_version: str(task.min_version, "task.min_version") }) };
+}
+
 function personalPart(raw: Raw): Pick<RuntimeProfile, "personal_settings"> {
   if (raw.personal_settings === undefined) return {};
   if (raw.personal_settings !== "claude") throw new ProfileError("Profile personal_settings must be claude");
   return { personal_settings: "claude" };
+}
+
+/** A plain relative folder or file name: no absolute path and no `..`, so a profile cannot point outside the install folder. */
+const isPlainRelative = (path: string): boolean => !isAbsolute(path) && !path.split(/[\\/]/).includes("..");
+
+function skillsPart(raw: Raw): Pick<RuntimeProfile, "skills_dirs" | "instructions_file"> {
+  const dirs = raw.skills_dirs === undefined ? undefined : obj(raw.skills_dirs, "skills_dirs");
+  const project = dirs?.project === undefined ? undefined : str(dirs.project, "skills_dirs.project");
+  if (project !== undefined && !isPlainRelative(project)) throw new ProfileError("Profile skills_dirs.project must be a folder inside the install folder, without '..'");
+  const user = dirs?.user === undefined ? undefined : str(dirs.user, "skills_dirs.user");
+  const file = raw.instructions_file === undefined ? undefined : str(raw.instructions_file, "instructions_file");
+  if (file !== undefined && (!isPlainRelative(file) || /[\\/]/.test(file))) throw new ProfileError("Profile instructions_file must be a file name in the install folder, for example CLAUDE.md");
+  return {
+    ...(dirs ? { skills_dirs: { ...(project ? { project } : {}), ...(user ? { user } : {}) } } : {}),
+    ...(file ? { instructions_file: file } : {}),
+  };
 }
 
 export function parseProfile(value: unknown, dir: string): RuntimeProfile {
@@ -158,8 +195,11 @@ export function parseProfile(value: unknown, dir: string): RuntimeProfile {
     headless: headlessPart(raw),
     ...optionalParts(raw),
     ...mcpParts(raw),
-    ...(raw.task === undefined ? {} : { task: { cmd: argv(obj(raw.task, "task").cmd, "task.cmd", "{prompt}", "{may_use}", "{settings_json}") } }),
+    ...(raw.task === undefined ? {} : { task: taskPart(obj(raw.task, "task")) }),
+    ...(raw.asks === undefined ? {} : { asks: { cmd: argv(obj(raw.asks, "asks").cmd, "asks.cmd", "{prompt}"), ...(obj(raw.asks, "asks").min_version === undefined ? {} : { min_version: str(obj(raw.asks, "asks").min_version, "asks.min_version") }) } }),
     ...personalPart(raw),
+    ...skillsPart(raw),
+    ...(raw.push === undefined ? {} : { push: { note: str(obj(raw.push, "push").note, "push.note"), read: str(obj(raw.push, "push").read, "push.read") } }),
     tos_review: { status: tos.status as RuntimeProfile["tos_review"]["status"], note: str(tos.note, "tos_review.note") },
     dir,
   };

@@ -1,7 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const CLI = resolve("dist/cli.js");
+/** Prefix of the throwaway working folders; global-setup removes them after the run. */
+export const CLI_CWD_PREFIX = "installer-cwd-";
 
 export interface CliResult {
   readonly code: number | null;
@@ -26,7 +30,9 @@ export function runCli(args: readonly string[], options: { home?: string; cwd?: 
   const result = spawnSync(process.execPath, [CLI, ...homeArgs, ...args], {
     encoding: "utf8",
     ...(options.input === undefined ? {} : { input: options.input }),
-    ...(options.cwd ? { cwd: options.cwd } : {}),
+    // A fresh folder unless the test names one: `start` records its working folder as the install folder, and
+    // `workflow add` writes skill folders and CLAUDE.md there, so it must never be the repo (9.12 item 2).
+    cwd: options.cwd ?? mkdtempSync(join(tmpdir(), CLI_CWD_PREFIX)),
     env: { ...process.env, ...options.env },
   });
   return { code: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr, json: lastJson(result.stdout) ?? lastJson(result.stderr) };

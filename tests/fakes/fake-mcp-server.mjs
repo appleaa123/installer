@@ -6,6 +6,9 @@
 // (default demo-combo; empty = no combo activated). FAKE_MCP_DIR: folder served as <pack>/<skill>/<path>.
 // Learnings (Plan 8): learning_record and learning_list keep learnings in memory per pack; FAKE_MCP_LEARNING=off
 // answers learning_record with the error a user without Learning Mode gets.
+// Active skills (9.12 item 2), shaped like the live answers of 2026-10-15: list_active_skills names each pack folder of
+// FAKE_MCP_DIR with its list tool, plus a pack that is not mounted yet; each `<pack>_list_<pack>_skills` answers
+// { "<skill>": "<description>" }. FAKE_MCP_LIST_FAIL=<pack> adds that pack as active with a list tool that fails.
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -46,7 +49,32 @@ function learning(name, args) {
   return toolResult({ recorded: true, id: entry.id });
 }
 
+const DESCRIPTIONS = { install: "Install the demo.", judge: "Judge the demo." };
+const listTool = (pack) => `${pack}_list_${pack}_skills`;
+const packs = () => {
+  try {
+    return readdirSync(resourceDir).filter((name) => statSync(join(resourceDir, name)).isDirectory());
+  } catch {
+    return [];
+  }
+};
+
+function activeSkills() {
+  const failing = process.env.FAKE_MCP_LIST_FAIL ? [process.env.FAKE_MCP_LIST_FAIL] : [];
+  const active = [...packs(), ...failing].map((pack) => ({ pack, list_tool: listTool(pack), get_tool: `${pack}_get_${pack}_skill`, in_active_combo: false }));
+  return toolResult({ active_skills: active, not_mounted: ["seo_geo"], usage: "For each pack, call list_tool." });
+}
+
+function packSkills(pack) {
+  if (pack === process.env.FAKE_MCP_LIST_FAIL) return { content: [{ type: "text", text: `Pack ${pack} is not available` }], isError: true };
+  const skills = readdirSync(join(resourceDir, pack)).filter((name) => statSync(join(resourceDir, pack, name)).isDirectory());
+  return toolResult(Object.fromEntries(skills.map((skill) => [skill, DESCRIPTIONS[skill] ?? "A demo skill."])));
+}
+
 function callTool(params) {
+  if (params.name === "list_active_skills") return { result: activeSkills() };
+  const listed = [...packs(), process.env.FAKE_MCP_LIST_FAIL].find((pack) => pack && params.name === listTool(pack));
+  if (listed) return { result: packSkills(listed) };
   if (params.name === "learning_list" || params.name === "learning_record") return { result: learning(params.name, params.arguments ?? {}) };
   if (params.name === "get_active_combo") return { result: activeCombo() };
   if (params.name === "get_skill_resource") return { result: skillResource(params.arguments ?? {}) };

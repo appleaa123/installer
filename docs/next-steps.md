@@ -1,6 +1,6 @@
 # TaskFollow: where things stand and what to do next
 
-Last updated 2026-10-15.
+Last updated 2026-10-16.
 
 ## Done (merged into `main` on 2026-10-15)
 
@@ -19,20 +19,48 @@ Merged in order with your approval; `main` before the merge is tagged `pre-stack
 
 Last full test run: 135 files, 1,868 tests, twice in a row with no failures (after the flaky-test fix on `fix/flaky-tests`). Task steps and watching are proven on the real Claude Code (tasks 25 and 26); everything else is tested against fakes only.
 
+## v1 (scope: `docs/scope-refresh.md` section 9, D152)
+
+The full rewrite of this file from section 9 comes once the current scope is finished (9.13 item 2, after #40). Until then, v1 progress is kept here.
+
+1. ~~Build item 1, the spike~~ **done 2026-10-15 (task 29, D153):** a restricted task run loads only Claude Code's built-in skills, not the owner's, the folder's or plugins', and neither a `/skill` prefix nor `--add-dir` changes that. So the runner puts the workflow's skill text into the task prompt (9.5's fallback, like D83).
+2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall.
+3. ~~Build item 3, the bare-minimum install~~ **built (D155)**: Telegram optional for a person on their own, results in `why`, the session-start rule, the report's Told and Runs lines, the vision in README/START-HERE/INSTALL. Next: item 4, the level-B step.
+**Follow-ups (not yet planned):**
+
+- A weekly unattended re-check of T5 and preflight T7 for profile agents, in its own guarded tick pass with its own timeout and weekly marker (spec section 8, D162). Until then the doctor reports stale results and a real successful run refreshes `runner`/`tools`.
+- B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
+- From task 28 (D167): the dry run of an `agent_call` step shows the call it would ask to approve; the setup step's words say `JOIN <code>` for email; the email page warns when the address and the login account differ.
+
+**Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
+
+| Item | PR | Decision | Files | What you see |
+|---|---|---|---|---|
+| 1, spike | #43 | D153 | `docs/testing/task29-spike.sh` | (test only) |
+| 2, skills | #44 | D154 | `src/core/skills.ts`, `workflow-skill.ts`, `agent-file.ts`, `lifecycle.ts` (workflow add), `runner.ts` + `agent-task.ts`/`judge.ts`/`agentic.ts` (prompts), `uninstall.ts` | `taskfollow skills`; `.claude/skills/<workflow>/` and a "TaskFollow workflows" section in `CLAUDE.md` in the install folder; "The skill '…' could not be read" when a run fails on a skill |
+| 3, bare minimum | #45 | D155 | `solutions/starter.json` 1.9.0, `src/core/solution.ts` + `visibility.ts` (`any`), `services.ts`, `why.ts`, `report.ts`, `profiles/claude-code.json` (`push`), INSTALL.md, START-HERE.md, README.md | the Telegram question; "💬 Told" and "🕒 Runs" in `taskfollow report`; "result:" and "(nobody was told: no channel)" in `taskfollow why` |
+| 4a, doability core | #50 | D159 | `src/core/words.ts`, `checks.ts`, `check-page.ts`, `check-commands.ts`, `check-runner.ts`, `check-tools.ts`, `homes.ts` | `taskfollow check start` (t1, t5, t7, describe), `check home`, `check list`; a page in your browser with a word shown once; "🔎 Checked" in the report |
+| 4b, doability Home 2 | #51 | D160 | `src/core/check-once.ts`, `check-email.ts`, `check-plant.ts`, `check-schedule.ts`, `check-schedule-form.ts`, `check-forms.ts`, `check-summary.ts`, `deliver.ts`, `zip.ts` | `taskfollow check once`, `check start t2`/`t8`, `check cannot`, `check deliver` (a skill zip in `<install folder>/taskfollow-deliver/`), `check summary`, `check missed`; the T8 checklist page; "Sent by your scheduled TaskFollow workflow …" at the end of a Cowork brief |
+| 7a, doability rest | #54 | D162 | `src/core/check-reads.ts`, `check-write.ts`, `check-skill.ts`, `check-asks.ts`, `check-asks-form.ts`, `check-fresh.ts`, `check-runner.ts` (T11), `sheets.ts` (tabs) | `taskfollow check start t2a`/`t2f`/`t2r`/`t3f`/`t3r`/`t4`/`t6`/`t6b`/`t11`; "Not run: this workflow's check of TaskFollow's runner no longer holds" from a stopped run; a "checks" line in `taskfollow doctor` |
+| 7b, the four-part page and the consult mode | #55 | D163 | `src/core/gap-words.ts`, `check-summary.ts`, `consult.ts`, `services.ts` (`add install`), `actions.ts` (`consult_report`, `consult_cleanup`), `solutions/starter.json` 2.0.0 | `taskfollow check summary` shows every need, each gap in four parts; the install's first question (install or consult); `exports/consult-report-<date>.md`; `taskfollow add install` after a consultation |
+
+4. **#40 ready to merge (your yes):** task 28 passed on 2026-10-16 (D167); its three fixes are on the branch. Then items 5 and 6 are built from their reviewed plans (`feat/inbox-triage`, `feat/workflows-four`; discovery D165, the owner's choices D166).
+
 ## For you to do (checklists in `docs/human-tasks.md`)
 
 1. ~~Task 25~~ **done 2026-10-15**: one bug found and fixed (Claude Code's `StructuredOutput` tool), now on #31–#37; your MCP servers do load in restricted mode.
 2. ~~Task 26~~ **done 2026-10-15**: all six steps passed; an ask rule wins over an allow rule for the same command.
-3. **Task 27 (about 1 hour).** WhatsApp with Meta's free test number and a free Cloudflare account.
-4. **Tasks 21–24, still open.** Real mailboxes (21), a Windows 11 PC (22), a real-person install test (23), a real Slack workspace (24).
-5. ~~Merge #31 → #38~~ **done 2026-10-15.**
-6. **Publish to npm.** Needs your account: the `taskfollow` package, so `npx --yes taskfollow instructions` works.
-7. **On or after 2026-10-22:** re-run the Google token check and record the result in D123.
+3. ~~Task 28~~ **done 2026-10-16** (D167): the approved call worked on the real Claude Code; three fixes on #40.
+4. **Task 27 (about 1 hour).** WhatsApp with Meta's free test number and a free Cloudflare account.
+5. **Tasks 21–24, still open.** Real mailboxes (21), a Windows 11 PC (22), a real-person install test (23), a real Slack workspace (24).
+6. ~~Merge #31 → #38~~ **done 2026-10-15.**
+7. **Publish to npm.** Needs your account: the `taskfollow` package, so `npx --yes taskfollow instructions` works.
+8. **On or after 2026-10-22:** re-run the Google token check and record the result in D123.
 
 ## Postponed on purpose (next coding work, in suggested order)
 
 1. **Codex and other agents: researched and postponed (D150).** No Codex account to prove it in real use. The reviewed plan with Fable's 20 findings is in `docs/superpowers/plans/2026-10-15-codex-agents.md`; pick it up when someone can test with Codex (a pay-per-use OpenAI API key would do).
-2. **Draft → a person approves → the agent publishes**, for changes made through the agent (for example a Shopify product). Needs its own design, so that the approved thing is exactly what gets published. Sending to customers already works this way.
+2. ~~Draft → a person approves → the agent publishes~~ **built on `feat/approve-agent-call` (D151)**: an `approve` step with `agent_call` approves one exact call to the agent's MCP tool, and the agent may then make only that call, once. Also hardens every task step (`onFailure: "block"`, Claude Code 2.1.295). Needs human task 28 on the real store.
 3. **`why` as an MCP tool** (today it's a CLI command the agent can run).
 4. **WhatsApp extras:** message templates, media, team members on WhatsApp.
 5. **Re-run certification** on the final build.

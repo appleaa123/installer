@@ -8,6 +8,7 @@
     "result_path": "result",
     "session_path": "session_id",
     "error_path": "is_error",
+    "no_persist": ["--no-session-persistence"],
     "tools_off": ["--tools", ""],
     "allow_tool": ["--allowedTools", "{tool}"]
   },
@@ -15,7 +16,9 @@
   "resume": { "flag": ["-r", "{session_id}"] },
   "mcp_register": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "mcp", "add-json", "-s", "user", "{name}", "{config_json}"] },
   "mcp_remove": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "mcp", "remove", "-s", "user", "{name}"] },
-  "task": { "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "-p", "{prompt}", "--output-format", "json", "--restricted", "--permission-prompts", "none", "--permission-mode", "manual", "--tools", "{tools}", "--allowedTools", "{may_use}", "--settings", "{settings_json}", "--mcp-config", "{mcp_config}", "--no-session-persistence"] },
+  "task": { "min_version": "9.0.0", "cmd": ["node", "{profile_dir}/../../fakes/fake-agent.mjs", "-p", "{prompt}", "--output-format", "json", "--restricted", "--permission-prompts", "none", "--permission-mode", "manual", "--tools", "{tools}", "--allowedTools", "{may_use}", "--settings", "{settings_json}", "--mcp-config", "{mcp_config}", "--no-session-persistence"] },
   "personal_settings": "claude",
+  "skills_dirs": { "project": ".claude/skills", "user": "~/.claude/skills" },
+  "instructions_file": "CLAUDE.md",
   "tos_review": { "status": "ok", "note": "Test double used only by the test suite." }
 }

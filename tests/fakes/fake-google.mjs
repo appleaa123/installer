@@ -104,6 +104,28 @@ function values(res, method, sheet, rangeText, body) {
   return send(res, 200, { updates: { updatedRange: `'${name}'!A${rows.length}`, updatedRows: (body.values ?? []).length } });
 }
 
+/** spreadsheets.batchUpdate (item 7a): addSheet appends a tab at the end and answers its numeric id; deleteSheet removes it. */
+const tabIds = new Map();
+let nextTabId = 1000;
+function tabBatch(res, sheet, body) {
+  if (!sheet) return send(res, 404, { error: { code: 404, message: "Requested entity was not found.", status: "NOT_FOUND" } });
+  const replies = [];
+  for (const request of body.requests ?? []) {
+    if (request.addSheet) {
+      const title = request.addSheet.properties?.title ?? `Sheet${sheet.tabs.size + 1}`;
+      const id = nextTabId++;
+      sheet.tabs.set(title, []);
+      tabIds.set(id, title);
+      replies.push({ addSheet: { properties: { sheetId: id, title, index: sheet.tabs.size - 1 } } });
+    } else if (request.deleteSheet) {
+      const title = tabIds.get(request.deleteSheet.sheetId);
+      if (title !== undefined) sheet.tabs.delete(title);
+      replies.push({});
+    }
+  }
+  return send(res, 200, { spreadsheetId: "", replies });
+}
+
 /** values.batchUpdate: every range is one row written in place. */
 function batchUpdate(res, sheet, body) {
   if (!sheet) return googleError(res, 404, "Requested entity was not found.", "NOT_FOUND");
@@ -134,6 +156,8 @@ function sheetsApi(req, res, url, body) {
     return send(res, failing.status, { error });
   }
   if (req.method === "POST" && url.pathname === "/v4/spreadsheets") return createSpreadsheet(res, JSON.parse(body || "{}"));
+  const sheetBatch = /^\/v4\/spreadsheets\/([^/:]+):batchUpdate$/.exec(url.pathname);
+  if (req.method === "POST" && sheetBatch) return tabBatch(res, sheets.get(decodeURIComponent(sheetBatch[1])), JSON.parse(body || "{}"));
   const batch = /^\/v4\/spreadsheets\/([^/]+)\/values:batchUpdate$/.exec(url.pathname);
   if (req.method === "POST" && batch) return batchUpdate(res, sheets.get(decodeURIComponent(batch[1])), JSON.parse(body || "{}"));
   const match = /^\/v4\/spreadsheets\/([^/]+)\/values\/([^/]+?)(:append)?$/.exec(url.pathname);
