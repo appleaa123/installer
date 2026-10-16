@@ -172,6 +172,17 @@ describe("the channel connectors (§12.2)", () => {
     expect(smtp.received[0]).toMatchObject({ from: MAIL_USER, to: "ada@example.com" });
   });
 
+  it("email: lets a JOIN line through from the mailbox's own address, so a person on their own can link it, and still drops its other mail (D160)", async () => {
+    const { home, env, now } = await setup({ email: MAIL_PASSWORD });
+    const { imap, value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
+    await channelCommand(home, "email", value, now, env, true);
+    const channel = await openChannel(home, "email", env);
+    imap.deliver(MAIL(MAIL_USER, "JOIN ABCDE-FGHIJ", "j1"));
+    imap.deliver(MAIL(MAIL_USER, "Welcome, you joined.", "w1"));
+    const read = await channel.receive(await loadCursor(home, "email"), 0, new AbortController().signal);
+    expect(read.messages.map((message) => [message.from, message.text])).toEqual([[MAIL_USER.toLowerCase(), "JOIN ABCDE-FGHIJ"]]);
+  });
+
   it("email: a renumbered mailbox restarts after its newest message instead of reading it all again", async () => {
     const { home, env, now } = await setup({ email: MAIL_PASSWORD });
     const { value } = await mailServers([MAIL("old@example.com", "old", "o1")]);
