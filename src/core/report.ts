@@ -1,3 +1,4 @@
+import { NO_APPROVALS_BY_EMAIL } from "./channels.js";
 import { MAX_VERIFY_ATTEMPTS, RESUME_HINT, currentStep, recordOf, retryCommand } from "./engine.js";
 import { addableOptions } from "./services.js";
 import { visibleSteps } from "./visibility.js";
@@ -72,7 +73,7 @@ function toldOf(channels: readonly string[], extras: ReportExtras): Told {
   const emailOnly = channels.length === 1 && channels[0] === "email";
   return {
     level: 3,
-    how: emailOnly ? "Results and alerts by email; approvals in your terminal (email cannot prove who sent a reply)." : `Results, alerts and approvals on ${names.join(" and ")}; approvals also in your terminal.`,
+    how: emailOnly ? `Results and alerts by email. ${NO_APPROVALS_BY_EMAIL}` : `Results, alerts and approvals on ${names.join(" and ")}; approvals also in your terminal.`,
     next_level: `${checked} Messages reach you on ${names.join(" and ")} while this computer is on.`,
   };
 }

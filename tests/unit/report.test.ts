@@ -157,7 +157,7 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
     const telegram = buildReport(STARTER, starterState({ ...SOLO, "services.telegram": answer("telegram"), "channels.telegram": { status: "done", at: AT } }), PUSH);
     expect(telegram.told).toMatchObject({ level: 3, how: expect.stringContaining("Telegram") });
     const email = buildReport(STARTER, starterState({ ...SOLO, "services.email": answer("email"), "channels.email": { status: "done", at: AT } }), PUSH);
-    expect(email.told.how).toContain("approvals in your terminal");
+    expect(email.told.how).toContain("Approval requests are not sent by email: they wait in your terminal, and your agent tells you about them at the start of each session.");
   });
 
   it("does not count WhatsApp, which reaches customers, as a way to tell the person", () => {

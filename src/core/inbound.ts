@@ -6,7 +6,7 @@ import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
 import { ToolRefusal } from "./approvals.js";
 import { DEFAULT_POLICY, recordOptOut } from "./channel-policy.js";
-import { bareCommands, CHANNEL_FACTS, isCustomersOnly, requireChannelId } from "./channels.js";
+import { bareCommands, CHANNEL_FACTS, isCustomersOnly, NO_APPROVALS_BY_EMAIL, requireChannelId } from "./channels.js";
 import { isOptOut, joinCodeIn, killSwitchIn, normalizeInbound, replyCodeIn, type InboundEnvelope, type RawInbound, type ReplyCode } from "./envelope.js";
 import { ActionFailure } from "./failure.js";
 import { storeInbound, type Route } from "./inbox.js";
@@ -62,7 +62,8 @@ async function joinByCode(ctx: ToolContext, envelope: InboundEnvelope, identity:
   const result = await joinWithCode(ctx.home, code, identity, ctx.now());
   if ("refused" in result) return "join_refused";
   const as = result.joined.role === "decision_maker" ? "the decision maker" : "a member";
-  await tell(ctx, result.joined, identity.channel, `Welcome, ${result.joined.name}: you joined as ${as}. Approval requests arrive here; answer A<number> to approve, R<number> <reason> to reject.`);
+  const approvals = CHANNEL_FACTS[requireChannelId(identity.channel)].risk.sender_verified ? "Approval requests arrive here; answer A<number> to approve, R<number> <reason> to reject." : NO_APPROVALS_BY_EMAIL;
+  await tell(ctx, result.joined, identity.channel, `Welcome, ${result.joined.name}: you joined as ${as}. ${approvals}`);
   return "joined";
 }
 
