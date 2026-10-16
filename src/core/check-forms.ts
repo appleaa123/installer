@@ -51,3 +51,5 @@ const once: CheckForm = {
 };
 
 export const FORMS: Readonly<Record<string, CheckForm>> = { once, t8: scheduledForm };
+
+export { whenWords } from "./clock-words.js";

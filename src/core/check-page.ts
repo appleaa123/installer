@@ -10,6 +10,7 @@ import { readConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow } from "./workflow.js";
+import { whenWords } from "./clock-words.js";
 import { escapeHtml, readBody } from "./secret-page.js";
 
 /**
@@ -67,7 +68,7 @@ function describePage(path: string, description: string): string {
 }
 
 function confirmPage(challenge: Challenge, path: string, now: string, description?: string): string {
-  if (challenge.opens_at && now < challenge.opens_at) return page("check", `<h1>Not yet</h1><p>This page opens at ${escapeHtml(challenge.opens_at.slice(11, 16))} (UTC). Come back then; nothing is lost.</p>`);
+  if (challenge.opens_at && now < challenge.opens_at) return page("check", `<h1>Not yet</h1><p>This page opens at ${escapeHtml(whenWords(challenge.opens_at))}. Come back then; nothing is lost.</p>`);
   if (challenge.status !== "open") return page("check", "<h1>This check is finished</h1><p>You can close this tab.</p>");
   if (challenge.test === "describe" && description !== undefined) return describePage(path, description);
   return page("check", `<h1>What did you receive?</h1>${WARNING}<form method="post" action="${path}/confirm"><p><label>The word you received<br><input name="word" autocomplete="off" required></label></p><button type="submit">Confirm</button></form>`);

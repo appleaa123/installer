@@ -1,3 +1,4 @@
+import { whenWords } from "./clock-words.js";
 import { coworkCleanUp } from "./deliver.js";
 import { plantAndAudit, plantByChannel, subjectFor } from "./check-plant.js";
 import { cancelChallenge, saveChallenge, settleByPerson, type Challenge, type ResultKind } from "./checks.js";
@@ -14,7 +15,7 @@ import { verifyWord } from "./words.js";
 const MAX_TRIES = 2;
 const TITLE = "a check of your assistant's own schedule";
 const ok = (body: string): FormResult => ({ status: 200, title: TITLE, body });
-const time = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "the set time");
+const time = (iso: string | undefined): string => (iso ? whenWords(iso) : "the set time");
 const button = (path: string, route: string, label: string): string => `<form method="post" action="${path}${route}"><button type="submit">${escapeHtml(label)}</button></form>`;
 const LOST_WORD = "<p>The computer may have restarted, or the page was reopened, so it no longer has the test's word. Ask your assistant to start the check again.</p>";
 const cleanUp = (challenge: Challenge): string => `<p>${escapeHtml(coworkCleanUp("the TaskFollow check task", challenge.details?.skill ?? "the test skill"))}.</p>`;

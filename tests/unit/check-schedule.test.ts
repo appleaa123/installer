@@ -4,6 +4,7 @@ import { AUDIT_FILE } from "../../src/core/audit.js";
 import { ActionFailure } from "../../src/core/failure.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { serveCheckPage } from "../../src/core/check-page.js";
+import { whenWords } from "../../src/core/check-forms.js";
 import { checkCommand } from "../../src/core/check-commands.js";
 import { abilities, answerChallenge, loadChallenge, markChallenge } from "../../src/core/checks.js";
 import { loadState } from "../../src/core/state.js";
@@ -62,6 +63,14 @@ describe("check T8: the agent's own scheduler (plan Task 10)", () => {
     const challenge = await loadChallenge(home, out.id);
     expect(challenge).toMatchObject({ test: "t8", agent: "Claude Cowork", opens_at: later(10), expires_at: new Date(Date.parse(later(10)) + 24 * 3_600_000).toISOString() });
     expect(JSON.stringify(challenge)).not.toContain(emailWord);
+  });
+
+  it("names the date and the time zone in the instruction, never 'today' (review M3)", async () => {
+    const { out } = await setup();
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(out.instruction).toContain(zone);
+    expect(out.instruction).not.toMatch(/\btoday\b/);
+    expect(whenWords(later(10))).toContain(zone);
   });
 
   it("walks the checklist: the task seen, the window closed, then TaskFollow plants the email; confirming waits for the set time", async () => {

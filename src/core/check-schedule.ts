@@ -2,6 +2,7 @@ import { agentOf, type CheckContext } from "./check-commands.js";
 import { loadChannel } from "./channels.js";
 import { saveChallenge, startChallenge, type Need } from "./checks.js";
 import { SUBJECT_PREFIX } from "./check-plant.js";
+import { whenWords } from "./clock-words.js";
 import { writeSkillZip } from "./deliver.js";
 import { InputError } from "./inputs.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -47,8 +48,8 @@ export async function startScheduled(home: string, state: InstallState | undefin
   const { challenge } = await startChallenge(home, { needs: NEEDS, test: "t8", workflow: workflow.id, agent, agentVersion: version, ttlMs: Date.parse(scheduled) - Date.parse(now) + DAY_MS, opensAt: scheduled, word: `${emailWord} ${skillWord}`, details: { plant, scheduled_at: scheduled, local_scheduler: local } }, now);
   const name = `taskfollow-check-${challenge.id}`;
   const zip = await writeSkillZip(home, name, skillText(name, challenge.id, skillWord));
-  const at = new Date(scheduled).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const instruction = `Using your own scheduler (not a background command, sleep or cron on this computer), set a one-time scheduled task for ${at} today, ${minutes} minutes from now: read the subject of the newest email whose subject starts with "${SUBJECT_PREFIX} ${challenge.id}", use the skill ${name} to get the TaskFollow check word for check ${challenge.id}, and send me that subject and the check word, the way you would send me a daily brief (in Claude Cowork: with SendUserMessage). This is an unattended run: do not ask questions.`;
+  const at = whenWords(scheduled);
+  const instruction = `Using your own scheduler (not a background command, sleep or cron on this computer), set a one-time scheduled task for ${at}, ${minutes} minutes from now: read the subject of the newest email whose subject starts with "${SUBJECT_PREFIX} ${challenge.id}", use the skill ${name} to get the TaskFollow check word for check ${challenge.id}, and send me that subject and the check word, the way you would send me a daily brief (in Claude Cowork: with SendUserMessage). This is an unattended run: do not ask questions.`;
   await saveChallenge(home, { ...challenge, details: { ...(challenge.details ?? {}), zip, instruction, skill: name } });
   const launched = await context.launch(home, challenge.id, emailWord);
   return {
