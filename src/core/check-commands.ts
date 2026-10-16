@@ -111,6 +111,10 @@ export async function checkCommand(home: string, state: InstallState | undefined
   if (sub === "answer") return answerChallenge(home, first ?? "", args.slice(2).join(" "), context.now()).then(view);
   if (sub === "page") return page(home, first, context);
   if (sub === "cannot") return (await import("./check-email.js")).cannotCommand(home, first, context.now());
+  if (sub === "deliver") {
+    const workflow = await loadWorkflow(home, requireWorkflowId(first), DEFAULT_TOOLS);
+    return (await import("./deliver.js")).deliverToCowork(home, workflow, { now: context.now() });
+  }
   if (sub === "once") return (await import("./check-once.js")).onceCommand(home, state, first, flags, context);
   if (sub === "home") return homeOf(home, state, first, flags, context);
   if (sub === "list" || sub === undefined) return list(home);
