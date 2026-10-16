@@ -35,6 +35,10 @@ describe("which calls a task step may make (D137)", () => {
     expect(decide(pre(ANSWER_TOOL, { order_found: true }), READ_ONLY)).toEqual({ allow: true });
   });
 
+  it("the hook refuses mcp__installer__why_show in a task whose may_use is only the check ping (D169)", () => {
+    expect(decide(pre("mcp__installer__why_show", {}), { record: "", may_use: ["mcp__installer__check_ping"], changes: false })).toMatchObject({ allow: false });
+  });
+
   it("refuses anything not listed, and says what the step allows", () => {
     const refused = decide(pre("mcp__shopify__create_refund", {}), READ_ONLY);
     expect(refused).toMatchObject({ allow: false });
@@ -185,6 +189,11 @@ describe("an approved agent call: exactly that call, once (D151)", () => {
     const lines = (await readFile(cfg.record, "utf8")).trim().split("\n");
     expect(lines).toHaveLength(4);
     await expect(readFile(cfg.record.replace(/\.calls\.jsonl$/, ".made"), "utf8")).rejects.toThrow();
+  });
+
+  it("the hook refuses mcp__installer__why_show in exact mode (D169)", async () => {
+    const out = await run(await exactConfig(), "mcp__installer__why_show", {});
+    expect(JSON.parse(out.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: "deny" });
   });
 
   it("still lets the agent give its reason and its answer", async () => {

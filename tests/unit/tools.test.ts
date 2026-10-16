@@ -156,7 +156,7 @@ describe("the default tool set", () => {
     expect([...DEFAULT_TOOLS.keys()]).toEqual([
       "approvals.request", "approvals.list", "approvals.get", "actions.reason", "memo.list", "memo.add", "memo.edit", "memo.delete",
       "records.find", "records.get", "records.create", "records.update", "records.preview_import", "records.import",
-      "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send", "check.ping",
+      "channel.list", "channel.inbox", "channel.attachment", "channel.notify", "channel.send", "check.ping", "why.show",
     ]);
   });
 
