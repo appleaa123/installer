@@ -125,7 +125,11 @@ async function list(home: string): Promise<Raw> {
 export async function checkCommand(home: string, state: InstallState | undefined, args: readonly string[], flags: Raw, context: CheckContext): Promise<unknown> {
   const [sub, first, second] = args;
   if (sub === "start") return start(home, state, first, flags, context);
-  if (sub === "mark") return markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now()).then(view);
+  if (sub === "mark") {
+    const marked = await markChallenge(home, first ?? "", second ?? "", { interactive: context.interactive, via: "cli", through: "mark" }, context.now());
+    await (await import("./check-reads.js")).removeTab(home, first ?? "", context);
+    return view(marked);
+  }
   if (sub === "answer") {
     const write = await import("./check-write.js");
     const answered = (await write.isReadBack(home, first ?? "")) && !context.interactive

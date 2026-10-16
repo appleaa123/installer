@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkCommand, type CheckContext } from "../../src/core/check-commands.js";
 import { serveCheckPage } from "../../src/core/check-page.js";
-import { abilities, loadChallenge } from "../../src/core/checks.js";
+import { abilities, loadChallenge, saveChallenge } from "../../src/core/checks.js";
+import { sweepChecks } from "../../src/core/check-fresh.js";
+import { AUDIT_FILE } from "../../src/core/audit.js";
 import { SHAPES } from "../../src/core/homes.js";
 import type { SheetsClient } from "../../src/core/sheets.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -139,6 +141,41 @@ describe("T2 records (reads:records)", () => {
     expect(out.instruction).toContain(tab);
     expect(await run(home, ["answer", out.id, word], ctx({ sheets: async () => ({ client: sheets.client, spreadsheet_id: "sheet-1" }) }))).toMatchObject({ need: "reads:records", result: "yes, tested" });
     expect(sheets.tabs.has(tab)).toBe(false);
+  });
+
+  it("removes its tab when the check is settled by check mark too (review 3 of PR #54)", async () => {
+    const home = await runnerHome();
+    const sheets = fakeSheets();
+    const withSheets = ctx({ sheets: async () => ({ client: sheets.client, spreadsheet_id: "sheet-1" }) });
+    const out = (await run(home, ["start", "t2r"], withSheets)) as { id: string };
+    const tab = `taskfollow-check-${out.id}`;
+    const word = sheets.tabs.get(tab)?.cells[0]?.[0] ?? "";
+    await run(home, ["mark", out.id, word], withSheets);
+    expect(sheets.tabs.has(tab)).toBe(false);
+    expect((await loadChallenge(home, out.id))?.details?.tab_id).toBeUndefined();
+  });
+
+  it("the sweep removes a tab a closed check still carries", async () => {
+    const home = await runnerHome();
+    const sheets = fakeSheets();
+    const withSheets = ctx({ sheets: async () => ({ client: sheets.client, spreadsheet_id: "sheet-1" }) });
+    const out = (await run(home, ["start", "t2r"], withSheets)) as { id: string };
+    const tab = `taskfollow-check-${out.id}`;
+    const challenge = await loadChallenge(home, out.id);
+    if (challenge) await saveChallenge(home, { ...challenge, status: "done" });
+    expect(sheets.tabs.has(tab)).toBe(true);
+    await sweepChecks(home, "2026-10-16T12:00:00.000Z", false, async () => ({ client: sheets.client, spreadsheet_id: "sheet-1" }));
+    expect(sheets.tabs.has(tab)).toBe(false);
+  });
+
+  it("a Sheets error while removing the tab is audited and does not undo a recorded answer", async () => {
+    const home = await runnerHome();
+    const sheets = fakeSheets();
+    const broken = { ...sheets.client, deleteTab: async () => { throw new Error("quota exceeded"); } } as SheetsClient;
+    const out = (await run(home, ["start", "t2r"], ctx({ sheets: async () => ({ client: sheets.client, spreadsheet_id: "sheet-1" }) }))) as { id: string };
+    const word = sheets.tabs.get(`taskfollow-check-${out.id}`)?.cells[0]?.[0] ?? "";
+    expect(await run(home, ["answer", out.id, word], ctx({ sheets: async () => ({ client: broken, spreadsheet_id: "sheet-1" }) }))).toMatchObject({ result: "yes, tested" });
+    expect(await readFile(join(home, AUDIT_FILE), "utf8")).toContain("check.cleanup_failed");
   });
 
   it("says plainly it cannot test records without TaskFollow's own sheet connection", async () => {

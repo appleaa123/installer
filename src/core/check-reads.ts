@@ -1,3 +1,4 @@
+import { appendAudit } from "./audit.js";
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -109,11 +110,29 @@ export async function startReadsRecords(home: string, state: InstallState | unde
   return { id: challenge.id, test: "t2r", instruction: `Open the tab "${tab}" in the spreadsheet TaskFollow uses (id ${target.spreadsheet_id}), read cell A1, ${answerLine(challenge.id)}. If you cannot read spreadsheets yourself, say so.` };
 }
 
-/** After an answer: a check that made a tab removes it once the check is no longer open (TaskFollow's own tab only). */
-export async function removeTab(home: string, id: string, context: CheckContext): Promise<void> {
+/**
+ * A check that made a tab removes it once the check is no longer open, however it ended (answer, mark, ping, the
+ * sweep): TaskFollow's own tab only (review 3 of PR #54). A Sheets error is audited, and the tab stays recorded so the
+ * sweep tries again; it never undoes a recorded answer.
+ */
+export async function cleanupTab(home: string, id: string, sheets?: () => Promise<SheetTarget | null>): Promise<void> {
   const challenge = await loadChallenge(home, id);
   const details = challenge?.details;
   if (!challenge || challenge.status === "open" || !details?.tab_id || !details.spreadsheet || !details.tab?.startsWith("taskfollow-check-")) return;
-  const target = await (context.sheets ?? connectedSheet)(home);
-  if (target?.client.deleteTab && target.spreadsheet_id === details.spreadsheet) await target.client.deleteTab(details.spreadsheet, Number(details.tab_id));
+  try {
+    const target = await (sheets ?? (() => connectedSheet(home)))();
+    if (!target?.client.deleteTab || target.spreadsheet_id !== details.spreadsheet) return;
+    await target.client.deleteTab(details.spreadsheet, Number(details.tab_id));
+  } catch (error) {
+    await appendAudit(home, { ts: new Date().toISOString(), actor: "engine", event: "check.cleanup_failed", ref: `check:${id}`, payload: { what: "tab", why: (error as Error).message } });
+    return;
+  }
+  const { tab_id: _tabId, ...rest } = details;
+  await saveChallenge(home, { ...challenge, details: rest });
 }
+
+/** The command's own Sheets access (tests inject it), for cleanupTab. */
+export const removeTab = (home: string, id: string, context: CheckContext): Promise<void> => {
+  const sheets = context.sheets;
+  return cleanupTab(home, id, sheets ? () => sheets(home) : undefined);
+};

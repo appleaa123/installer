@@ -75,25 +75,29 @@ export async function checksDoctor(ctx: DoctorContext): Promise<DoctorCheck | nu
   return { id: "checks", status: "warn", detail: `a check of what your agent can do no longer holds (${problems.join("; ")})`, fix: RECHECK() };
 }
 
-/** Ends expired checks and removes what they made (files, test skills, check tabs); with `all`, every open check (uninstall). */
-export async function sweepChecks(home: string, now: string, all = false): Promise<number> {
+/**
+ * Ends expired checks and removes what they made (files, test skills, check tabs); with `all`, every open check
+ * (uninstall). It also removes a tab a closed check still carries (a cleanup that failed earlier, review 3 of PR #54).
+ */
+export async function sweepChecks(home: string, now: string, all = false, sheets?: Parameters<typeof import("./check-reads.js").cleanupTab>[2]): Promise<number> {
   let names: string[];
   try {
     names = (await readdir(await confinedPath(home, CHECKS_DIR))).filter((name) => /^c[0-9a-f]{8}\.json$/.test(name));
   } catch {
     return 0;
   }
+  const { cleanupTab } = await import("./check-reads.js");
   let swept = 0;
   for (const name of names) {
-    const challenge = await loadChallenge(home, name.slice(0, -5));
-    if (!challenge || challenge.status !== "open" || (!all && Date.parse(now) <= Date.parse(challenge.expires_at))) continue;
-    await cancelChallenge(home, challenge, all ? "TaskFollow was removed" : "it expired", now);
-    if (challenge.details?.tab_id && challenge.details.spreadsheet && challenge.details.tab?.startsWith("taskfollow-check-")) {
-      const { connectedSheet } = await import("./check-reads.js");
-      const target = await connectedSheet(home).catch(() => null);
-      if (target?.client.deleteTab && target.spreadsheet_id === challenge.details.spreadsheet) await target.client.deleteTab(challenge.details.spreadsheet, Number(challenge.details.tab_id)).catch(() => undefined);
+    const id = name.slice(0, -5);
+    const challenge = await loadChallenge(home, id);
+    if (!challenge) continue;
+    if (challenge.status === "open") {
+      if (!all && Date.parse(now) <= Date.parse(challenge.expires_at)) continue;
+      await cancelChallenge(home, challenge, all ? "TaskFollow was removed" : "it expired", now);
+      swept += 1;
     }
-    swept += 1;
+    await cleanupTab(home, id, sheets);
   }
   return swept;
 }
