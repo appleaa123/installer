@@ -171,3 +171,13 @@ export async function cancelChallenge(home: string, challenge: Challenge, why: s
   await saveChallenge(home, { ...challenge, status: "cancelled" });
   await appendAudit(home, { ts: now, actor: "engine", event: "check.cancelled", ref: `check:${challenge.id}`, payload: { why } });
 }
+
+/** The newest result per need for one agent, across workflows' agent-wide checks only (for the report). */
+export async function latestByNeed(home: string, agent: string): Promise<{ need: Need; result: ResultKind; at: string }[]> {
+  const newest = new Map<string, StoredResult>();
+  for (const entry of (await abilities(home)).filter((result) => result.agent === agent && result.workflow === undefined)) {
+    const seen = newest.get(entry.need);
+    if (!seen || seen.at < entry.at || (seen.at === entry.at && seen.id < entry.id)) newest.set(entry.need, entry);
+  }
+  return [...newest.values()].map((entry) => ({ need: entry.need, result: entry.result, at: entry.at }));
+}

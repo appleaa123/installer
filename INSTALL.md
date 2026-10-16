@@ -156,6 +156,17 @@ Task steps work with Claude Code. Other agents are not supported for task steps 
 
 If `channel.list` shows nobody who joined, leave out the final `channel.notify` step of an example like these: the last step's output is the result, and the person reads it with `taskfollow why`.
 
+## 9c. Checking what your agent can do
+
+Before a workflow is trusted to run on a schedule, TaskFollow checks what your agent can really do, by watching an effect rather than taking anyone's word, and decides where the workflow runs. In order:
+
+1. **At setup**, run `taskfollow check start t1` and `taskfollow check start t5`, and do what each instruction says (you run a command; you call TaskFollow's tool `check.ping`). Then `taskfollow check start t7`: TaskFollow runs one real task through its own runner and watches for the test call.
+2. **For a workflow the person described in their own words**, run `taskfollow check start describe --workflow <id>`. A page opens for the person with their description and two questions; until they answer there, the workflow is treated as one that sends or changes things.
+3. **`taskfollow check home <workflow>`** says where it runs and why: TaskFollow's runner, your agent's own schedule (only for work that reads and reports to the person), draft-only, or by hand.
+4. `taskfollow check list` shows every result and how it is known. `taskfollow report` shows the newest ones.
+
+Never ask the person for a check word, never open a check page yourself, and never answer a check for them: a word that only the ability under test could give is shown to the person alone, and anything said in the chat does not count. When a check page did not open, tell the person to run `taskfollow check page <id>` in their own terminal.
+
 ## 10. Health, the kill switch and support
 
 1. **Health.** `taskfollow doctor` checks the audit chain, the install state and its backup, the keychain items and each channel, the runner's last tick, the gateway, disk space and the host; it clears run claims a crash left behind and deletes run logs, messages and recordings older than the retention period (`taskfollow retention`, 90 days unless the person sets another; the audit is never deleted). The runner also runs it once a day and tells the decision maker when something failed. Show the person each finding and its fix.

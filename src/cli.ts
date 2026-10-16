@@ -51,7 +51,7 @@ import { installerVersion } from "./core/version.js";
 import { inventory } from "./core/skills.js";
 import { checkCommand } from "./core/check-commands.js";
 import { launchCheckPage, openWithSystem, serveCheckPage } from "./core/check-page.js";
-import { loadChallenge } from "./core/checks.js";
+import { latestByNeed, loadChallenge } from "./core/checks.js";
 import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
@@ -394,7 +394,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   resume: async ({ state, deps }) => (await resume(deps, state)).result,
   report: async ({ state, deps }, flags) => {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
-    const report = buildReport(deps.solution, state, profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {});
+    const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },

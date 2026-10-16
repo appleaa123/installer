@@ -177,3 +177,17 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
     expect(buildReport(STARTER, starterState(SOLO)).runtime_limits).toEqual([]);
   });
 });
+
+describe("report: what the doability check found (D159)", () => {
+  it("lists the newest result per need, and counts a failed test as a limit", async () => {
+    const { buildReport, renderReport } = await import("../../src/core/report.js");
+    const { loadSolutionSource } = await import("../../src/core/solution.js");
+    const { solution } = await loadSolutionSource("file:" + (await import("node:path")).resolve("solutions/starter.json"));
+    const state = { schema: 1 as const, solution: { ref: "file:x", id: solution.id, version: solution.version }, started_at: "2026-10-16T00:00:00.000Z", steps: {} };
+    const report = buildReport(solution, state, { checks: [{ need: "runner", result: "yes-tested", at: "2026-10-16T09:00:00.000Z" }, { need: "tools", result: "no-tested", at: "2026-10-16T09:00:00.000Z" }] });
+    expect(report.checked).toBe("runner: yes, tested (2026-10-16) · tools: no, tested (2026-10-16)");
+    expect(report.runtime_limits).toContain("tools: failed its test");
+    expect(renderReport(report)).toContain("🔎 Checked    runner: yes, tested");
+  });
+});
+

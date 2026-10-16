@@ -31,6 +31,8 @@ export interface Report {
   readonly told: Told;
   /** Where scheduled runs happen (9.13 item 4); absent when the install never asked. */
   readonly runs?: string;
+  /** The newest doability results for the install's agent, in plain words (D159). */
+  readonly checked?: string;
 }
 
 export interface Told {
@@ -43,7 +45,11 @@ export interface Told {
 export interface ReportExtras {
   readonly pushNote?: string;
   readonly pushRead?: string;
+  /** The newest doability result per need for the install's agent (D159); passed in so the report stays synchronous. */
+  readonly checks?: readonly { readonly need: string; readonly result: string; readonly at: string }[];
 }
+
+const CHECK_WORDS: Readonly<Record<string, string>> = { "yes-tested": "yes, tested", "yes-you-told-us": "yes, you told us", "not-checked": "not checked", "no-tested": "no, tested" };
 
 const CHANNEL_NAMES: Readonly<Record<string, string>> = { telegram: "Telegram", email: "email", slack: "Slack" };
 /** WhatsApp reaches customers, not the person (INSTALL.md section 7), so it never counts as a way to tell them. */
@@ -129,13 +135,15 @@ export function buildReport(solution: Solution, state: InstallState, extras: Rep
     ...hardBlocked.map(({ step, record }) => item(step, `${record?.hint ?? "Blocked"} → then run '${RESUME_HINT}'`)),
     ...(failedCurrent ? [failedCurrent] : waitingOnHuman ? [item(current, current.instructions?.join(" ") ?? current.why)] : []),
   ];
-  const limits = runtimeLimits(state.runtime);
+  const failedChecks = (extras.checks ?? []).filter((entry) => entry.result === "no-tested").map((entry) => `${entry.need}: failed its test`);
+  const limits = [...runtimeLimits(state.runtime), ...failedChecks];
   const overall: Overall =
     hardBlocked.length > 0 ? "blocked" : current ? "in_progress" : limited.length > 0 || limits.length > 0 ? "ready_with_limits" : "ready";
   return {
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
     working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined, can_add: addableOptions(solution, state),
     told: toldOf(personChannels(rows), extras), ...(runsOf(state) ? { runs: runsOf(state) } : {}),
+    ...(extras.checks && extras.checks.length > 0 ? { checked: extras.checks.map((entry) => `${entry.need}: ${CHECK_WORDS[entry.result] ?? entry.result} (${entry.at.slice(0, 10)})`).join(" · ") } : {}),
   };
 }
 
@@ -154,6 +162,7 @@ export function renderReport(report: Report): string {
   if (agent) lines.push(agent);
   lines.push(`💬 Told       ${report.told.how}`, `             ${report.told.next_level}`);
   if (report.runs) lines.push(`🕒 Runs       ${report.runs}`);
+  if (report.checked) lines.push(`🔎 Checked    ${report.checked}`);
   if (report.can_add.length > 0) lines.push(`➕ Can add    ${report.can_add.map((option) => `${option.replace(/-/g, " ")} (taskfollow add ${option})`).join(" · ")}`);
   report.limited.forEach((entry, index) => lines.push(`${index === 0 ? "⚠️ Limited   " : "             "}${entry.title} — ${entry.detail}`));
   report.needs_you.forEach((entry, index) => lines.push(`${index === 0 ? "⛔ Needs you " : "             "}${index + 1}. ${entry.title} — ${entry.detail}`));
