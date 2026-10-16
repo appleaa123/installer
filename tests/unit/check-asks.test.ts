@@ -3,6 +3,7 @@ import { checkCommand, type CheckContext } from "../../src/core/check-commands.j
 import { serveCheckPage } from "../../src/core/check-page.js";
 import { abilities, answerChallenge, loadChallenge, markChallenge } from "../../src/core/checks.js";
 import { CHANNEL_TOOLS } from "../../src/core/channel-tools.js";
+import { saveChannel } from "../../src/core/channels.js";
 import { loadState, saveState } from "../../src/core/state.js";
 import { runnerHome } from "../helpers/runner-home.js";
 
@@ -12,7 +13,7 @@ const pages: { close: () => void }[] = [];
 afterEach(() => pages.splice(0).forEach((page) => page.close()));
 const launched: string[] = [];
 const ctx = (extra: Partial<CheckContext> = {}): CheckContext => ({ interactive: false, now: () => AT, launch: async (_h, id) => (launched.push(id), { pid: 0, opened: true }), ...extra });
-const run = async (home: string, args: string[], flags: Record<string, unknown> = {}, context = ctx()) => checkCommand(home, (await loadState(home)) ?? undefined, args, flags, context);
+const run = async (home: string, args: string[], flags: Record<string, unknown> = {}, context = ctx({ interactive: true })) => checkCommand(home, (await loadState(home)) ?? undefined, args, flags, context);
 
 async function confirm(home: string, id: string, fields: Record<string, string>): Promise<string> {
   const page = await serveCheckPage(home, id, { now: () => AT, ttlMs: 60_000 });
@@ -54,6 +55,24 @@ describe("T6: asking first, for any agent (fail-only)", () => {
     const send = CHANNEL_TOOLS.find((tool) => tool.name === "channel.send");
     expect(() => send?.parse({ channel: "email", to: "me@example.com", text: "x", subject: "TASKFOLLOW-CHECK c12345678 WORD" })).toThrow("check");
   });
+
+  it.each(["Fwd: TASKFOLLOW-CHECK c12345678 WORD", "Re: taskfollow-check c12345678 WORD", "note TASKFOLLOW-CHECK"])("channel.send refuses a check subject anywhere in it (review 5): %s", (subject) => {
+    const send = CHANNEL_TOOLS.find((tool) => tool.name === "channel.send");
+    expect(() => send?.parse({ channel: "email", to: "me@example.com", text: "x", subject })).toThrow("check");
+  });
+
+  it("never sends to an address the operator agent chose (review 1): without the person's terminal it refuses", async () => {
+    const home = await runnerHome();
+    await expect(run(home, ["start", "t6"], { value: '{"address":"someone-else@example.com"}' }, ctx())).rejects.toThrow("Start this in your own terminal");
+  });
+
+  it("uses the email channel's own address when the agent starts it, whatever address the agent gives (review 1)", async () => {
+    const home = await runnerHome();
+    await saveChannel(home, { channel: "email", address: "me@example.com", verified_at: AT, imap: { host: "imap.example.com", port: 993, security: "ssl", user: "me@example.com" }, smtp: { host: "smtp.example.com", port: 465, security: "ssl", user: "me@example.com" } });
+    const out = (await run(home, ["start", "t6"], { value: '{"address":"someone-else@example.com"}' }, ctx())) as { instruction: string };
+    expect(out.instruction).toContain("me@example.com");
+    expect(out.instruction).not.toContain("someone-else");
+  });
 });
 
 describe("T6b: asking first on Claude Code, unattended, under the person's own settings", () => {
@@ -67,7 +86,7 @@ describe("T6b: asking first on Claude Code, unattended, under the person's own s
 
   it("refuses unless the person runs it in their own terminal (the tool name never comes from the agent)", async () => {
     const home = await claudeHome();
-    await expect(run(home, ["start", "t6b"], { value: '{"tool":"mcp__gmail__send","address":"me@example.com"}' })).rejects.toThrow("own terminal");
+    await expect(run(home, ["start", "t6b"], { value: '{"tool":"mcp__gmail__send","address":"me@example.com"}' }, ctx())).rejects.toThrow("own terminal");
   });
 
   it("yes, tested only when Claude Code's own output lists the person's tool as denied and nothing arrived", async () => {

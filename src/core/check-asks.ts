@@ -28,17 +28,23 @@ function field(value: unknown, name: string): string | undefined {
   }
 }
 
-async function addressOf(home: string, flags: Raw): Promise<string> {
-  const given = field(flags.value, "address");
+/**
+ * The person's own address (spec 5.3: a test never sends to anyone but the person; review 1). An address given in
+ * --value counts only when the person typed the command in their own terminal (D61); started by the agent, the test
+ * uses the email channel's own address, whatever address the agent gave, or refuses.
+ */
+async function addressOf(home: string, flags: Raw, interactive: boolean): Promise<string> {
+  const given = interactive ? field(flags.value, "address") : undefined;
   const channel = await loadChannel(home, "email");
   const address = given ?? (channel?.channel === "email" ? channel.address : undefined);
-  if (!address || !ADDRESS.test(address)) throw new InputError(`check start t6 needs the person's own email address: --value '{"address":"you@example.com"}'`);
+  if (!address && !interactive) throw new InputError(`TaskFollow sends this test only to your own address. Start this in your own terminal with your address: taskfollow check start t6 --value '{"address":"you@example.com"}'`);
+  if (!address || !ADDRESS.test(address)) throw new InputError(`check start t6 needs your own email address: --value '{"address":"you@example.com"}'`);
   return address;
 }
 
 export async function startAsks(home: string, state: InstallState | undefined, flags: Raw, context: CheckContext): Promise<Raw> {
   const { agent, version } = agentOf(state, field(flags.value, "agent") ? (flags.value as string) : undefined);
-  const address = await addressOf(home, flags);
+  const address = await addressOf(home, flags, context.interactive);
   const { challenge, word } = await startChallenge(home, { needs: ["asks-first"], test: "t6", agent, agentVersion: version, ttlMs: ASKS_TTL_MS, withWord: true, details: { address } }, context.now());
   const launched = await context.launch(home, challenge.id, undefined);
   return {
@@ -65,7 +71,7 @@ export async function startAsksUnattended(home: string, state: InstallState | un
   if (!context.interactive) throw new InputError("check start t6b runs only for a person, in your own terminal: the send tool to test must come from you, not from your assistant");
   const tool = field(flags.value, "tool");
   if (!tool || !/^[A-Za-z0-9_:.-]+$/.test(tool)) throw new InputError(`check start t6b needs your assistant's own send tool, as Claude Code names it: --value '{"tool":"mcp__<server>__<tool>","address":"you@example.com"}'`);
-  const address = await addressOf(home, flags);
+  const address = await addressOf(home, flags, context.interactive);
   const agent = state?.runtime?.profile ?? "unknown";
   const version = state?.runtime?.agent_version ?? null;
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
