@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAction } from "../../src/core/actions.js";
 import { consultCleanup, restoreAfterConsult } from "../../src/core/consult.js";
+import { checkDelivered } from "../../src/core/deliver.js";
 import { workflowCommand } from "../../src/core/lifecycle.js";
+import { localSkills } from "../../src/core/skills.js";
 import { DISCOVERY_SKILL, loadWritten, removeWritten, writeDiscoverySkill } from "../../src/core/workflow-skill.js";
 import { writePinnedSolution } from "../../src/core/pin.js";
 import { loadWorkflowState } from "../../src/core/sandbox.js";
@@ -115,6 +117,43 @@ describe("discovery: the find-my-repetitive-work skill (Task 9, D165)", () => {
     for (const command of commands) expect(["workflow add", "workflow suggestions", "skills"]).toContain(command);
     expect(SKILL_TEXT).not.toContain("mcp__installer");
     for (const rule of ["Read only.", "Quote no message", "only in this chat", "only after their yes"]) expect(SKILL_TEXT).toContain(rule);
+  });
+
+  it("an existing same-name folder is left alone, unrecorded, and the result says it is the person's (review of PR #62)", async () => {
+    const { home, work } = await installHome();
+    const folder = join(work, ".claude", "skills", DISCOVERY_SKILL);
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "SKILL.md"), "the person's own skill");
+    const result = await writeDiscoverySkill(home);
+    expect(result).toEqual({ path: join(folder, "SKILL.md"), kept_theirs: true });
+    expect(await readFile(join(folder, "SKILL.md"), "utf8")).toBe("the person's own skill");
+    expect((await loadWritten(home)).skill_folders).toEqual([]);
+  });
+
+  it("writes the skill again when it is recorded but its folder is gone (review of PR #62)", async () => {
+    const { home, work } = await installHome();
+    const folder = join(work, ".claude", "skills", DISCOVERY_SKILL);
+    await writeDiscoverySkill(home);
+    await rm(folder, { recursive: true });
+    expect(await writeDiscoverySkill(home)).toEqual({ path: join(folder, "SKILL.md"), kept_theirs: false });
+    expect(await readFile(join(folder, "SKILL.md"), "utf8")).toBe(SKILL_TEXT);
+    expect((await loadWritten(home)).skill_folders).toHaveLength(1);
+  });
+
+  it("taskfollow skills does not list the discovery skill as a skill for workflows (review of PR #62)", async () => {
+    const { home, work } = await installHome();
+    await writeDiscoverySkill(home);
+    await mkdir(join(work, ".claude", "skills", "tone"), { recursive: true });
+    await writeFile(join(work, ".claude", "skills", "tone", "SKILL.md"), "---\nname: tone\ndescription: Our tone.\n---\n");
+    expect((await localSkills(join(work, ".claude", "skills"), "install folder")).map((skill) => skill.name)).toEqual(["tone"]);
+  });
+
+  it("is never delivered to an agent's own schedule: checkDelivered refuses its text (review of PR #62)", async () => {
+    await expect(checkDelivered(await runnerHome(), SKILL_TEXT)).rejects.toThrow("taskfollow command");
+  });
+
+  it("uninstall says the exports/ copy stays with the home (review of PR #62)", () => {
+    expect(readFileSync("src/core/uninstall.ts", "utf8")).toContain("the find-my-repetitive-work skill under exports/");
   });
 
   it("INSTALL.md 9b says what to do when the person is not sure what repeats", () => {
