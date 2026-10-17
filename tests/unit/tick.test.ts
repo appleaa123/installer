@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { approveItem } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { writeConfig } from "../../src/core/data-source.js";
@@ -202,6 +202,10 @@ describe("the weekly re-check from the tick (D174)", () => {
     await recordResult(home, { need: "runner", result: "yes-tested", reason: "a pass", at: "2026-10-01T12:00:00.000Z", agent: "fake-agent", agent_version: "9.9.9", test: "t7" });
     await writeConfig(home, RECHECK_FILE, { next: "2026-10-08T00:00:00.000Z" });
   };
+
+  // The suite's switch (vitest.config.ts) is cleared only here, where the starter is a fake that runs nothing.
+  beforeEach(() => vi.stubEnv("INSTALLER_RECHECK_AUTOSTART", ""));
+  afterEach(() => vi.unstubAllEnvs());
 
   it("the tick starts the weekly re-check when it is due", async () => {
     const home = await runnerHome();

@@ -191,6 +191,25 @@ describe("the weekly re-check and what it tells (D174)", () => {
     expect(await toOwner()).toContainEqual(expect.stringContaining("could not run three times in a row"));
   }, 60_000);
 
+  it("after the third could-not-run, the next check is a week later, so the person is told once per failing week", async () => {
+    const home = await toldHome();
+    vi.stubEnv("FAKE_AGENT_TASK", "not json");
+    await weeklyRecheck(home, at);
+    await weeklyRecheck(home, at);
+    await weeklyRecheck(home, at);
+    expect((await state(home)).next).toBe(new Date(Date.parse(NOW) + RECHECK_EVERY_MS).toISOString());
+  }, 60_000);
+
+  it("a notice the channel only recorded (an unfinished install) waits for why", async () => {
+    const home = await channelHome(false);
+    const current = await loadState(home);
+    if (current) await saveState(home, { ...current, runtime: FAKE_RUNTIME });
+    await recordResult(home, { need: "runner", result: "yes-tested", reason: "a pass", at: ago(10), agent: "fake-agent", agent_version: "9.9.9", test: "t7" });
+    script([]);
+    await weeklyRecheck(home, at);
+    expect((await state(home)).waiting).toHaveLength(1);
+  }, 60_000);
+
   it("a pass or a fail resets the count of could-not-run results", async () => {
     const home = await toldHome();
     vi.stubEnv("FAKE_AGENT_TASK", "not json");
@@ -285,11 +304,42 @@ describe("the re-check's own process (D174)", () => {
     expect((await state(home)).errors).toBe(2);
   });
 
+  it("a child that never says it is ready is released after the wait (no IPC channel left open)", async () => {
+    const home = await passedHome();
+    let disconnected = false;
+    let unrefd = false;
+    const child = Object.assign(new EventEmitter(), { pid: 4242, disconnect: () => { disconnected = true; }, unref: () => { unrefd = true; } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const started = startRecheck(home, at, () => child);
+      const failed = expect(started).rejects.toThrow("did not start within 10 s");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await failed;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(disconnected).toBe(true);
+    expect(unrefd).toBe(true);
+    expect((await state(home)).last).toMatchObject({ result: "error" });
+  });
+
   it("a child that says it is ready lets the tick go on without waiting", async () => {
     const home = await passedHome();
     let unrefd = false;
     const child = Object.assign(new EventEmitter(), { pid: 4242, disconnect: () => undefined, unref: () => { unrefd = true; } });
     await startRecheck(home, at, () => { setImmediate(() => child.emit("message", { ready: true })); return child; });
     expect(unrefd).toBe(true);
+  });
+});
+
+describe("the tick's environment switch (D174)", () => {
+  it("is honoured from the process environment even when a caller passes its own", async () => {
+    const { startRecheckIfDue } = await import("../../src/core/recheck.js");
+    const home = await passedHome();
+    await writeConfig(home, RECHECK_FILE, { next: ago(1) });
+    vi.stubEnv("INSTALLER_RECHECK_AUTOSTART", "none");
+    let started = false;
+    expect(await startRecheckIfDue(home, at, {}, async () => { started = true; })).toBeNull();
+    expect(started).toBe(false);
   });
 });

@@ -113,14 +113,17 @@ async function tell(home: string, now: () => string, text: string): Promise<{ re
   const name = (await loadState(home))?.roles?.decision_maker;
   const reaches = (await listChannels(home)).some((config) => !isCustomersOnly(config.channel));
   if (name && reaches && !(await sandboxMode(home)) && !(await isPaused(home))) {
+    // Lazy: the tool set reaches this module through check-fresh.
+    const { invokeTool, toolContext } = await import("./tools.js");
+    const { DEFAULT_TOOLS } = await import("./tool-set.js");
+    const { isDomainError } = await import("./doctor-checks.js");
     try {
-      // Lazy: the tool set reaches this module through check-fresh.
-      const { invokeTool, toolContext } = await import("./tools.js");
-      const { DEFAULT_TOOLS } = await import("./tool-set.js");
-      await invokeTool(await toolContext(home, "runner", DEFAULT_TOOLS, now), "channel.notify", { member: name, text });
-      return undefined;
+      const sent = (await invokeTool(await toolContext(home, "runner", DEFAULT_TOOLS, now), "channel.notify", { member: name, text })) as { deliveries?: readonly { status?: string }[] };
+      // A delivery the engine only recorded (an unfinished install) did not reach the person either.
+      const deliveries = sent.deliveries ?? [];
+      if (deliveries.length > 0 && deliveries.every((delivery) => delivery.status === "sent")) return undefined;
     } catch (error) {
-      if (!(error instanceof Error)) throw error;
+      if (!isDomainError(error)) throw error;
     }
   }
   return { at: now(), text };
@@ -150,14 +153,15 @@ export async function weeklyRecheck(home: string, now: () => string, env?: NodeJ
   }
   if (typeof out.error === "string") {
     const errors = ((await loadRecheck(home)).errors ?? 0) + 1;
-    const third = errors === RECHECK_ERRORS_TO_RECORD;
+    // From the third in a row it counts as a fail: recorded, told, and checked again a week later (once per failing week).
+    const third = errors >= RECHECK_ERRORS_TO_RECORD;
     if (third) {
       const agent = probedAgent(state);
       const reason = `The weekly check could not run three times in a row: ${out.error}`;
       for (const need of ["runner", "tools"] as const) await recordResult(home, { need, result: "not-checked", reason, at, agent: agent?.agent ?? "unknown", agent_version: agent?.version ?? null, test: "t7" });
     }
     const notice = third ? await tell(home, now, NOTICE(`it could not run three times in a row (${out.error})`)) : undefined;
-    await saveRecheck(home, { next: plus(at, RECHECK_RETRY_MS), last: { at, result: "error", why: out.error }, errors }, notice);
+    await saveRecheck(home, { next: plus(at, third ? RECHECK_EVERY_MS : RECHECK_RETRY_MS), last: { at, result: "error", why: out.error }, errors }, notice);
     await audit("error");
     return "error";
   }
@@ -213,14 +217,15 @@ export async function startRecheck(home: string, now: () => string, spawnChild: 
       done(`The weekly check could not start (${error.message})`);
     });
   });
-  if (outcome !== null) return failed(outcome);
+  // Released either way, so a child that never said it is ready leaves no IPC channel holding the tick open.
   child.disconnect();
   child.unref();
+  if (outcome !== null) return failed(outcome);
 }
 
 /** The tick's part (D174): start the re-check when it is due, never while the suite runs (the environment switch). */
 export async function startRecheckIfDue(home: string, now: () => string, env: Readonly<Record<string, string | undefined>>, start: (home: string, now: () => string) => Promise<void> = startRecheck): Promise<"started" | null> {
-  if (env[RECHECK_AUTOSTART_ENV] === "none") return null;
+  if (env[RECHECK_AUTOSTART_ENV] === "none" || process.env[RECHECK_AUTOSTART_ENV] === "none") return null;
   if (!(await recheckDue(home, now()))) return null;
   await start(home, now);
   return "started";
@@ -249,12 +254,14 @@ export async function recheckRun(home: string, options: RunOptions = {}): Promis
   const lock = await takeLock(home);
   if (lock === null) return 3;
   try {
-    (options.send ?? ((message: unknown) => process.send?.(message)))({ ready: true });
+    (options.send ?? ((message: unknown) => process.send?.(message, () => undefined)))({ ready: true });
     await weeklyRecheck(home, options.now ?? (() => new Date().toISOString()), process.env, options.check);
     return 0;
   } catch {
     return 1;
   } finally {
     await rm(lock, { force: true });
+    // The real child lets go of the tick's IPC channel; a test (which passes `send`) must not cut its own worker off.
+    if (!options.send && process.connected) process.disconnect();
   }
 }
