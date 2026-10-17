@@ -27,6 +27,8 @@ export default defineConfig({
       INSTALLER_CERTIFY_SUITES: "none",
       // The tick never restarts a gateway during a test run (D130); the tests that cover it inject a fake.
       INSTALLER_GATEWAY_AUTOSTART: "none",
+      // D174: nor does it ever start a real weekly re-check process; the tests that cover it inject a fake.
+      INSTALLER_RECHECK_AUTOSTART: "none",
       // In-process tests run from src/; the MCP headers helper must still name the built CLI (D52).
       INSTALLER_CLI: resolve("dist/cli.js"),
       // D146: `taskfollow watch` never edits the real ~/.claude/settings.json during a test run.

@@ -51,6 +51,8 @@ export interface ReportExtras {
   readonly checks?: readonly { readonly need: string; readonly result: string; readonly at: string }[];
   /** The consult report's path relative to the home (D163), read by the caller so the report stays synchronous. */
   readonly consultReport?: string;
+  /** D174: the weekly re-check applies to this install's agent, worked out by the caller so the report stays synchronous. */
+  readonly recheck?: boolean;
 }
 
 const CHECK_WORDS: Readonly<Record<string, string>> = { "yes-tested": "yes, tested", "yes-you-told-us": "yes, you told us", "not-checked": "not checked", "no-tested": "no, tested" };
@@ -99,10 +101,12 @@ function planOf(runtime: CapabilityMap | undefined): string {
   return " Workflows that need a model's judgment use a model key of your own (taskfollow model).";
 }
 
-function runsOf(state: InstallState): string | undefined {
+const RUNS_WEEKLY = " Once a week TaskFollow runs your agent once, for about a minute, to check it can still run here by itself.";
+
+function runsOf(state: InstallState, extras: ReportExtras): string | undefined {
   const answer = state.steps["mode.always-on"];
   if (answer?.status !== "done") return undefined;
-  return `${answer.value === "yes" ? RUNS_WANTED : RUNS_HERE}${planOf(state.runtime)}`;
+  return `${answer.value === "yes" ? RUNS_WANTED : RUNS_HERE}${planOf(state.runtime)}${extras.recheck ? RUNS_WEEKLY : ""}`;
 }
 
 const HEADLINE: Readonly<Record<Overall, string>> = {
@@ -160,7 +164,7 @@ export function buildReport(solution: Solution, state: InstallState, extras: Rep
   return {
     overall, solution: `${solution.id}@${solution.version}`, phase: current?.phase ?? null, done: working.length, total: inView.length,
     working, limited, needs_you, runtime: state.runtime ?? null, runtime_limits: limits, skillswiki: state.skillswiki !== undefined, can_add: addableOptions(solution, state),
-    told: toldOf(personChannels(rows), extras), ...(runsOf(state) ? { runs: runsOf(state) } : {}),
+    told: toldOf(personChannels(rows), extras), ...(runsOf(state, extras) ? { runs: runsOf(state, extras) } : {}),
     ...(consulting ? { consult: { finished: current === null || current === undefined, ...(extras.consultReport ? { report: extras.consultReport } : {}) } } : {}),
     ...(extras.checks && extras.checks.length > 0 ? { checked: extras.checks.map((entry) => `${entry.need}: ${CHECK_WORDS[entry.result] ?? entry.result} (${entry.at.slice(0, 10)})`).join(" · ") } : {}),
   };

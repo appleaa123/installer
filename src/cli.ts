@@ -399,7 +399,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
     const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
     const consultReport = await (await import("./core/consult.js")).consultReportPath(deps.home);
-    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}) });
+    const recheck = await (await import("./core/recheck.js")).recheckApplies(deps.home, state);
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}), ...(recheck ? { recheck } : {}) });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },
@@ -458,6 +459,8 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "mcp-serve") return mcpServeCommand(home);
   if (command === "agent-hook") return agentHookCommand(arg ?? "", extra ?? "");
   if (command === "gateway-serve") return serveGateway(home);
+  // D174: the weekly re-check's own detached process, started by the tick.
+  if (command === "recheck-run") return (await import("./core/recheck.js")).recheckRun(home);
   if (command === "check-serve") return checkServeCommand(home, requireArg(arg, command));
   if (command === "check") {
     emit(process.stdout, await checkCommand(home, (await loadState(home)) ?? undefined, positionals.slice(1), { ...flags }, { interactive: process.stdin.isTTY === true, now: () => new Date().toISOString(), launch: (pageHome, id, word) => launchCheckPage(pageHome, id, word) }));

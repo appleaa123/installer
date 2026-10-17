@@ -131,6 +131,21 @@ describe("why.show, the why command as a tool (D169)", () => {
     expect(Object.keys(shown).slice(0, 2)).toEqual(["suggestions", "rule_candidates"]);
   });
 
+  it("why.show puts a waiting weekly-check notice after suggestions and before rule candidates (D174)", async () => {
+    const { home } = await finishedRun();
+    await waitSuggestion(home);
+    const { RECHECK_FILE } = await import("../../src/core/recheck.js");
+    await writeConfig(home, RECHECK_FILE, { waiting: [{ at: AT, text: "TaskFollow's weekly check found x." }] });
+    const { saveWritten } = await import("../../src/core/workflow-skill.js");
+    await saveWritten(home, { skill_folders: [{ workflow: "inbox", path: join(home, "skills", "inbox"), root: join(home, "skills") }] });
+    const { requestApproval, rejectItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    const asked = await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", {}), via: "runner", run: { workflow: "inbox", run_id: "r1", step: "reply" }, why: "Reply" }, AT);
+    await rejectItem(home, asked.id, { name: "Owner", role: "decision_maker" }, "too formal", AT);
+    const shown = await show(home, {});
+    expect(Object.keys(shown).slice(0, 3)).toEqual(["suggestions", "recheck", "rule_candidates"]);
+  });
+
   it("why.show puts a damaged suggestion file's message first too", async () => {
     const { home } = await finishedRun();
     await waitSuggestion(home);

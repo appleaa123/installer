@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { approveItem } from "../../src/core/approvals.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { writeConfig } from "../../src/core/data-source.js";
@@ -192,5 +192,54 @@ describe("resumption (§10.7)", () => {
     expect(result.errors).toEqual([expect.stringContaining("runs/morning/damaged/run.json")]);
     expect(await audited(home, "run.damaged")).toBe(1);
     expect(await memos(home)).toEqual(["Final"]);
+  });
+});
+
+describe("the weekly re-check from the tick (D174)", () => {
+  const due = async (home: string): Promise<void> => {
+    const { recordResult } = await import("../../src/core/checks.js");
+    const { RECHECK_FILE } = await import("../../src/core/recheck.js");
+    await recordResult(home, { need: "runner", result: "yes-tested", reason: "a pass", at: "2026-10-01T12:00:00.000Z", agent: "fake-agent", agent_version: "9.9.9", test: "t7" });
+    await writeConfig(home, RECHECK_FILE, { next: "2026-10-08T00:00:00.000Z" });
+  };
+
+  // The suite's switch (vitest.config.ts) is cleared only here, where the starter is a fake that runs nothing.
+  beforeEach(() => vi.stubEnv("INSTALLER_RECHECK_AUTOSTART", ""));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("the tick starts the weekly re-check when it is due", async () => {
+    const home = await runnerHome();
+    await due(home);
+    const started: string[] = [];
+    const result = await tick(home, clock(THU_0800), {}, undefined, async (startedHome) => void started.push(startedHome));
+    expect(started).toEqual([home]);
+    expect(result.recheck).toBe("started");
+  });
+
+  it("does not start it when the environment switch says none", async () => {
+    const home = await runnerHome();
+    await due(home);
+    const started: string[] = [];
+    const result = await tick(home, clock(THU_0800), { INSTALLER_RECHECK_AUTOSTART: "none" }, undefined, async (startedHome) => void started.push(startedHome));
+    expect(started).toEqual([]);
+    expect(result.recheck).toBeNull();
+  });
+
+  it("a paused install starts no re-check", async () => {
+    const home = await runnerHome();
+    await due(home);
+    const { setPaused } = await import("../../src/core/pause.js");
+    await setPaused(home, true, { name: "Owner", actor: "human", via: "terminal" }, THU_0800);
+    const started: string[] = [];
+    await tick(home, clock(THU_0800), {}, undefined, async (startedHome) => void started.push(startedHome));
+    expect(started).toEqual([]);
+  });
+
+  it("a re-check that cannot start is a tick error, not a crash", async () => {
+    const home = await runnerHome();
+    await due(home);
+    const { ActionFailure } = await import("../../src/core/failure.js");
+    const result = await tick(home, clock(THU_0800), {}, undefined, async () => { throw new ActionFailure("The weekly check could not start (exit 3)"); });
+    expect(result.errors).toContainEqual(expect.stringContaining("recheck: The weekly check could not start"));
   });
 });

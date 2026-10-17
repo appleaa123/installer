@@ -109,6 +109,15 @@ describe("the doctor and the sweep (review B5)", () => {
     expect(await checksDoctor({ home: fresh, state: (await loadState(fresh)) ?? null, now: NOW } as never)).toMatchObject({ status: "ok" });
   });
 
+  it("the doctor warns when the weekly check could not run (D174)", async () => {
+    const home = await runnerHome();
+    await pass(home, "runner", NOW);
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    const { RECHECK_FILE } = await import("../../src/core/recheck.js");
+    await writeConfig(home, RECHECK_FILE, { last: { at: NOW, result: "error", why: "exited with code 1" } });
+    expect(await checksDoctor({ home, state: (await loadState(home)) ?? null, now: NOW } as never)).toMatchObject({ status: "warn", detail: expect.stringContaining(`the weekly check could not run on ${NOW.slice(0, 10)}: exited with code 1`) });
+  });
+
   it("sweeps expired checks: cancels them and removes their test files", async () => {
     const home = await runnerHome();
     const work = await mkdtemp(join(tmpdir(), "install-folder-"));

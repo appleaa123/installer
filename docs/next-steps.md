@@ -1,10 +1,10 @@
 # TaskFollow: where things stand and what to do next
 
-Last updated 2026-10-16. The scope is `docs/scope-refresh.md` section 9 (D152, widened by D156); the owner's later choices are D165–D170. This file is the short, current view; `DECISIONS.md` is the record.
+Last updated 2026-10-17. The scope is `docs/scope-refresh.md` section 9 (D152, widened by D156); the owner's later choices are D165–D170. This file is the short, current view; `DECISIONS.md` is the record.
 
 ## Done
 
-The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task 28 passed D167), the flaky tests (#39). v1 items built and merged: the spike (D153), skills reminded (D154), the bare-minimum install (D155), the doability check (D159–D163), "I noticed" without a channel (D164), inbox triage (D168), `why.show` (D169), the four back-office workflows and invoices due (D171), the interview, the opportunity rule and discovery (D172), learning into `my-rules.md` (D173).
+The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task 28 passed D167), the flaky tests (#39). v1 items built and merged: the spike (D153), skills reminded (D154), the bare-minimum install (D155), the doability check (D159–D163), "I noticed" without a channel (D164), inbox triage (D168), `why.show` (D169), the four back-office workflows and invoices due (D171), the interview, the opportunity rule and discovery (D172), learning into `my-rules.md` (D173), the weekly re-check (D174), real-user readiness (D175, #64).
 
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
@@ -23,11 +23,11 @@ The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task
 | 6b, the interview, the opportunity rule and discovery | #62 | D172 | `solutions/starter.json` 2.3.0 (`workflows.choose`, `consult.choose`, step `workflows.discovery`), `solutions/skills/find-my-repetitive-work/SKILL.md`, `workflow-skill.ts` (`writeDiscoverySkill`), `actions.ts` (`discovery_skill`), `consult.ts` (written again after a consult), `agent-file.ts` (the opportunity line), INSTALL.md 9b items 1–2 and operator rule 14 | The interview proposes the shipped workflows first and asks which tool you use; it ends with "Not sure what repeats in your week? Ask me to find your repetitive work any time."; `.claude/skills/find-my-repetitive-work/` in the install folder |
 | 8, learning into my-rules.md | #63 | D173 | `src/core/learning.ts` (rule candidates, `learningsCommand`), `workflow-skill.ts` (`appendRule`, `NO_RULES_YET`), `lifecycle.ts` (`workflow rule`), `why.ts` + `why-tools.ts` (`rule_candidates`), `consult.ts` (`consultKeptRules`), `deliver.ts` (`deliveredZip`, the recorded folder), `tick.ts`, `cli.ts` (`learnings dismiss`), INSTALL.md rules 11 and 15, section 9 and 9b | `taskfollow workflow rule <id> --value '{"rule":"…"}'`; `why` lists "Corrections to turn into rules"; `taskfollow learnings [dismiss <n>]` |
 | Real-user readiness | #64 | D175 | `src/core/engine.ts` (a non-blocking auto step is blocked at once), `solutions/starter.json` + `starter-skillswiki.json` (`preflight.tools` not blocking; join lines), `check-commands.ts` (`UNPROFILED_AGENT`), `report.ts` (Agent and Runs lines), `skills.ts` (`.agents/skills`), `workflow-skill.ts` (`AGENTS.md`), `deliver.ts`, `email-page.ts` (sign-in name), `runner-steps.ts` (dry run of `agent_call`), `package.json` (`prepack`, not private), INSTALL.md, START-HERE.md, README.md | An install on any agent that can run commands reaches the questions; the report says in plain words what runs and what needs a model key; skills in `.agents/skills` and `AGENTS.md`; the email page names whose inbox is read; a dry run shows the call it would ask to approve |
+| Weekly re-check | #66 | D174 | `src/core/recheck.ts` (new: due, start, child, the check, notices), `check-runner.ts` (`quietOnError`), `tick.ts` (the `recheck` pass), `cli.ts` (`recheck-run`, the report flag), `why.ts` + `why-tools.ts` (`recheck`), `check-fresh.ts` (doctor), `report.ts` (the weekly sentence), INSTALL.md rule 11 | Nothing on a pass; on a fail, once a week: "TaskFollow's weekly check found that it can no longer run your agent…" by channel or in `why`; `taskfollow doctor` warns when it could not run |
 
 ## In progress
 
-- The weekly unattended re-check of the runner check (D170c): planned, built after this PR.
-- Real-user readiness (D175): this PR.
+- Nothing; the owner's real-user test is next.
 
 ## Then: v1 is done when the owner uses it as a real user (9.11)
 
@@ -38,6 +38,7 @@ The owner installs TaskFollow on their own agent with only TaskFollow's guidance
 - B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
 - T6b MCP tool-name hints; the outbound "recorded" path counts notices as delivered; the consult cleanup always removes the user-wide `installer` MCP registration (known limit).
 - The interactive half of comparison arm A, and arm B after item 5 (D161).
+- A weekly per-workflow T7 for Home 1 workflows whose own `runner` result is stale or failed, so a stopped workflow could recover by itself (D174 checks only the agent-wide runner).
 
 ## Postponed on purpose
 

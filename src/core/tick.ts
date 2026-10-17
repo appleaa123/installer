@@ -57,6 +57,8 @@ export interface TickResult {
   readonly learnings: number;
   /** What the tick did about the gateway (D130): `started` after finding it dead, `null` when the tick stopped early. */
   readonly gateway: "running" | "started" | "stopped" | "no_channel" | "skipped" | null;
+  /** Whether this tick started the weekly re-check (D174); it runs in its own process. */
+  readonly recheck: "started" | null;
   /** The daily doctor's overall status when it ran in this tick (D103). */
   readonly doctor: "ok" | "warn" | "fail" | null;
   readonly errors: string[];
@@ -215,8 +217,10 @@ async function guard(tick: Tick, name: string, task: () => Promise<void>): Promi
   }
 }
 
-export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env, start: typeof startGateway = startGateway): Promise<TickResult> {
-  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, gateway: null, doctor: null, errors: [] };
+type StartRecheck = (home: string, now: () => string) => Promise<void>;
+
+export async function tick(home: string, now: () => string = () => new Date().toISOString(), env?: Env, start: typeof startGateway = startGateway, recheck?: StartRecheck): Promise<TickResult> {
+  const result: Tally = { status: "ran", started: [], missed: [], resumed: [], events: 0, back_online: false, alerts: 0, reminded: [], rate_limited: 0, learnings: 0, gateway: null, recheck: null, doctor: null, errors: [] };
   const lock = await lockTick(home);
   if (lock === null) return { ...result, status: "busy" };
   try {
@@ -259,6 +263,11 @@ export async function tick(home: string, now: () => string = () => new Date().to
     // Item 7a: checks that expired are ended and what they made (test files, skills, tabs) is removed.
     await guard(state, "checks", async () => {
       await (await import("./check-fresh.js")).sweepChecks(home, now());
+    });
+    // D174: once a week, preflight T7 again, in its own process so the tick is never held for minutes. Lazy: no cycle.
+    await guard(state, "recheck", async () => {
+      const { startRecheckIfDue } = await import("./recheck.js");
+      result.recheck = await startRecheckIfDue(home, now, env ?? process.env, recheck);
     });
     await guard(state, "doctor", async () => {
       result.doctor = (await dailyDoctor(home, now, env))?.status ?? null;
