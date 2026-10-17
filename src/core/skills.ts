@@ -82,6 +82,9 @@ export function frontmatter(text: string): { readonly name?: string; readonly de
   return { ...(found.name ? { name: found.name } : {}), ...(found.description !== undefined ? { description: found.description } : {}) };
 }
 
+/** D165, D172: the skill the owner's agent runs to find repetitive work; never a skill for a workflow, so never listed. */
+export const DISCOVERY_SKILL = "find-my-repetitive-work";
+
 /** Each direct subfolder of `root` with a SKILL.md: its name and description only. */
 export async function localSkills(root: string, source: SkillEntry["source"], notes: string[] = []): Promise<SkillEntry[]> {
   let names: string[];
@@ -94,6 +97,7 @@ export async function localSkills(root: string, source: SkillEntry["source"], no
   }
   const found: SkillEntry[] = [];
   for (const name of names) {
+    if (name === DISCOVERY_SKILL) continue;
     try {
       // A linked folder that leads outside the skills folder cannot be used by a workflow, so it is not offered.
       if (!inside(realRoot, await realpath(join(root, name)))) {

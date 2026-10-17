@@ -107,7 +107,7 @@ describe("the starter's suggested workflows", () => {
     expect(offered({ "mode.purpose": "consult" })).toEqual(expect.arrayContaining(["inbox-triage", "inbox-triage-replies"]));
     expect(offered(SOLO)).not.toContain("inbox-triage");
     expect(offered(SOLO)).not.toContain("inbox-triage-replies");
-    expect(STARTER.version).toBe("2.2.0");
+    expect(STARTER.version).toBe("2.3.0");
   });
 
   it("the inbox shapes leave the time to the trigger, name their own skill, and say how many messages wait (PR #59 review)", () => {
@@ -133,7 +133,7 @@ describe("the starter's suggested workflows", () => {
 
 describe("the consult path (item 7 Task 8, D163)", () => {
   it("asks only the consultation's steps after the first question", () => {
-    expect(visible({ "mode.purpose": "consult" })).toEqual(["preflight.probe", "preflight.tools", "mode.purpose", "consult.names", "consult.choose", "consult.report", "consult.cleanup", "report.final"]);
+    expect(visible({ "mode.purpose": "consult" })).toEqual(["preflight.probe", "preflight.tools", "mode.purpose", "consult.names", "workflows.discovery", "consult.choose", "consult.report", "consult.cleanup", "report.final"]);
   });
 
   it("keeps the install path as it was, without the consultation's steps", () => {

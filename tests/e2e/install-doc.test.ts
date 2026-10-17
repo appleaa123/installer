@@ -67,6 +67,10 @@ describe("INSTALL.md", () => {
     expect(rule).toContain("If you reach TaskFollow through its tools rather than a shell, `approvals.list`, and `why.show` with `since` set to that day, give the same answers; a run's whole result is `why.show` with `run` set to its id.");
   });
 
+  it("INSTALL.md has operator rule 14, the opportunity rule (9.4, D172)", () => {
+    expect(DOC).toContain("14. When you notice work that repeats, in what the person asks you to do, in what a workflow's results show, or in a suggestion TaskFollow noticed, say so in one sentence and show the workflow you would set up: what starts it, what it reads, what it may change, and what waits for their yes. If they give feedback, change it and show it again. Add it only after they say yes; never create, change or turn on a workflow without one. Propose each kind of work once; propose it again only if they ask.");
+  });
+
   it("keeps one placeholder, for the optional Skills Wiki URL, after the optional section starts (D129)", () => {
     const optional = DOC.indexOf("## 11.");
     expect(optional).toBeGreaterThan(0);

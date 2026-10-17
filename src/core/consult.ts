@@ -14,7 +14,7 @@ import { knownValues, scrub } from "./support-bundle.js";
 import { prepareNotesFolder } from "./task-files.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import type { InstallState } from "./types.js";
-import { installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, removeWritten, RULES_FILE, saveWritten, writeWorkflowSkill } from "./workflow-skill.js";
+import { installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, removeWritten, RULES_FILE, saveWritten, writeDiscoverySkill, writeWorkflowSkill } from "./workflow-skill.js";
 import { loadWorkflow, workflowIds } from "./workflow.js";
 
 /**
@@ -125,6 +125,8 @@ export async function restoreAfterConsult(home: string): Promise<{ readonly skil
     await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: id, path: folder, root: roots.project }] });
     restored.push(folder);
   }
+  // D172: the discovery skill the clean-up removed comes back too (its WORKFLOWS step is already done).
+  await writeDiscoverySkill(home);
   // D171: meeting-notes/ is recorded again (made again if the clean-up removed it), keeping whether TaskFollow made it.
   const workDir = (await loadState(home))?.work_dir;
   if (saved.notes_folder && workDir !== undefined) {
