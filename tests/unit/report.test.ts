@@ -111,6 +111,7 @@ describe("runtime line", () => {
     expect(report.overall).toBe("ready_with_limits");
     const text = renderReport(report);
     expect(text).toContain("🤖 Agent      your agent (no TaskFollow profile) — TaskFollow cannot start this agent by itself: scheduled runs need a model key, or run by hand when you ask; approvals and records work through `taskfollow tool`");
+    expect(text).toContain("its workflow skills are in .agents/skills in the install folder, listed in AGENTS.md (ask it to read that file)");
     expect(text).not.toContain("fallbacks apply");
     expect(text).not.toMatch(/your agent \(no TaskFollow profile\) — level/);
   });

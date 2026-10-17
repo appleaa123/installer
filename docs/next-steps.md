@@ -26,7 +26,7 @@ The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task
 
 ## In progress
 
-- The weekly unattended re-check of the runner check (D170c, D174): plan reviewed, built after this PR.
+- The weekly unattended re-check of the runner check (D170c): planned, built after this PR.
 - Real-user readiness (D175): this PR.
 
 ## Then: v1 is done when the owner uses it as a real user (9.11)

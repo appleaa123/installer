@@ -182,7 +182,7 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
 /** D175: what TaskFollow does with skills on an agent whose profile names no skills folder; never claims they are loaded (R5). */
 export const SHARED_SKILLS_NOTE = "TaskFollow keeps workflow skills in .agents/skills (read by Codex, Gemini CLI, Cursor, OpenClaw, Hermes and Antigravity) and lists them in AGENTS.md; ask your agent to read it";
 
-export const HOME_FOLDER_NOTE = "TaskFollow was started from your home folder, so it will not write a workflow skill or CLAUDE.md there; start it from the install folder (START-HERE step 4)";
+export const HOME_FOLDER_NOTE = "TaskFollow was started from your home folder, so it will not write a workflow skill or your agent file (CLAUDE.md or AGENTS.md) there; start it from the install folder (START-HERE step 4)";
 
 function inside(root: string, path: string): boolean {
   const rel = relative(root, path);

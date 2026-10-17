@@ -169,7 +169,7 @@ export function buildReport(solution: Solution, state: InstallState, extras: Rep
 function agentLine(report: Report): string | null {
   const runtime = report.runtime;
   if (!runtime) return null;
-  if (!runtime.profile) return `🤖 Agent      your agent (no TaskFollow profile) — ${UNPROFILED_LIMIT}`;
+  if (!runtime.profile) return `🤖 Agent      your agent (no TaskFollow profile) — ${UNPROFILED_LIMIT}; its workflow skills are in .agents/skills in the install folder, listed in AGENTS.md (ask it to read that file)`;
   const name = `${runtime.profile} ${runtime.agent_version ?? ""}`.trim();
   const missing = [...report.runtime_limits, ...(runtime.c6_mcp === "not_probed" && report.skillswiki ? ["MCP not checked yet"] : [])];
   return `🤖 Agent      ${name} — level ${runtime.support_level} of 3${missing.length > 0 ? ` (${missing.join(", ")})` : ""}`;
