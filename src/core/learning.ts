@@ -152,6 +152,16 @@ export async function collectRuleCandidates(home: string, now: string): Promise<
 
 export const listRuleCandidates = (home: string): Promise<RuleCandidate[]> => listRecords(home, RULES_DIR, isRuleCandidate);
 
+/** Closes an open candidate: its rule was added (`workflow rule`), or the person said no (`learnings dismiss`). */
+export async function closeRuleCandidate(home: string, id: number, status: "added" | "dismissed", now: string): Promise<RuleCandidate> {
+  const found = (await listRuleCandidates(home)).find((candidate) => candidate.id === id);
+  if (!found) throw new InputError(`There is no rule candidate ${id} ('taskfollow learnings' lists them)`);
+  if (found.status !== "open") throw new InputError(`Rule candidate ${id} is ${found.status} already`);
+  const closed: RuleCandidate = { ...found, status, closed_at: now };
+  await replaceRecord(home, RULES_DIR, closed);
+  return closed;
+}
+
 const bodiesOf = (value: unknown): string[] => (isRecord(value) && Array.isArray(value.learnings) ? value.learnings : []).filter(isRecord).map((entry) => String(entry.body ?? ""));
 
 async function send(home: string, learning: Learning, url: string | undefined, now: string): Promise<Learning> {

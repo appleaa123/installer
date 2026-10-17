@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readSection, removeSection, sectionText, writeSection, type WorkflowLine } from "./agent-file.js";
@@ -80,8 +80,11 @@ export function skillMarkdown(id: string, description: string): string {
   ].join("\n");
 }
 
+/** The rules file's placeholder; the first rule added replaces exactly this line (item 8). */
+export const NO_RULES_YET = "None yet. When the owner corrects a result, the agent proposes a rule here and adds it only after the owner says yes.";
+
 export function rulesMarkdown(id: string, rules: string | undefined): string {
-  const body = rules?.trim() || "None yet. When the owner corrects a result, the agent proposes a rule here and adds it only after the owner says yes.";
+  const body = rules?.trim() || NO_RULES_YET;
   return `# My rules for ${id}\n\n${body}\n`;
 }
 
@@ -174,6 +177,34 @@ const inside = (root: string, path: string): boolean => {
   const rel = relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 };
+
+/**
+ * Item 8: the rules file of the skill folder TaskFollow wrote for `workflow`, as recorded and as it really is. The
+ * folder passes uninstall's checks, and the file itself must be that folder's own `references/my-rules.md`, not a link.
+ */
+async function ownedRulesFile(home: string, workflow: string): Promise<{ readonly shown: string; readonly real: string }> {
+  const entry = (await loadWritten(home)).skill_folders.find((folder) => folder.workflow === workflow);
+  if (!entry) throw new InputError(`Workflow '${workflow}' has no rules file TaskFollow wrote (its agent has no skills folder TaskFollow knows), so there is nowhere to keep a rule: tell the person, and keep the rule in mind in chat`);
+  const shown = join(entry.path, REFERENCES_DIR, RULES_FILE);
+  const moved = new InputError(`TaskFollow did not write ${shown} as it is now (moved, linked elsewhere, or without SKILL.md), so it leaves it alone: the person can add the rule there themselves`);
+  const [folder, file] = await Promise.all([realpath(entry.path), realpath(shown)]).catch(() => [null, null]);
+  const root = await realpath(entry.root).catch(() => entry.root);
+  if (!folder || !file || !inside(root, folder) || !(await exists(join(folder, SKILL_FILE))) || file !== join(folder, REFERENCES_DIR, RULES_FILE)) throw moved;
+  return { shown, real: file };
+}
+
+/**
+ * Appends one rule the person said yes to. The first rule replaces the placeholder line: the file is read right
+ * before it is written, so what another process added meanwhile is kept; the window left is the few milliseconds of
+ * that read and write (as D164). Later rules are appended. Returns the file as recorded.
+ */
+export async function appendRule(home: string, workflow: string, rule: string): Promise<string> {
+  const { shown, real } = await ownedRulesFile(home, workflow);
+  const text = await readFile(real, "utf8");
+  if (text.includes(NO_RULES_YET)) await writeFile(real, text.replace(NO_RULES_YET, `- ${rule}`));
+  else await appendFile(real, `${text === "" || text.endsWith("\n") ? "" : "\n"}- ${rule}\n`);
+  return shown;
+}
 
 /** Uninstall (9.13 item 5): removes the recorded skill folders and the section, nothing else; what it leaves, it says why. */
 export async function removeWritten(home: string): Promise<{ readonly skill_folders: readonly string[]; readonly left: readonly { path: string; why: string }[]; readonly agent_file: string }> {

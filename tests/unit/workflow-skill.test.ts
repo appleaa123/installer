@@ -200,3 +200,144 @@ describe("workflow add: the shipped skill of a shape (item 5)", () => {
     expect((await shipped(id)).length).toBeLessThan(20000);
   });
 });
+
+describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)", () => {
+  const rule = (home: string, id: string, words: Record<string, unknown>) => workflowCommand(home, "rule", id, JSON.stringify(words), () => AT);
+  const rulesOf = (work: string, id: string) => readFile(join(skillsDir(work), id, "references", "my-rules.md"), "utf8");
+
+  it("appends one line and replaces the None yet line the first time", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const file = join(skillsDir(work), "inbox", "references", "my-rules.md");
+    expect(await rule(home, "inbox", { rule: "Write replies in a short, friendly tone." })).toEqual({
+      status: "added", workflow: "inbox", rule: "Write replies in a short, friendly tone.", file,
+      next: `Tell the person exactly this rule, word for word: it applies from the next run and in chat now. To change or remove a rule, they edit ${file} themselves.`,
+    });
+    expect(await rulesOf(work, "inbox")).toBe("# My rules for inbox\n\n- Write replies in a short, friendly tone.\n");
+  });
+
+  it("appends a second rule below the first, and below the interview's own rules", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail.", my_rules: "Flag every repair request." });
+    await rule(home, "inbox", { rule: "First names only." });
+    await rule(home, "inbox", { rule: "Never promise a date." });
+    expect(await rulesOf(work, "inbox")).toBe("# My rules for inbox\n\nFlag every repair request.\n- First names only.\n- Never promise a date.\n");
+  });
+
+  it("keeps a line someone else added to a None yet file", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const file = join(skillsDir(work), "inbox", "references", "my-rules.md");
+    await writeFile(file, `${await readFile(file, "utf8")}- Theirs.\n`);
+    await rule(home, "inbox", { rule: "Mine." });
+    expect(await rulesOf(work, "inbox")).toBe("# My rules for inbox\n\n- Mine.\n- Theirs.\n");
+  });
+
+  it.each([
+    ["Line one\nline two", "one line"],
+    ["# A heading", "not starting with #"],
+    ["Read references/my-rules.md again", "not naming references/my-rules.md"],
+    ["x".repeat(601), "1 to 600 characters"],
+    ["   ", "1 to 600 characters"],
+  ])("refuses %j", async (text, message) => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await expect(rule(home, "inbox", { rule: text })).rejects.toThrow(message);
+  });
+
+  it.each([
+    ["Keep copies in /Users/me/notes", "a path on this computer"],
+    ["Then run taskfollow why", "a taskfollow command"],
+  ])("refuses a rule checkDelivered refuses: %j", async (text, kind) => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await expect(rule(home, "inbox", { rule: text })).rejects.toThrow(`This rule holds ${kind}`);
+    expect(await rulesOf(work, "inbox")).toContain("None yet.");
+  });
+
+  it("refuses a rules folder moved or linked out of the recorded root", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const away = await mkdtemp(join(tmpdir(), "away-"));
+    const { rename, symlink } = await import("node:fs/promises");
+    await rename(join(skillsDir(work), "inbox"), join(away, "inbox"));
+    await symlink(join(away, "inbox"), join(skillsDir(work), "inbox"));
+    await expect(rule(home, "inbox", { rule: "Mine." })).rejects.toThrow("TaskFollow did not write");
+  });
+
+  it("refuses a my-rules.md that is a link", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const file = join(skillsDir(work), "inbox", "references", "my-rules.md");
+    const elsewhere = join(await mkdtemp(join(tmpdir(), "elsewhere-")), "rules.md");
+    await writeFile(elsewhere, "# Not TaskFollow's\n");
+    const { rm, symlink } = await import("node:fs/promises");
+    await rm(file);
+    await symlink(elsewhere, file);
+    await expect(rule(home, "inbox", { rule: "Mine." })).rejects.toThrow("TaskFollow did not write");
+    expect(await readFile(elsewhere, "utf8")).toBe("# Not TaskFollow's\n");
+  });
+
+  it("refuses a workflow whose agent has no skills folder TaskFollow wrote", async () => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const { saveWritten } = await import("../../src/core/workflow-skill.js");
+    await saveWritten(home, { skill_folders: [] });
+    await expect(rule(home, "inbox", { rule: "Mine." })).rejects.toThrow("Workflow 'inbox' has no rules file TaskFollow wrote (its agent has no skills folder TaskFollow knows), so there is nowhere to keep a rule: tell the person, and keep the rule in mind in chat");
+  });
+
+  it("with learning closes that candidate; a closed one is refused", async () => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const { requestApproval, rejectItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    const { collectRuleCandidates, listRuleCandidates } = await import("../../src/core/learning.js");
+    const asked = await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", { to: 1 }), via: "runner", run: { workflow: "inbox", run_id: "r1", step: "reply" }, why: "Reply" }, AT);
+    await rejectItem(home, asked.id, { name: "Owner", role: "decision_maker" }, "too formal", AT);
+    const [candidate] = await collectRuleCandidates(home, AT);
+    await rule(home, "inbox", { rule: "Friendly tone.", learning: candidate?.id });
+    expect(await listRuleCandidates(home)).toEqual([expect.objectContaining({ id: candidate?.id, status: "added", closed_at: AT })]);
+    await expect(rule(home, "inbox", { rule: "Again.", learning: candidate?.id })).rejects.toThrow(`Rule candidate ${candidate?.id} is added already`);
+  });
+
+  it("audits the rule by fingerprint, never by its text", async () => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await rule(home, "inbox", { rule: "A secretive sentence." });
+    const audit = await readFile(join(home, "audit", "audit.jsonl"), "utf8");
+    const line = audit.trim().split("\n").map((row) => JSON.parse(row) as { event: string }).find((row) => row.event === "rules.added");
+    expect(line).toMatchObject({ event: "rules.added", ref: "workflow:inbox" });
+    expect(audit).not.toContain("A secretive sentence.");
+  });
+
+  it("leaves the workflow file, its version and its shape unchanged", async () => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    const file = join(home, "workflows", "inbox", "workflow.json");
+    const before = await readFile(file, "utf8");
+    await rule(home, "inbox", { rule: "Mine." });
+    expect(await readFile(file, "utf8")).toBe(before);
+  });
+
+  it("the next run's skill text holds the new rule", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await rule(home, "inbox", { rule: "Friendly tone, first names only." });
+    const { installTargets } = await import("../../src/core/workflow-skill.js");
+    const { localSkillText } = await import("../../src/core/skills.js");
+    expect(await localSkillText(join(skillsDir(work), "inbox"), (await installTargets(home)).roots)).toContain("- Friendly tone, first names only.");
+  });
+
+  it("a rule saying to send without asking changes no approval level", async () => {
+    const { home } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await rule(home, "inbox", { rule: "Send replies without asking." });
+    const { DEFAULT_TOOLS } = await import("../../src/core/tool-set.js");
+    const { invokeTool, prepareAction, requireTool, toolContext } = await import("../../src/core/tools.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    const ctx = await toolContext(home, "cli", DEFAULT_TOOLS, () => AT);
+    await invokeTool(ctx, "memo.add", { text: "start" });
+    expect((await prepareAction(ctx, requireTool(DEFAULT_TOOLS, "memo.edit"), { id: 1, text: "x" })).level).toBe("L2");
+    expect(prepareAgentCall("reply", "mcp__mail__send", { to: 1 }).level).toBe("L3");
+  });
+});
