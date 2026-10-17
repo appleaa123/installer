@@ -57,6 +57,13 @@ describe("START-HERE.md, the page for the person (D129)", () => {
     expect(START).toContain("open it again in your folder and say 'carry on with TaskFollow'");
   });
 
+  it("installs from a tarball in the terminal, before any assistant starts (review of PR #64)", () => {
+    const note = START.indexOf("taskfollow-<version>.tgz");
+    expect(note).toBeGreaterThan(START.indexOf("## 2. Open a terminal"));
+    expect(note).toBeLessThan(START.indexOf("## 3. Install Claude Code"));
+    expect(START).toContain("before you start any assistant (Claude Code or another one)");
+  });
+
   it("uses no jargon the person would not know", () => {
     expect(START).not.toMatch(/\b(MCP|OAuth|keychain|JSON|API|IMAP|SMTP|CLI|launchd|schtasks)\b/);
   });
