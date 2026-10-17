@@ -5,6 +5,8 @@ Each task says why it is needed and what to do, step by step.
 
 ## Open
 
+> **Start here for v1 testing:** `docs/testing/2026-10-17-real-user-test.md` is one real-user test (Claude Code, Antigravity, Claude Cowork) that also answers tasks 33 (Cowork half), 35–42 as you use TaskFollow normally.
+
 ### 1. Review and merge the open pull requests (in order)
 
 **Why:** each plan's work waits on a branch until you approve it. Nothing is merged into `main` without you.
