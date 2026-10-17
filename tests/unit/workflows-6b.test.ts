@@ -119,6 +119,18 @@ describe("discovery: the find-my-repetitive-work skill (Task 9, D165)", () => {
     for (const rule of ["Read only.", "Quote no message", "only in this chat", "only after their yes"]) expect(SKILL_TEXT).toContain(rule);
   });
 
+  it("starts only when the owner asks, and adds a shipped workflow by its id (review of PR #62)", () => {
+    const description = SKILL_TEXT.split("\n").find((line) => line.startsWith("description:")) ?? "";
+    expect(description).toContain("or says they are not sure what repeats and asks you to look.");
+    expect(description).not.toContain("or is not sure what repeats in their week");
+    expect(SKILL_TEXT).toContain('add it by its id with `taskfollow workflow add <id>`, passing only `"my_rules"` and `"examples"`');
+    expect(SKILL_TEXT).toContain("otherwise, add a described workflow in their own words");
+  });
+
+  it("uses one name for the record-update workflow: CRM update (review of PR #62)", () => {
+    expect(readFileSync("INSTALL.md", "utf8")).not.toContain("record updates");
+  });
+
   it("an existing same-name folder is left alone, unrecorded, and the result says it is the person's (review of PR #62)", async () => {
     const { home, work } = await installHome();
     const folder = join(work, ".claude", "skills", DISCOVERY_SKILL);

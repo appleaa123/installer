@@ -1,6 +1,6 @@
 ---
 name: find-my-repetitive-work
-description: Use when the owner asks you to find their repetitive work, asks "what could I automate?", or is not sure what repeats in their week. You look, with their permission, only where they say, in this chat, and propose workflows they can choose.
+description: Use when the owner asks you to find their repetitive work, asks "what could I automate?", or says they are not sure what repeats and asks you to look. You look, with their permission, only where they say, in this chat, and propose workflows they can choose.
 ---
 
 # Find my repetitive work
@@ -32,7 +32,7 @@ Ask the owner to confirm or drop each line. Drop what they drop, without arguing
 
 ## 5. Propose a workflow for each confirmed line
 
-For each line they keep, propose a workflow the way INSTALL.md section 9b says: what starts it, what it reads, what it may change, and what waits for their yes. Run `taskfollow skills` and say which listed skills fit. Add it with `taskfollow workflow add` only after their yes, with their own words as the description and their rules as `my_rules`.
+For each line they keep, propose a workflow the way INSTALL.md section 9b says: what starts it, what it reads, what it may change, and what waits for their yes. Run `taskfollow skills` and say which listed skills fit. Add it only after their yes. When it is one of the shipped workflows and they use no tool of their own for it, add it by its id with `taskfollow workflow add <id>`, passing only `"my_rules"` and `"examples"` (and `"skills"`, `"trigger"` if needed); otherwise, add a described workflow in their own words, with their rules as `"my_rules"`.
 
 ## 6. Nothing else leaves this chat
 
