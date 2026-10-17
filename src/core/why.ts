@@ -169,6 +169,8 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
     no_channel: (await listChannels(home)).every((config) => isCustomersOnly(config.channel)),
     // D164: "I noticed" suggestions no channel could deliver, shown once, at the person's next session.
     ...(await suggestionsField(home, now())),
+    // D174: what the weekly check found, when it could not reach the person, shown once.
+    ...(await recheckField(home, now())),
     // Item 8: corrections made in approvals, kept until the agent adds a rule or the person says no.
     ...(await ruleCandidatesField(home, now())),
     next: "Run 'taskfollow why <run>' with a run id to see who did what in that run, and why",
@@ -207,6 +209,18 @@ async function suggestionsField(home: string, now: string): Promise<{ suggestion
     // An optional feature's damaged file must not stop the session-start list (INSTALL.md rule 11).
     if (!(error instanceof StateCorruptError)) throw error;
     return { suggestions_damaged: DAMAGED_NOTICE };
+  }
+}
+
+async function recheckField(home: string, now: string): Promise<{ recheck?: readonly { at: string; text: string }[]; recheck_damaged?: string }> {
+  // Lazy, as for rule candidates: recheck.ts reaches the tool set, which reaches this module.
+  const { RECHECK_DAMAGED, takeRecheckNotices } = await import("./recheck.js");
+  try {
+    const recheck = await takeRecheckNotices(home, now);
+    return recheck.length === 0 ? {} : { recheck };
+  } catch (error) {
+    if (!(error instanceof StateCorruptError)) throw error;
+    return { recheck_damaged: RECHECK_DAMAGED };
   }
 }
 
@@ -262,9 +276,12 @@ export function renderWhy(why: Raw): string {
   const runs = Array.isArray(why.runs) ? (why.runs as Raw[]) : [];
   const suggestions = Array.isArray(why.suggestions) ? (why.suggestions as Raw[]) : [];
   const candidates = Array.isArray(why.rule_candidates) ? (why.rule_candidates as Raw[]) : [];
+  const rechecks = Array.isArray(why.recheck) ? (why.recheck as Raw[]) : [];
   const told = [
     ...(suggestions.length === 0 ? [] : ["", "TaskFollow noticed (tell the person):", ...suggestions.map((entry) => `    ${str(entry.text)}`)]),
     ...(typeof why.suggestions_damaged === "string" ? ["", why.suggestions_damaged] : []),
+    ...(rechecks.length === 0 ? [] : ["", "TaskFollow's weekly check (tell the person):", ...rechecks.map((entry) => `    ${str(entry.text)}`)]),
+    ...(typeof why.recheck_damaged === "string" ? ["", why.recheck_damaged] : []),
     ...(candidates.length === 0 ? [] : [
       "", "Corrections to turn into rules (propose one rule each in the person's words; add it with 'taskfollow workflow rule' only after they say yes, or 'taskfollow learnings dismiss <n>'):",
       ...candidates.map((entry) => `    ${str(entry.text)}`),

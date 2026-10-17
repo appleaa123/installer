@@ -399,7 +399,8 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     const profile = state.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => undefined) : undefined;
     const checks = state.runtime?.profile ? await latestByNeed(deps.home, state.runtime.profile) : [];
     const consultReport = await (await import("./core/consult.js")).consultReportPath(deps.home);
-    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}) });
+    const recheck = await (await import("./core/recheck.js")).recheckApplies(deps.home, state);
+    const report = buildReport(deps.solution, state, { ...(profile?.push ? { pushNote: profile.push.note, pushRead: profile.push.read } : {}), checks, ...(consultReport ? { consultReport } : {}), ...(recheck ? { recheck } : {}) });
     const operations = await operationsView(deps.home, state);
     return flags.json ? { ...report, operations } : [renderReport(report), ...renderOperations(operations)].join("\n");
   },

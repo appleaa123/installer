@@ -117,6 +117,51 @@ describe("taskfollow why shows a suggestion no channel delivered, once (D164)", 
   });
 });
 
+describe("taskfollow why shows the weekly check's notice, once (D174)", () => {
+  const NOTICE = "TaskFollow's weekly check found that it can no longer run your agent on this computer by itself: x.";
+
+  it("the list shows a waiting weekly-check notice once, then clears it", async () => {
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    const { RECHECK_FILE } = await import("../../src/core/recheck.js");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await writeConfig(home, RECHECK_FILE, { next: LATER, waiting: [{ at: AT, text: NOTICE }] });
+    const first = await whyCommand(home, undefined, () => LATER);
+    expect(first.recheck).toEqual([{ at: AT, text: NOTICE }]);
+    expect(renderWhy(first)).toContain("TaskFollow's weekly check (tell the person):");
+    const again = await whyCommand(home, undefined, () => LATER);
+    expect(again).not.toHaveProperty("recheck");
+  });
+
+  it("a damaged recheck file gives a recheck_damaged line and does not stop the list", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await mkdir(join(home, "config"), { recursive: true });
+    await writeFile(join(home, "config", "recheck.json"), "{ not json");
+    const listed = await whyCommand(home, undefined, () => LATER);
+    expect(listed).toHaveProperty("runs");
+    expect(listed.recheck_damaged).toContain("config/recheck.json is not valid JSON");
+    expect(renderWhy(listed)).toContain("config/recheck.json is not valid JSON");
+  });
+
+  it("the weekly-check notice comes after suggestions and before rule candidates, in JSON and in plain lines", async () => {
+    const { writeConfig } = await import("../../src/core/data-source.js");
+    const { RECHECK_FILE } = await import("../../src/core/recheck.js");
+    const { NOTICE_FILE } = await import("../../src/core/watch-notice.js");
+    const { renderWhy } = await import("../../src/core/why.js");
+    const home = await runnerHome();
+    await writeConfig(home, NOTICE_FILE, { checked: "2026-10-14", suggested: ["mcp:shopify"], waiting: [{ at: AT, text: "I noticed your agent used shopify." }] });
+    await writeConfig(home, RECHECK_FILE, { waiting: [{ at: AT, text: NOTICE }] });
+    const keys = Object.keys(await whyCommand(home, undefined, () => LATER));
+    expect(keys.indexOf("recheck")).toBeGreaterThan(keys.indexOf("suggestions"));
+    expect(keys.indexOf("recheck")).toBeLessThan(keys.indexOf("next"));
+    const text = renderWhy({ since: AT, runs: [], suggestions: [{ text: "I noticed" }], recheck: [{ text: NOTICE }], rule_candidates: [{ id: 1, text: "rule 1: x" }] });
+    expect(text.indexOf("weekly check (tell")).toBeGreaterThan(text.indexOf("I noticed"));
+    expect(text.indexOf("weekly check (tell")).toBeLessThan(text.indexOf("rule 1: x"));
+  });
+});
+
 describe("taskfollow why, as a person reads it", () => {
   it("shows one line per entry with its reason underneath, and one line per run", async () => {
     const { renderWhy } = await import("../../src/core/why.js");

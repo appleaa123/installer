@@ -139,6 +139,11 @@ describe("INSTALL.md", () => {
     expect(rule).toContain("If it lists corrections to turn into rules, they stay listed until a rule is added or the person says no (rule 15).");
   });
 
+  it("rule 11 names the weekly check's notice (D174)", () => {
+    const rule = DOC.slice(DOC.indexOf("11. At the start of each session"), DOC.indexOf("\n12. "));
+    expect(rule).toContain("If it lists TaskFollow's weekly check, tell them what it found and the command it gives; it is shown only once.");
+  });
+
   it("keeps one placeholder, for the optional Skills Wiki URL, after the optional section starts (D129)", () => {
     const optional = DOC.indexOf("## 11.");
     expect(optional).toBeGreaterThan(0);

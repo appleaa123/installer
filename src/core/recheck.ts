@@ -49,6 +49,19 @@ export async function loadRecheck(home: string): Promise<RecheckState> {
   }
 }
 
+/**
+ * The weekly check's notices that waited for the person (no channel, sandbox, paused or a channel failure), once:
+ * removed as they are shown, and the showing audited. A damaged file throws StateCorruptError for `why` to report.
+ */
+export async function takeRecheckNotices(home: string, now: string): Promise<readonly { readonly at: string; readonly text: string }[]> {
+  const recheck = ((await readConfig(home, RECHECK_FILE)) as RecheckState | null) ?? {};
+  const waiting = Array.isArray(recheck.waiting) ? recheck.waiting : [];
+  if (waiting.length === 0) return [];
+  await writeConfig(home, RECHECK_FILE, { ...recheck, waiting: [] });
+  await appendAudit(home, { ts: now, actor: "engine", event: "check.recheck_shown", ref: "recheck", payload: { count: waiting.length } });
+  return waiting;
+}
+
 const consulting = (state: InstallState): boolean => state.steps["mode.purpose"]?.value === "consult";
 
 /** The newest agent-wide pass of `runner` or `tools` for the probed agent, if its profile can run tasks at all. */
@@ -60,6 +73,9 @@ async function newestPass(home: string, state: InstallState | null): Promise<str
   const passes = (await abilities(home)).filter((entry) => entry.agent === agent && entry.workflow === undefined && (entry.need === "runner" || entry.need === "tools") && entry.result === "yes-tested");
   return passes.map((entry) => entry.at).sort().at(-1) ?? null;
 }
+
+/** Whether the weekly re-check applies to this install at all (the report says so once): conditions 1–3 of the plan. */
+export const recheckApplies = async (home: string, state: InstallState): Promise<boolean> => (await newestPass(home, state)) !== null;
 
 export async function lockHolder(home: string): Promise<number | null> {
   const pid = Number(await readFile(await confinedPath(home, RECHECK_LOCK), "utf8").catch(() => "0"));

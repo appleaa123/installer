@@ -100,6 +100,10 @@ export async function checksDoctor(ctx: DoctorContext): Promise<DoctorCheck | nu
     const why = problem(all.filter((entry) => entry.need === need), version, ctx.now);
     return why ? [`${need}: ${why}`] : [];
   });
+  // D174: a weekly check that could not run is not a fail, but it is not "current" either. Lazy: recheck.ts reaches the tool set.
+  const { loadRecheck } = await import("./recheck.js");
+  const last = (await loadRecheck(ctx.home).catch(() => ({}) as Awaited<ReturnType<typeof loadRecheck>>)).last;
+  if (last?.result === "error") problems.push(`the weekly check could not run on ${last.at.slice(0, 10)}: ${last.why ?? "no reason given"}`);
   if (problems.length === 0) return { id: "checks", status: "ok", detail: "the checks of what your agent can do are current" };
   return { id: "checks", status: "warn", detail: `a check of what your agent can do no longer holds (${problems.join("; ")})`, fix: RECHECK() };
 }

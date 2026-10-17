@@ -189,6 +189,13 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
     expect(buildReport(STARTER, starterState({ "mode.purpose": answer("install"), "mode.who": answer("me") })).runs).toBeUndefined();
   });
 
+  it("says the agent runs once a week for the check, only for an agent that can be re-checked (D174)", () => {
+    const claude = { profile: "claude-code", agent_version: "2.1.301", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true, c6_mcp: "not_probed" as const, support_level: 2 as const, tier: "compatible" as const, notes: [] };
+    const weekly = "Once a week TaskFollow runs your agent once, for about a minute, to check it can still run here by itself.";
+    expect(buildReport(STARTER, { ...starterState(SOLO), runtime: claude }, { recheck: true }).runs).toContain(weekly);
+    expect(buildReport(STARTER, { ...starterState(SOLO), runtime: claude }).runs).not.toContain(weekly);
+  });
+
   it("names Claude's plan only for Claude Code (D175)", () => {
     const claude = { profile: "claude-code", agent_version: "2.1.301", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true, c6_mcp: "not_probed" as const, support_level: 2 as const, tier: "compatible" as const, notes: [] };
     expect(buildReport(STARTER, { ...starterState(SOLO), runtime: claude }).runs).toContain("They use your own Claude plan.");
