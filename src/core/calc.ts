@@ -32,8 +32,11 @@ export interface CalcResult {
   readonly missing: Stats;
 }
 type Grouped = CalcResult & { readonly key: string };
-/** `no_date`: rows `due_within_days` left out because their `due` is empty or not a YYYY-MM-DD date. */
-export type CalcOutput = CalcResult & { readonly groups?: readonly Grouped[]; readonly change?: unknown; readonly no_date?: number };
+/**
+ * With `where`: `rows`, the rows kept (so a report lists exactly those), and with `due_within_days`, `today` and
+ * `no_date`, the rows left out because their `due` is empty or not a YYYY-MM-DD date.
+ */
+export type CalcOutput = CalcResult & { readonly groups?: readonly Grouped[]; readonly change?: unknown; readonly rows?: readonly unknown[]; readonly today?: string; readonly no_date?: number };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DUE_FIELD = "due";
@@ -112,7 +115,8 @@ export function calculate(list: unknown, spec: CalcSpec): CalcOutput {
   const groups = spec.group_by === undefined ? undefined : groupRows(rows, spec.group_by).map(([key, members]) => ({ key, ...stats(members, spec.sum) }));
   return {
     ...overall, ...(groups ? { groups } : {}), ...(spec.compare === undefined ? {} : { change: change(overall, spec.compare, spec.sum) }),
-    ...(spec.where?.due_within_days === undefined ? {} : { no_date: kept.noDate }),
+    ...(spec.where === undefined ? {} : { rows: rows.map(({ row }) => row) }),
+    ...(spec.where?.due_within_days === undefined ? {} : { today: spec.today, no_date: kept.noDate }),
   };
 }
 

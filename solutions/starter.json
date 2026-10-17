@@ -671,10 +671,10 @@
         {
           "id": "report",
           "agent": {
-            "instructions": "Use the invoices-due skill: the result is the list of invoices still to pay that are due within 7 days, overdue ones first, each with its vendor, amount and due date, then the totals per currency and how many open invoices have no due date. Use only the numbers in totals; never add anything up yourself. When rows holds 100 invoices, say the list is from the first 100 invoices in the sheet. Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
+            "instructions": "Use the invoices-due skill: the result lists exactly the invoices in due.rows (still to pay, due within 7 days of due.today), overdue ones first, each with its vendor, amount and due date, then the totals per currency from due.groups and how many open invoices have no due date (due.no_date). Use only the numbers TaskFollow gives you; never add anything up yourself. When invoices_in_sheet is more than 100, say the list is from the first 100 invoices in the sheet. Find the decision maker's name with channel.list (role decision_maker) and send them the result with channel.notify. If channel.list shows nobody who joined a channel, send nothing and finish with the note as your summary: the person reads it the next time they talk to their agent. Otherwise finish with the result as your summary.",
             "input": {
-              "rows": "${open.records}",
-              "totals": "${due}"
+              "due": "${due}",
+              "invoices_in_sheet": "${open.total}"
             },
             "tools": [
               "channel.list",

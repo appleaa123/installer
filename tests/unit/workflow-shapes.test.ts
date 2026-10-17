@@ -255,7 +255,8 @@ describe("invoices due each week (Task 5b, D166)", () => {
   it("the report step's input holds the calc output, and its instructions forbid adding up", () => {
     const report = step("invoices-due", "report");
     if (report?.kind !== "agent") throw new Error("no report step");
-    expect(report.agent.input).toEqual({ rows: "${open.records}", totals: "${due}" });
+    expect(report.agent.input).toEqual({ due: "${due}", invoices_in_sheet: "${open.total}" });
+    expect(report.agent.instructions).toContain("due.rows");
     expect(report.agent.instructions).toContain("never add anything up yourself");
     expectReportEnding("invoices-due");
   });

@@ -108,7 +108,13 @@ describe("calc where: only the rows a report is about (D166, D171)", () => {
     vi.stubEnv("FAKE_AGENT_TASK", JSON.stringify({ calls: [], answer: { records: INVOICES } }));
     // 12:00 UTC on 16 October is already 17 October in Auckland: the 24th is within 7 days there, not in UTC.
     const run = await startRun({ home, workflow: parseWorkflow(DUE, "invoices-due", DEFAULT_TOOLS), key: "invoices-due:1", trigger: { kind: "manual" }, now: () => "2026-10-16T12:00:00.000Z" });
-    expect(await loadStep(home, run, "due")).toMatchObject({ status: "done", output: { count: 2, sum: { amount: 150.5 }, no_date: 2 } });
+    expect(await loadStep(home, run, "due")).toMatchObject({ status: "done", output: { count: 2, sum: { amount: 150.5 }, no_date: 2, today: "2026-10-17" } });
+  });
+
+  it("calc where gives the kept rows, so a report can list exactly those (review of PR #61)", () => {
+    const result = calculate(INVOICES, { sum: ["amount"], where: { fields: { status: OPEN }, due_within_days: 7 }, today: "2026-10-16" });
+    expect(result.rows?.map((row) => (row as { id: string }).id)).toEqual(["A"]);
+    expect(calculate(INVOICES, { sum: ["amount"], where: { fields: { status: ["paid"] } } }).rows).toEqual([INVOICES[2]]);
   });
 
   it("calc where refuses an unknown key at load", () => {
