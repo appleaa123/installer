@@ -237,6 +237,21 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** the agent's list (it should hold no names or quotes), what each step printed, word for word, and anything the agent did that the skill says it must not.
 
+### 41. A correction becomes a rule (item 8, D173, about 20 minutes, after task 37)
+
+**Why:** when you edit or reject a workflow's result, your agent proposes a rule for that workflow's `references/my-rules.md` and adds it only after your yes. It was built and tested with a fake agent; this checks it on your real Claude Code (2.1.295 or later). It uses `inbox-triage-replies` because only an approval makes a rule candidate, and the report-only `inbox-triage` asks for no approval.
+
+1. In a throwaway install `~/taskfollow-task41` with the email channel and `inbox-triage-replies` (as in task 37), let a run draft a reply. Before anything else, Claude records the checksum of `~/.claude/settings.json`.
+2. Reject the reply in your own terminal: `taskfollow approvals reject <id> --reason "too formal"`.
+3. Open a new session in the install folder. The agent should mention the correction and propose one rule in your words. Say yes.
+4. Check that `.claude/skills/inbox-triage-replies/references/my-rules.md` holds exactly that line, and that the agent told you the exact text.
+5. Let the next run draft a reply: it should follow the rule.
+6. Optional, Home 2: for a report-only workflow you delivered to Claude Cowork, add a rule, run `taskfollow check deliver <id>`, upload the new zip with the same name (Settings, then Skills), and say whether Cowork replaced the old skill, refused, or kept both.
+
+**Clean up:** `claude mcp remove -s user installer`; inspect, then delete `~/.claude/projects/*taskfollow-task41*`; the settings checksum must equal step 1's; delete `~/taskfollow-task41`. Never run `taskfollow uninstall` here.
+
+**Paste back:** the rule the agent proposed, the file's line, what step 5's draft looked like, and, for step 6, what Cowork did.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
