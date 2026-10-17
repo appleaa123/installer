@@ -346,7 +346,7 @@ describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)
     });
   });
 
-  it("a rule saying to send without asking changes no approval level", async () => {
+  it("prepared levels stay L2 and L3 with such a rule on file (a narrow unit check; the proof is the run in run-skills.test.ts)", async () => {
     const { home } = await install();
     await add(home, "inbox", { description: "Sort mail." });
     await rule(home, "inbox", { rule: "Send replies without asking." });
