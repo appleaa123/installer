@@ -7,6 +7,7 @@ import { raiseAlert } from "./alerts.js";
 import { approveByGrant, proposeIfEarned } from "./autonomy.js";
 import { askJudge, protectedFields, runContextTools, stripFields, type ContextCall, type JudgeBackend } from "./judge.js";
 import { needsApproval } from "./levels.js";
+import { recordAction } from "./outbound.js";
 import { pinnedSkill } from "./packs.js";
 import { fingerprint, newestStepOutput, saveStep, type RunRecord, type StepLog } from "./runs.js";
 import { TOKEN_ARG, invokeTool, prepareAction, requireTool, type ToolArgs, type ToolContext } from "./tools.js";
@@ -138,8 +139,10 @@ export async function runApprove(exec: Exec, record: RunRecord, step: WorkflowSt
   if (step.agent_call) {
     const prepared = prepareAgentCall(step.id, step.tool, args);
     if (exec.ctx.sandbox) {
-      await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output: null, skipped: true });
-      return { kind: "done", output: null, actions: 0, needs_human: 0 };
+      // D175: a dry run shows the exact call it would ask a person to approve; nothing reaches the agent.
+      const recorded = await recordAction(exec.home, { tool: prepared.tool, args: prepared.args }, prepared.level, now(exec), `${record.workflow}/${record.run_id}`);
+      await save(exec, record, { step: step.id, status: "done", started_at: startedAt, input_fingerprint: fingerprint(args), output: recorded, skipped: true });
+      return { kind: "done", output: recorded, actions: 0, needs_human: 0 };
     }
     return escalate(exec, record, step.id, prepared, { why: step.why, urgent: step.urgent || record.urgent === true, startedAt, policy: false });
   }

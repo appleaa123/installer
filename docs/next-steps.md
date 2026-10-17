@@ -1,36 +1,10 @@
 # TaskFollow: where things stand and what to do next
 
-Last updated 2026-10-16.
+Last updated 2026-10-16. The scope is `docs/scope-refresh.md` section 9 (D152, widened by D156); the owner's later choices are D165–D170. This file is the short, current view; `DECISIONS.md` is the record.
 
-## Done (merged into `main` on 2026-10-15)
+## Done
 
-Merged in order with your approval; `main` before the merge is tagged `pre-stack-merge-2`.
-
-| PR | Branch | What it does | Decision |
-|---|---|---|---|
-| #31 | `feat/agent-tasks` | Workflows hand work to the person's own agent (MCP servers, CLIs such as the Shopify CLI). Restricted run, a hook as the gate, every call recorded with the agent's reason, `taskfollow why`. | D136–D142 |
-| #32 | `feat/email-reply` | Reads HTML-only email; replies stay in the customer's thread (`reply_to`). | D143 |
-| #33 | `feat/calc` | `calc` step for report numbers; comparison with the previous run (`previous.<step>`). | D144 |
-| #34 | `feat/store-example` | Setup interview ("walk me through your week"); two Shopify example workflows in INSTALL.md §9b (tested as written). Starter 1.6.0. | D145 |
-| #35 | `feat/watch` | Opt-in record of the agent's direct calls to watched services (hook in `~/.claude/settings.json`); `why direct`. | D146 |
-| #36 | `feat/watch-ask` | Always-ask list (Claude Code's own `permissions.ask`); "I noticed" suggestions, sent only to the person who asked. | D147, D148 |
-| #37 | `feat/whatsapp` | WhatsApp for customers through a relay in the client's own Cloudflare account; 24-hour window; 3-step setup page. Starter 1.7.0. | D149 |
-| #38 | `feat/codex` | Task 25 and 26 follow-ups: the record keeps constants like `CREATED_AT`; the task gate waits 30 s, not 5; `watch on`/`ask` refuse for agents other than Claude Code; `unask` leaves no empty `permissions` and says what it did. Codex research and reviewed plan, postponed. | D150 |
-
-Last full test run: 135 files, 1,868 tests, twice in a row with no failures (after the flaky-test fix on `fix/flaky-tests`). Task steps and watching are proven on the real Claude Code (tasks 25 and 26); everything else is tested against fakes only.
-
-## v1 (scope: `docs/scope-refresh.md` section 9, D152)
-
-The full rewrite of this file from section 9 comes once the current scope is finished (9.13 item 2, after #40). Until then, v1 progress is kept here.
-
-1. ~~Build item 1, the spike~~ **done 2026-10-15 (task 29, D153):** a restricted task run loads only Claude Code's built-in skills, not the owner's, the folder's or plugins', and neither a `/skill` prefix nor `--add-dir` changes that. So the runner puts the workflow's skill text into the task prompt (9.5's fallback, like D83).
-2. ~~Build item 2, skills reminded, not controlled~~ **built (D154)**: `taskfollow skills`, skills in every run's prompt, the workflow's own skill folder, the `CLAUDE.md` section, uninstall.
-3. ~~Build item 3, the bare-minimum install~~ **built (D155)**: Telegram optional for a person on their own, results in `why`, the session-start rule, the report's Told and Runs lines, the vision in README/START-HERE/INSTALL. Next: item 4, the level-B step.
-**Follow-ups (not yet planned):**
-
-- A weekly unattended re-check of T5 and preflight T7 for profile agents, in its own guarded tick pass with its own timeout and weekly marker (spec section 8, D162). Until then the doctor reports stale results and a real successful run refreshes `runner`/`tools`.
-- B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
-- From task 28 (D167): the dry run of an `agent_call` step shows the call it would ask to approve; the setup step's words say `JOIN <code>` for email; the email page warns when the address and the login account differ.
+The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task 28 passed D167), the flaky tests (#39). v1 items built and merged: the spike (D153), skills reminded (D154), the bare-minimum install (D155), the doability check (D159–D163), "I noticed" without a channel (D164), inbox triage (D168), `why.show` (D169), the four back-office workflows and invoices due (D171), the interview, the opportunity rule and discovery (D172), learning into `my-rules.md` (D173).
 
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
@@ -47,32 +21,31 @@ The full rewrite of this file from section 9 comes once the current scope is fin
 | `why` as an MCP tool | #60 | D169 | `src/core/why-tools.ts` (`why.show`), `why.ts` (patterns exported), `tool-set.ts`, INSTALL.md rule 11 | An agent without a shell answers "what happened, and why?" from TaskFollow's records (`mcp__installer__why_show`), the same JSON as `taskfollow why` |
 | 6a, the four workflows and invoices due | #61 | D171 | `solutions/starter.json` 2.2.0 (records `lead`, `invoice`, `action`; five suggestions), `solutions/shapes/{lead-qualification,crm-update,invoice-processing,invoices-due,meeting-follow-up}/SKILL.md`, `homes.ts` (`SHAPES`), `task-files.ts` + `workflow.ts` + `task-step.ts` + `agent-task.ts` + `agent-hook.ts` (`Read`), `calc.ts` + `runner-steps.ts` (`where`), `lifecycle.ts` + `workflow-skill.ts` + `consult.ts` (`meeting-notes/`), INSTALL.md 9e | `taskfollow workflow suggestions` offers the five with a Google Sheet; their runs end with one result line; "Refused: this step may read only the files TaskFollow gave it."; uninstall says "meeting-notes/ was left: it holds your notes" |
 | 6b, the interview, the opportunity rule and discovery | #62 | D172 | `solutions/starter.json` 2.3.0 (`workflows.choose`, `consult.choose`, step `workflows.discovery`), `solutions/skills/find-my-repetitive-work/SKILL.md`, `workflow-skill.ts` (`writeDiscoverySkill`), `actions.ts` (`discovery_skill`), `consult.ts` (written again after a consult), `agent-file.ts` (the opportunity line), INSTALL.md 9b items 1–2 and operator rule 14 | The interview proposes the shipped workflows first and asks which tool you use; it ends with "Not sure what repeats in your week? Ask me to find your repetitive work any time."; `.claude/skills/find-my-repetitive-work/` in the install folder |
-| 8, learning into my-rules.md | (this PR) | D173 | `src/core/learning.ts` (rule candidates, `learningsCommand`), `workflow-skill.ts` (`appendRule`, `NO_RULES_YET`), `lifecycle.ts` (`workflow rule`), `why.ts` + `why-tools.ts` (`rule_candidates`), `consult.ts` (`consultKeptRules`), `deliver.ts` (`deliveredZip`, the recorded folder), `tick.ts`, `cli.ts` (`learnings dismiss`), INSTALL.md rules 11 and 15, section 9 and 9b | `taskfollow workflow rule <id> --value '{"rule":"…"}'`; `why` lists "Corrections to turn into rules"; `taskfollow learnings [dismiss <n>]` |
+| 8, learning into my-rules.md | #63 | D173 | `src/core/learning.ts` (rule candidates, `learningsCommand`), `workflow-skill.ts` (`appendRule`, `NO_RULES_YET`), `lifecycle.ts` (`workflow rule`), `why.ts` + `why-tools.ts` (`rule_candidates`), `consult.ts` (`consultKeptRules`), `deliver.ts` (`deliveredZip`, the recorded folder), `tick.ts`, `cli.ts` (`learnings dismiss`), INSTALL.md rules 11 and 15, section 9 and 9b | `taskfollow workflow rule <id> --value '{"rule":"…"}'`; `why` lists "Corrections to turn into rules"; `taskfollow learnings [dismiss <n>]` |
+| Real-user readiness | #64 | D175 | `src/core/engine.ts` (a non-blocking auto step is blocked at once), `solutions/starter.json` + `starter-skillswiki.json` (`preflight.tools` not blocking; join lines), `check-commands.ts` (`UNPROFILED_AGENT`), `report.ts` (Agent and Runs lines), `skills.ts` (`.agents/skills`), `workflow-skill.ts` (`AGENTS.md`), `deliver.ts`, `email-page.ts` (sign-in name), `runner-steps.ts` (dry run of `agent_call`), `package.json` (`prepack`, not private), INSTALL.md, START-HERE.md, README.md | An install on any agent that can run commands reaches the questions; the report says in plain words what runs and what needs a model key; skills in `.agents/skills` and `AGENTS.md`; the email page names whose inbox is read; a dry run shows the call it would ask to approve |
 
-4. **#40 merged (2026-10-16):** task 28 passed (D167) and its three fixes went in; #40 itself landed on its stale stacked base `fix/flaky-tests` by mistake, so the same reviewed branch was merged into `main` through #58. Item 5 (inbox triage, D168) is built as #59, waiting for your review and human task 37; item 6 follows from its reviewed plan (`feat/workflows-four`; discovery D165, the owner's choices D166).
+## In progress
 
-## For you to do (checklists in `docs/human-tasks.md`)
+- The weekly unattended re-check of the runner check (D170c): planned, built after this PR.
+- Real-user readiness (D175): this PR.
 
-1. ~~Task 25~~ **done 2026-10-15**: one bug found and fixed (Claude Code's `StructuredOutput` tool), now on #31–#37; your MCP servers do load in restricted mode.
-2. ~~Task 26~~ **done 2026-10-15**: all six steps passed; an ask rule wins over an allow rule for the same command.
-3. ~~Task 28~~ **done 2026-10-16** (D167): the approved call worked on the real Claude Code; three fixes on #40.
-4. **Task 27 (about 1 hour).** WhatsApp with Meta's free test number and a free Cloudflare account.
-5. **Tasks 21–24, still open.** Real mailboxes (21), a Windows 11 PC (22), a real-person install test (23), a real Slack workspace (24).
-6. ~~Merge #31 → #38~~ **done 2026-10-15.**
-7. **Publish to npm.** Needs your account: the `taskfollow` package, so `npx --yes taskfollow instructions` works.
-8. **On or after 2026-10-22:** re-run the Google token check and record the result in D123.
-9. **Tasks 38 and 39 (item 6a, D171, about 40 minutes).** Your Claude Code reads only the file TaskFollow chose (an invoice PDF, a meeting note); then an invoice and a meeting, end to end, with your yes.
-10. **Task 40 (item 6b, D172, about 10 minutes).** Ask your agent to "find my repetitive work" on the test Gmail: it quotes nothing, names nobody, and TaskFollow receives only the workflow you choose.
-11. **Task 41 (item 8, D173, about 20 minutes, after task 37).** Reject one drafted reply with a reason; at the next session your agent proposes a rule, adds it only after your yes, and the next draft follows it.
+## Then: v1 is done when the owner uses it as a real user (9.11)
 
-## Postponed on purpose (next coding work, in suggested order)
+The owner installs TaskFollow on their own agent with only TaskFollow's guidance and uses it daily; friends try it on other agents; task 23 (a non-technical person installs it); then the owner publishes to npm (`npm publish`, their account). Every task for a person is in `docs/human-tasks.md` (37–42 for v1).
 
-1. **Codex and other agents: researched and postponed (D150).** No Codex account to prove it in real use. The reviewed plan with Fable's 20 findings is in `docs/superpowers/plans/2026-10-15-codex-agents.md`; pick it up when someone can test with Codex (a pay-per-use OpenAI API key would do).
-2. ~~Draft → a person approves → the agent publishes~~ **built on `feat/approve-agent-call` (D151)**: an `approve` step with `agent_call` approves one exact call to the agent's MCP tool, and the agent may then make only that call, once. Also hardens every task step (`onFailure: "block"`, Claude Code 2.1.295). Needs human task 28 on the real store.
-3. ~~`why` as an MCP tool~~ **built (D169)**: `why.show` on TaskFollow's MCP server, the same answers as `taskfollow why`.
-4. **WhatsApp extras:** message templates, media, team members on WhatsApp.
-5. **Re-run certification** on the final build.
-6. ~~Flaky tests~~ **fixed on `fix/flaky-tests`**: one keychain was shared by all test files, and the watch uninstall tests deleted the Skills Wiki key others had just stored (`shadow`, `packs`, `learning`); the Slack tests could mistake the previous test's closing connection for their own.
+## Follow-ups (not yet planned)
+
+- B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
+- T6b MCP tool-name hints; the outbound "recorded" path counts notices as delivered; the consult cleanup always removes the user-wide `installer` MCP registration (known limit).
+- The interactive half of comparison arm A, and arm B after item 5 (D161).
+
+## Postponed on purpose
+
+1. Level 2, the agent speaking first in an open chat, per agent (D170b): right after TaskFollow is ready for real users.
+2. Profiles for other agents (Codex proven for real, OpenClaw, Hermes): they need the owner's or a friend's accounts (D150, D170a). Until then they install and use TaskFollow in chat (D175).
+3. WhatsApp extras (templates, media, members on WhatsApp): after real use.
+4. Re-run certification on the final build.
+5. Non-goals stay out (9.10, D170d): systems administration, new channels, anything hosted by the owner.
 
 ## Rules to keep
 

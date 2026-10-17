@@ -88,13 +88,21 @@ function toldOf(channels: readonly string[], extras: ReportExtras): Told {
   };
 }
 
-const RUNS_HERE = "Scheduled runs happen on this computer while it is on and awake; a run it misses is skipped, not run late. They use your own Claude plan.";
-const RUNS_WANTED = "You asked for runs even when this computer is closed. Until a computer that stays on is set up (INSTALL.md section 10), scheduled runs happen here only while it is on and awake; a run it misses is skipped. They use your own Claude plan.";
+const RUNS_HERE = "Scheduled runs happen on this computer while it is on and awake; a run it misses is skipped, not run late.";
+const RUNS_WANTED = "You asked for runs even when this computer is closed. Until a computer that stays on is set up (INSTALL.md section 10), scheduled runs happen here only while it is on and awake; a run it misses is skipped.";
+
+/** D175: whose plan a run uses, said only as far as TaskFollow knows the agent. */
+function planOf(runtime: CapabilityMap | undefined): string {
+  if (!runtime) return "";
+  if (runtime.profile === "claude-code") return " They use your own Claude plan.";
+  if (runtime.profile) return " They use your own plan with that agent.";
+  return " Workflows that need a model's judgment use a model key of your own (taskfollow model).";
+}
 
 function runsOf(state: InstallState): string | undefined {
   const answer = state.steps["mode.always-on"];
   if (answer?.status !== "done") return undefined;
-  return answer.value === "yes" ? RUNS_WANTED : RUNS_HERE;
+  return `${answer.value === "yes" ? RUNS_WANTED : RUNS_HERE}${planOf(state.runtime)}`;
 }
 
 const HEADLINE: Readonly<Record<Overall, string>> = {
@@ -111,10 +119,13 @@ function failedDetail(step: StepDef, record: StepRecord): string {
   return `${record.hint ?? "Check failed"} (failed ${record.attempts ?? 0} of ${MAX_VERIFY_ATTEMPTS} tries) → then run '${retryCommand(step)}'`;
 }
 
+/** D175: what an agent TaskFollow has no profile for can and cannot do, in plain words. */
+const UNPROFILED_LIMIT = "TaskFollow cannot start this agent by itself: scheduled runs need a model key, or run by hand when you ask; approvals and records work through `taskfollow tool`";
+
 /** Limits the probe actually found (R5). An MCP check that has not run yet is not a limit. */
 export function runtimeLimits(runtime: CapabilityMap | undefined): readonly string[] {
   if (!runtime) return [];
-  if (!runtime.profile) return ["no known agent profile; fallbacks apply"];
+  if (!runtime.profile) return [UNPROFILED_LIMIT];
   return [
     ...(runtime.c4_headless ? [] : ["no headless calls"]),
     ...(runtime.c4_headless && !runtime.c4_schema ? ["no structured output"] : []),
@@ -158,7 +169,8 @@ export function buildReport(solution: Solution, state: InstallState, extras: Rep
 function agentLine(report: Report): string | null {
   const runtime = report.runtime;
   if (!runtime) return null;
-  const name = runtime.profile ? `${runtime.profile} ${runtime.agent_version ?? ""}`.trim() : "unknown agent";
+  if (!runtime.profile) return `🤖 Agent      your agent (no TaskFollow profile) — ${UNPROFILED_LIMIT}; its workflow skills are in .agents/skills in the install folder, listed in AGENTS.md (ask it to read that file)`;
+  const name = `${runtime.profile} ${runtime.agent_version ?? ""}`.trim();
   const missing = [...report.runtime_limits, ...(runtime.c6_mcp === "not_probed" && report.skillswiki ? ["MCP not checked yet"] : [])];
   return `🤖 Agent      ${name} — level ${runtime.support_level} of 3${missing.length > 0 ? ` (${missing.join(", ")})` : ""}`;
 }

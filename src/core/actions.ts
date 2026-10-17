@@ -56,7 +56,8 @@ function stringArg(args: Args, key: string): string {
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'taskfollow resume'";
-const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'taskfollow resume', or use 'taskfollow tool' instead";
+const CLI_TOOLS_CLAUSE = "use 'taskfollow tool <name> <json>' for TaskFollow's tools (INSTALL.md section 5); the install goes on";
+const NO_AGENT_TOOLS_HINT = `TaskFollow has no profile for this agent, so its tools are not connected over MCP: ${CLI_TOOLS_CLAUSE}`;
 const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'taskfollow resume'";
 const now = (): string => new Date().toISOString();
 /** Loaded when used: the lifecycle reaches the runner and the gateway, which import this module (confinedPath). */
@@ -150,7 +151,13 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   /** D56: the agent reaches the installer's own tools over MCP, as `taskfollow --home <home> mcp-serve`. */
   register_tools_mcp: async (home, _args, state) => {
     const { profile } = await probedRuntime(state, NO_AGENT_TOOLS_HINT);
-    await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
+    try {
+      await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
+    } catch (error) {
+      // D175, review of PR #64: whatever stops the registration, the person can still use the tools from the shell.
+      if (error instanceof ActionFailure) throw new ActionFailure(`${error.message}; ${CLI_TOOLS_CLAUSE}`);
+      throw error;
+    }
     return {};
   },
   /** C6 (D54): runs in the agent's own folder, allowing exactly the registered server's get_active_combo tool. */
@@ -207,7 +214,7 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     const name = state?.roles?.decision_maker.trim().toLowerCase();
     const members = await (await import("./members.js")).listMembers(home, now());
     if (name && members.some((member) => member.status === "joined" && member.name.toLowerCase() === name)) return { ok: true };
-    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskfollow invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
+    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskfollow invite \"<their name>\"' in their own terminal and follow the line it prints (on Telegram the link or `/join <code>`; by email a first line `JOIN <code>`; in Slack `JOIN <code>`), then verify again" };
   },
   /** §6.2 ACTIVATE: the gateway runs, so messages arrive and approvals are announced (D72). */
   gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'taskfollow gateway start', then 'taskfollow resume'" }),

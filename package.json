@@ -1,8 +1,7 @@
 {
   "name": "taskfollow",
   "version": "0.1.0",
-  "private": true,
-  "description": "Generic agent-operated installer for Skills Wiki solutions",
+  "description": "A thin layer on the AI agent you already have: step-by-step setup, workflows with a person's approval, and honest feedback on what your agent can do",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -20,6 +19,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:live": "INSTALLER_LIVE=1 vitest run",

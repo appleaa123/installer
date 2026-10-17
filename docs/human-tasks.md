@@ -252,6 +252,19 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** the rule the agent proposed, the file's line, what step 5's draft looked like, and, for step 6, what Cowork did.
 
+### 42. Install on an agent TaskFollow has no profile for (real-user readiness, D175, about 30 minutes)
+
+**Why:** an agent without a TaskFollow profile (Antigravity, OpenClaw, Hermes, Gemini CLI, Cursor) now gets through the install, keeps workflow skills in `.agents/skills` and `AGENTS.md`, and the report says in plain words what runs and what needs a model key. It was built and tested with a test profile whose agent does not exist; this checks it on a real one, with only TaskFollow's own guidance.
+
+1. Read Antigravity's current terms, the clause on other programs (D114, read 2026-10-09), and tell Claude whether it still stands. TaskFollow never starts Antigravity on its own either way.
+2. In a new, empty folder, open Antigravity (or any agent a friend has) and paste START-HERE's one sentence. Go through the setup on your own: no help from this session.
+3. Add one report-only workflow, and run it once by asking in the agent's chat.
+4. Look at the report's Agent line and Runs line, and at `taskfollow skills`.
+
+**Clean up:** delete the folder. Nothing was registered with Claude Code. Never run `taskfollow uninstall` there.
+
+**Paste back:** where it confused you or stopped, word for word; the Agent and Runs lines; whether the agent found the workflow skill in `.agents/skills` (it may need to be asked to read `AGENTS.md`); your answer for step 1.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)

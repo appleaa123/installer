@@ -4,6 +4,7 @@ import { confinedPath } from "./actions.js";
 import { runTask } from "./agent-task.js";
 import { listChannels } from "./channels.js";
 import { CHECKS_DIR, abilities, cancelChallenge, loadChallenge, recordResult, startChallenge, type Need } from "./checks.js";
+import { probedAgent } from "./probed-agent.js";
 import { loadProfileById } from "./profile.js";
 import { skillsBlock } from "./skills.js";
 import type { InstallState } from "./types.js";
@@ -45,8 +46,8 @@ const pingUnderHook = (record: string): Promise<boolean> => pingLine(record, "ok
 export async function runnerCheck(home: string, state: InstallState | undefined, options: RunnerCheckOptions): Promise<Record<string, unknown>> {
   const workflow = options.workflow;
   const needs: Need[] = ["runner", "tools", ...(workflow ? (["skills"] as Need[]) : [])];
-  const agent = state?.runtime?.profile ?? "unknown";
-  const version = state?.runtime?.agent_version ?? null;
+  const agent = probedAgent(state)?.agent ?? "unknown";
+  const version = probedAgent(state)?.version ?? null;
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
   const at = options.now();
   if (!profile?.task) {
@@ -89,8 +90,8 @@ export async function runnerCheck(home: string, state: InstallState | undefined,
  * was never reached, for example when the agent's own permissions stopped the call first (not checked).
  */
 export async function hooksCheck(home: string, state: InstallState | undefined, options: RunnerCheckOptions): Promise<Record<string, unknown>> {
-  const agent = state?.runtime?.profile ?? "unknown";
-  const version = state?.runtime?.agent_version ?? null;
+  const agent = probedAgent(state)?.agent ?? "unknown";
+  const version = probedAgent(state)?.version ?? null;
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
   const record1 = async (result: "yes-tested" | "no-tested" | "not-checked", reason: string, challenge?: string) =>
     recordResult(home, { need: "hooks", result, reason, at: options.now(), agent, agent_version: version, test: "t11", ...(challenge ? { challenge } : {}) });

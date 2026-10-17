@@ -52,7 +52,7 @@ async function prepare(request: RunRequest, record: RunRecord): Promise<Exec> {
   const loadSkills = async (): Promise<string | null> => {
     if (request.workflow.skills.length === 0) return null;
     const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
-    const roots = profile ? skillRoots(profile, state?.work_dir, request.env ?? process.env) : {};
+    const roots = skillRoots(profile, state?.work_dir, request.env ?? process.env);
     return runSkillsText(request.workflow.skills, roots, (ref) => pinnedSkill(request.home, state?.skillswiki?.url, ref, request.now(), record.shadow));
   };
   return {

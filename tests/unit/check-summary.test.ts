@@ -15,6 +15,47 @@ const summary = async (home: string, value?: Record<string, unknown>) => checkCo
 const result = (need: string, agent: string, kind: "yes-tested" | "yes-you-told-us" | "not-checked", test: string, reason: string) =>
   ({ need, workflow: "brief", result: kind, reason, at: AT, agent, agent_version: null, test }) as Parameters<typeof recordResult>[1];
 
+describe("check summary and home on an agent TaskFollow has no profile for (D175)", () => {
+  const noProfile = async (): Promise<string> => {
+    const home = await runnerHome();
+    const { saveState } = await import("../../src/core/state.js");
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, profile: null, agent_version: null } });
+    await writeWorkflow(home, BRIEF);
+    return home;
+  };
+  const run = async (home: string, args: string[], value?: string) => checkCommand(home, (await loadState(home)) ?? undefined, args, value ? { value } : {}, ctx);
+
+  it("t1 runs bare after a probe that found no agent, and its result shows on check summary", async () => {
+    const home = await noProfile();
+    const started = (await run(home, ["start", "t1"])) as { id: string; instruction: string };
+    await run(home, ["mark", started.id, started.instruction.split(" ").at(-1) ?? ""]);
+    const out = await summary(home);
+    expect(out.text).not.toContain("No agent was found yet");
+    expect(out.text).toMatch(/Done once[^\n]*yes, tested/);
+  });
+
+  it("check home works, and T7's honest row shows on the page under the same agent name", async () => {
+    const home = await noProfile();
+    const out = (await run(home, ["home", "brief"])) as { home: string };
+    expect(out.home).toBeTruthy();
+    await run(home, ["start", "t7"]);
+    expect((await summary(home)).text).toContain("TaskFollow cannot run this agent unattended here");
+  });
+
+  it("with no probe at all, still asks to run the probe", async () => {
+    const home = await runnerHome();
+    const { saveState } = await import("../../src/core/state.js");
+    const state = await loadState(home);
+    if (!state) throw new Error("no state");
+    const { runtime: _unused, ...rest } = state;
+    await saveState(home, rest);
+    await writeWorkflow(home, BRIEF);
+    await expect(summary(home)).rejects.toThrow("run 'taskfollow probe' first");
+  });
+});
+
 describe("check summary: the person's page for a workflow (plan Task 11)", () => {
   it("says 'nobody has seen it yet' before any test, and where it would run", async () => {
     const home = await runnerHome();

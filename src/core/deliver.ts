@@ -8,7 +8,7 @@ import { getSecret } from "./keychain.js";
 import { loadState } from "./state.js";
 import { ENGINE_SECRETS } from "./uninstall.js";
 import { REFERENCES_DIR, SKILL_FILE } from "./skills.js";
-import { loadWritten, RULES_FILE, rulesMarkdown, skillMarkdown } from "./workflow-skill.js";
+import { installTargets, loadWritten, RULES_FILE, rulesMarkdown, skillMarkdown } from "./workflow-skill.js";
 import type { Trigger, Workflow } from "./workflow.js";
 import { storedZip } from "./zip.js";
 
@@ -82,10 +82,10 @@ const readOr = async (path: string): Promise<string | null> => readFile(path, "u
 
 /** The workflow's skill as one SKILL.md: the install folder's skill (item 2) with its rules inside, or one made from the description. */
 async function skillText(home: string, workflow: Workflow): Promise<string> {
-  const workDir = (await loadState(home))?.work_dir;
-  // Item 8: the folder TaskFollow recorded when it wrote the skill, else the agent's project folder as before.
+  // Item 8: the folder TaskFollow recorded when it wrote the skill, else the agent's project folder (D175: any agent's).
   const recorded = (await loadWritten(home)).skill_folders.find((entry) => entry.workflow === workflow.id)?.path;
-  const folder = recorded ?? (workDir ? join(workDir, ".claude", "skills", workflow.id) : undefined);
+  const project = recorded ? undefined : (await installTargets(home)).roots.project;
+  const folder = recorded ?? (project ? join(project, workflow.id) : undefined);
   const skill = folder ? await readOr(join(folder, SKILL_FILE)) : null;
   const rules = folder ? await readOr(join(folder, REFERENCES_DIR, RULES_FILE)) : null;
   // Review M1: the zip has no references folder, so the pointer to it goes, and the rules sit under one heading.

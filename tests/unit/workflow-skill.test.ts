@@ -133,6 +133,62 @@ describe("workflow add: the workflow's own skill (9.12 item 2)", () => {
 });
 
 
+describe("workflow add on an agent whose profile names no skills folder (D175)", () => {
+  const withProfile = async (profile: string | null): Promise<{ home: string; work: string }> => {
+    const { home, work } = await install();
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, profile } });
+    return { home, work };
+  };
+  const shared = (work: string) => join(work, ".agents", "skills");
+
+  it("writes the workflow skill under .agents/skills and one section in AGENTS.md for an agent with no profile", async () => {
+    const { home, work } = await withProfile(null);
+    await writeFile(join(work, "AGENTS.md"), "# The person's own notes\n", "utf8");
+    const result = await add(home, "inbox", { description: "Sort the morning mail.", my_rules: "Flag every repair request." });
+    expect(result).toMatchObject({ status: "added", skill_folder: join(shared(work), "inbox"), agent_file: join(work, "AGENTS.md") });
+    expect(await readFile(join(shared(work), "inbox", "references", "my-rules.md"), "utf8")).toContain("Flag every repair request.");
+    const file = await readFile(join(work, "AGENTS.md"), "utf8");
+    expect(file).toContain("# The person's own notes");
+    expect(file.split(SECTION_BEGIN).length).toBe(2);
+  });
+
+  it("accepts my_rules for a profile without skills_dirs (Codex-shaped) and writes .agents/skills", async () => {
+    const { home, work } = await withProfile("fake-codex");
+    const result = await add(home, "inbox", { description: "Sort the morning mail.", my_rules: "Flag every repair request." });
+    expect(result).toMatchObject({ status: "added", skill_folder: join(shared(work), "inbox") });
+  });
+
+  it("writes the discovery skill under .agents/skills, not exports/, for an agent with no profile", async () => {
+    const { home, work } = await withProfile(null);
+    const { writeDiscoverySkill } = await import("../../src/core/workflow-skill.js");
+    const written = await writeDiscoverySkill(home);
+    expect(written.path).toBe(join(shared(work), "find-my-repetitive-work", "SKILL.md"));
+  });
+
+  it("writes no workflow skill and no discovery skill in the home folder", async () => {
+    const { home } = await withProfile(null);
+    const { homedir } = await import("node:os");
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, work_dir: homedir() });
+    const { installTargets } = await import("../../src/core/workflow-skill.js");
+    const targets = await installTargets(home);
+    expect(targets.roots.project).toBeUndefined();
+    expect(targets.agentFile).toBeNull();
+  });
+
+  it("removes the .agents/skills folders and the AGENTS.md section it wrote, and nothing else", async () => {
+    const { home, work } = await withProfile(null);
+    await writeFile(join(work, "AGENTS.md"), "# The person's own notes\n", "utf8");
+    await add(home, "inbox", { description: "Sort the morning mail.", my_rules: "Flag every repair request." });
+    const { removeWritten } = await import("../../src/core/workflow-skill.js");
+    await removeWritten(home);
+    await expect(readdir(join(shared(work), "inbox"))).rejects.toThrow();
+    expect(await readFile(join(work, "AGENTS.md"), "utf8")).toBe("# The person's own notes\n");
+  });
+});
+
 describe("workflow add: the shipped skill of a shape (item 5)", () => {
   const TRIAGE = {
     workflow: "inbox-triage", description: "Every morning, the mail since you last did this (or in the last 24 hours): what needs me.", mode: "typed", trigger: { manual: true },

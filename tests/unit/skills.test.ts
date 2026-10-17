@@ -85,8 +85,16 @@ describe("skills: the agent's skill folders", () => {
     expect(roots.home_folder).toBe(true);
   });
 
-  it("has no folders for an agent whose profile names none", () => {
-    expect(skillRoots(parseProfile(PROFILE_BASE, "/x"), "/work", {})).toEqual({});
+  it("uses .agents/skills in the install folder for an agent whose profile names none, and for no profile (D175)", () => {
+    expect(skillRoots(parseProfile(PROFILE_BASE, "/x"), "/work", {})).toEqual({ project: "/work/.agents/skills" });
+    expect(skillRoots(undefined, "/work", {})).toEqual({ project: "/work/.agents/skills" });
+    expect(skillRoots(undefined, undefined, {})).toEqual({});
+  });
+
+  it("writes nothing under ~/.agents/skills when started from the home folder (D175)", () => {
+    const roots = skillRoots(undefined, homedir(), {});
+    expect(roots.project).toBeUndefined();
+    expect(roots.home_folder).toBe(true);
   });
 
   it.each([{ project: "/abs/skills" }, { project: "../skills" }, { project: "a/../../b" }])("refuses a profile whose project skills folder is %o", (dirs) => {

@@ -4,6 +4,7 @@ import { loadChannel } from "./channels.js";
 import { recordResult, saveChallenge, startChallenge } from "./checks.js";
 import { fillTemplate, runProcess } from "./headless.js";
 import { InputError } from "./inputs.js";
+import { probedAgent } from "./probed-agent.js";
 import { loadProfileById, versionAtLeast } from "./profile.js";
 import type { InstallState } from "./types.js";
 
@@ -72,8 +73,8 @@ export async function startAsksUnattended(home: string, state: InstallState | un
   const tool = field(flags.value, "tool");
   if (!tool || !/^[A-Za-z0-9_:.-]+$/.test(tool)) throw new InputError(`check start t6b needs your assistant's own send tool, as Claude Code names it: --value '{"tool":"mcp__<server>__<tool>","address":"you@example.com"}'`);
   const address = await addressOf(home, flags, context.interactive);
-  const agent = state?.runtime?.profile ?? "unknown";
-  const version = state?.runtime?.agent_version ?? null;
+  const agent = probedAgent(state)?.agent ?? "unknown";
+  const version = probedAgent(state)?.version ?? null;
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
   const unable = (why: string) => recordResult(home, { need: "asks-first", result: "not-checked", reason: why, at: context.now(), agent, agent_version: version, test: "t6b" }).then(() => ({ need: "asks-first", result: "not checked", why }));
   if (!profile?.asks) return unable("Not checked: TaskFollow has not checked how to run this agent once, unattended, under your own settings");

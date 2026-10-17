@@ -69,11 +69,13 @@ describe("an approve step for a call to the agent's own tool (D151)", () => {
     }
   });
 
-  it("is skipped in a dry run: nothing is asked and the agent is not started", async () => {
+  it("is skipped in a dry run: nothing is asked and the agent is not started, but the exact call is recorded (D175)", async () => {
     const home = await runnerHome();
     const run = await startRun(request(home, workflow(), { sandbox: true }));
     expect(run).toMatchObject({ status: "completed" });
-    expect(await loadStep(home, run, "publish")).toMatchObject({ status: "done", output: null, skipped: true });
+    expect(await loadStep(home, run, "publish")).toMatchObject({ status: "done", output: { status: "recorded", tool: TOOL, level: "L3" }, skipped: true });
+    const { listOutbox } = await import("../../src/core/outbound.js");
+    expect(await listOutbox(home, `new-product/${run.run_id}`)).toEqual([expect.objectContaining({ action: { tool: TOOL, args: ARGS }, level: "L3" })]);
     expect(await listApprovals(home, AT)).toEqual([]);
     expect(await agentRan()).toBe(false);
   });

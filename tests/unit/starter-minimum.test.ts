@@ -18,6 +18,19 @@ const visible = (answers: Record<string, unknown>) => visibleSteps(STARTER, stat
 const channelSteps = (ids: string[]) => ids.filter((id) => id.startsWith("channels.") || id === "activate.gateway");
 
 describe("the starter for a person on their own (9.12 item 3)", () => {
+  it("never tells the person to send the bare code: each channel's join line is said exactly (D175)", () => {
+    const skillswiki = readFileSync("solutions/starter-skillswiki.json", "utf8");
+    const starter = readFileSync("solutions/starter.json", "utf8");
+    for (const text of [starter, skillswiki, readFileSync("src/core/actions.ts", "utf8"), readFileSync("INSTALL.md", "utf8")]) expect(text).not.toMatch(/[Ss]end(ing)? the code/);
+    expect(starter).toContain("by email, send an email whose first line is `JOIN <code>`");
+    expect(starter).toContain("On Telegram open the link it printed, or send `/join <code>` to the bot");
+  });
+
+  it("does not stop the install when the tools cannot be connected over MCP (D175)", () => {
+    const skillswiki = parseSolution(JSON.parse(readFileSync("solutions/starter-skillswiki.json", "utf8")));
+    for (const solution of [STARTER, skillswiki]) expect(solution.steps.find((step) => step.step_id === "preflight.tools")?.blocking).toBe(false);
+  });
+
   it("has no channel step and no gateway when nothing was chosen, and asks where runs happen", () => {
     const ids = visible(SOLO);
     expect(channelSteps(ids)).toEqual([]);

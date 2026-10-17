@@ -111,10 +111,14 @@ export async function transition(deps: EngineDeps, state: InstallState, step: St
   return next;
 }
 
-/** One more failure of a step: `failed` with the hint, `blocked` on the third (D53: actions mirror checks). */
+/**
+ * One more failure of a step: `failed` with the hint, `blocked` on the third (D53: actions mirror checks). An
+ * auto step that is not blocking is blocked at once, so the install goes on past it (D175); `resume` tries it once
+ * more each time. A step a person verifies keeps its three tries.
+ */
 async function failStep(deps: EngineDeps, state: InstallState, step: StepDef, hint: string, actor: Actor, what: "check" | "action"): Promise<{ state: InstallState; result: VerifyResult }> {
   const attempts = (recordOf(state, step.step_id)?.attempts ?? 0) + 1;
-  if (attempts >= MAX_VERIFY_ATTEMPTS) {
+  if (attempts >= MAX_VERIFY_ATTEMPTS || (!step.blocking && step.type === "auto")) {
     const record: StepRecord = { status: "blocked", at: deps.now(), attempts, hint, reason: `${what} failed ${attempts} times` };
     return { state: await transition(deps, state, step, record, actor), result: { status: "blocked", hint, retry: false } };
   }

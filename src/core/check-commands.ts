@@ -3,6 +3,7 @@ import { abilities, loadChallenge, markChallenge, answerChallenge, startChalleng
 import { runnerCheck } from "./check-runner.js";
 import { decideHome } from "./homes.js";
 import { InputError } from "./inputs.js";
+import { probedAgent } from "./probed-agent.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
 import type { InstallState } from "./types.js";
@@ -49,8 +50,10 @@ export function agentOf(state: InstallState | undefined, value: string | undefin
     const name = typeof parsed === "object" && parsed !== null ? (parsed as Raw).agent : undefined;
     if (typeof name === "string" && name.trim() !== "") return { agent: name.trim().slice(0, 60), version: null };
   }
-  if (!state?.runtime?.profile) throw new InputError("No agent was found yet: run 'taskfollow probe' first, or name the agent being checked with --value '{\"agent\":\"<its name>\"}'");
-  return { agent: state.runtime.profile, version: state.runtime.agent_version ?? null };
+  // D175: after a probe that knows no profile for this agent, it is still checked, under one fixed name, so results and pages agree.
+  const probed = probedAgent(state);
+  if (!probed) throw new InputError("No agent was found yet: run 'taskfollow probe' first, or name the agent being checked with --value '{\"agent\":\"<its name>\"}'");
+  return probed;
 }
 
 const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id: string, word: string) => string }>> = {
@@ -144,7 +147,7 @@ export async function checkCommand(home: string, state: InstallState | undefined
     const workflow = await loadWorkflow(home, requireWorkflowId(first), DEFAULT_TOOLS);
     if (typeof flags.value !== "string" || !/"agent"/.test(flags.value)) throw new InputError(`check deliver needs the assistant whose schedule would run it: --value '{"agent":"Claude Cowork"}'`);
     const target = agentOf(state, flags.value);
-    const runner = state?.runtime?.profile ? agentOf(state, undefined) : { agent: "no runner agent", version: null };
+    const runner = state?.runtime ? agentOf(state, undefined) : { agent: "no runner agent", version: null };
     return (await import("./deliver.js")).deliverToCowork(home, workflow, { now: context.now(), agent: { agent: target.agent, version: target.version }, runner: { agent: runner.agent, version: runner.version } });
   }
   if (sub === "missed") return (await import("./check-summary.js")).missedCommand(home, state, first, flags, context);

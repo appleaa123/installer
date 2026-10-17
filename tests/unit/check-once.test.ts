@@ -31,6 +31,17 @@ describe("check once: the work done once (plan Task 7)", () => {
     expect((await loadChallenge(home, out.id))?.test).toBe("once");
   });
 
+  it("works on an agent TaskFollow has no profile for, under one fixed name (D175)", async () => {
+    const home = await runnerHome();
+    const { saveState } = await import("../../src/core/state.js");
+    const state = await loadState(home);
+    if (!state?.runtime) throw new Error("no runtime");
+    await saveState(home, { ...state, runtime: { ...state.runtime, profile: null, agent_version: null } });
+    await writeWorkflow(home, NOTE);
+    const out = (await run(home, ["once", "note"])) as { id: string };
+    expect((await loadChallenge(home, out.id))?.agent).toBe("your agent (no TaskFollow profile)");
+  });
+
   it("records 'you told us' for answers when the person says it looked right, and not checked when it was wrong", async () => {
     const home = await runnerHome();
     await writeWorkflow(home, NOTE);

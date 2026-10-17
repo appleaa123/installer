@@ -76,7 +76,7 @@ function helpBlock(resolved: PresetResult, address: string): string {
   return `<p>We do not know this provider's settings. Open <b>Advanced</b> below and enter the values from your provider's help pages (search for "${escapeHtml(domain)} IMAP settings"). Use only values from your provider: they decide where your password goes. If your provider asks for an app password, make one first.</p>`;
 }
 
-function connectPage(action: string, address: string, resolved: PresetResult, values: Values, error?: string): string {
+function connectPage(action: string, address: string, resolved: PresetResult, values: Values, error?: string, confirmUser?: string): string {
   if (resolved.kind === "unsupported") {
     return layout(`<h1>${escapeHtml(resolved.name)}</h1><p>${escapeHtml(resolved.reason)}</p>
 <form method="post" action="${action}"><input type="hidden" name="step" value="address"><label>Use a different address<input type="email" name="address" autocomplete="off" required></label><button type="submit">Continue</button></form>`);
@@ -88,10 +88,26 @@ function connectPage(action: string, address: string, resolved: PresetResult, va
 <details${open}><summary>Advanced: mail servers</summary>
 ${field("imap_host", "Incoming server (IMAP)", values)}${field("imap_port", "Incoming port", values)}${security("imap_security", "Incoming security", values)}${field("imap_user", "Incoming sign-in name", values)}
 ${field("smtp_host", "Outgoing server (SMTP)", values)}${field("smtp_port", "Outgoing port", values)}${security("smtp_security", "Outgoing security", values)}${field("smtp_user", "Outgoing sign-in name", values)}
-</details><button type="submit">Test and save</button><p class="note">The test reads your inbox and checks the sign-in for sending. It sends nothing and marks nothing as read. It can take up to a minute.</p></form>`);
+</details>${confirmUser ? `<label><input type="checkbox" name="confirm_user" value="yes"> Yes, connect it with these sign-in names (${escapeHtml(confirmUser)})</label>` : ""}<button type="submit">Test and save</button><p class="note">The test reads your inbox and checks the sign-in for sending. It sends nothing and marks nothing as read. It can take up to a minute.</p></form>`);
 }
 
-const CONNECTED_PAGE = layout("<h1>Connected</h1><p>Your mailbox is connected. Go back to the chat and tell your assistant. You can close this tab.</p>");
+/** D175: the page names the mailbox TaskFollow reads, which is the sign-in name's, not always the address's. */
+const connectedPage = (mailbox: string): string => layout(`<h1>Connected</h1><p>Your mailbox ${escapeHtml(mailbox)} is connected (TaskFollow reads its inbox). Go back to the chat and tell your assistant. You can close this tab.</p>`);
+
+/**
+ * D175: incoming and outgoing sign-in names that are neither the address nor the part before its @ (iCloud's preset
+ * signs in that way). A different incoming name means another mailbox is read; a different outgoing name, another sender.
+ */
+function otherSignIns(setup: Setup, address: string): { readonly inbox?: string; readonly sender?: string } {
+  const local = address.split("@")[0] ?? address;
+  const other = (user: string | undefined): string | undefined => {
+    const name = (user ?? address).trim().toLowerCase();
+    return name === address || name === local ? undefined : name;
+  };
+  const inbox = other(setup.imap.user);
+  const sender = other(setup.smtp.user);
+  return { ...(inbox ? { inbox } : {}), ...(sender ? { sender } : {}) };
+}
 
 interface PageState {
   readonly path: string;
@@ -124,6 +140,12 @@ async function connect(form: URLSearchParams, res: ServerResponse, page: PageSta
   } catch (error) {
     return again(error instanceof InputError ? `Check the form: ${error.message}` : "Check the form and try again.");
   }
+  const other = otherSignIns(setup, address);
+  if ((other.inbox || other.sender) && form.get("confirm_user") !== "yes") {
+    const parts = [...(other.inbox ? [`TaskFollow will read the inbox of ${other.inbox}`] : []), ...(other.sender ? [`it sends signed in as ${other.sender}`] : [])];
+    const message = `The sign-in names are not the address ${address}: ${parts.join("; ")}. If that is what you want, tick the box and connect again.`;
+    return void send(res, 400, connectPage(page.path, address, resolved, values, message, other.inbox ?? other.sender));
+  }
   try {
     await (options.check ?? defaultCheck(options.env ?? process.env))(setup, password);
   } catch (error) {
@@ -132,7 +154,7 @@ async function connect(form: URLSearchParams, res: ServerResponse, page: PageSta
   await options.store("email", password);
   await options.store("email-settings", JSON.stringify(setup));
   page.finished = true;
-  send(res, 200, CONNECTED_PAGE);
+  send(res, 200, connectedPage(other.inbox ?? address));
   finish();
 }
 

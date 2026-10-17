@@ -122,6 +122,46 @@ describe("the email setup page (D127)", () => {
     expect((await post(url, GMAIL_FIELDS)).status).toBe(400);
   });
 
+  it("refuses a sign-in name that differs from the address until the box is ticked, and tests nothing (D175)", async () => {
+    const { url, rec } = await page();
+    const reply = await post(url, { ...GMAIL_FIELDS, imap_user: "other@gmail.com", smtp_user: "other@gmail.com" });
+    expect(reply.status).toBe(400);
+    expect(reply.text).toContain("The sign-in names are not the address me@gmail.com: TaskFollow will read the inbox of other@gmail.com; it sends signed in as other@gmail.com.");
+    expect(reply.text).toContain('name="confirm_user"');
+    expect(rec.checked).toEqual([]);
+  });
+
+  it("catches an outgoing sign-in name that differs from the address too (D175)", async () => {
+    const { url, rec } = await page();
+    const reply = await post(url, { ...GMAIL_FIELDS, smtp_user: "other@gmail.com" });
+    expect(reply.status).toBe(400);
+    expect(reply.text).toContain("The sign-in names are not the address me@gmail.com: it sends signed in as other@gmail.com.");
+    expect(reply.text).not.toContain("will read the inbox of");
+    expect(rec.checked).toEqual([]);
+  });
+
+  it("connects with a different sign-in name once the box is ticked, and names the mailbox it reads (D175)", async () => {
+    const { url, rec } = await page();
+    const reply = await post(url, { ...GMAIL_FIELDS, imap_user: "other@gmail.com", smtp_user: "other@gmail.com", confirm_user: "yes" });
+    expect(reply.status).toBe(200);
+    expect(reply.text).toContain("Your mailbox other@gmail.com is connected (TaskFollow reads its inbox).");
+    expect(rec.checked).toHaveLength(1);
+  });
+
+  it("accepts a sign-in name that is the part before @ of the address, and names the address as the mailbox (D175)", async () => {
+    const { url } = await page();
+    const reply = await post(url, { ...GMAIL_FIELDS, imap_user: "me", smtp_user: "me" });
+    expect(reply.status).toBe(200);
+    expect(reply.text).toContain("Your mailbox me@gmail.com is connected");
+  });
+
+  it("names the address as the mailbox when only the outgoing name differs and was confirmed (D175)", async () => {
+    const { url } = await page();
+    const reply = await post(url, { ...GMAIL_FIELDS, smtp_user: "other@gmail.com", confirm_user: "yes" });
+    expect(reply.status).toBe(200);
+    expect(reply.text).toContain("Your mailbox me@gmail.com is connected");
+  });
+
   it("uses the servers the person typed, taking nothing from earlier requests", async () => {
     const { url, rec } = await page();
     await post(url, { step: "address", address: "me@gmail.com" });
