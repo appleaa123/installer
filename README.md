@@ -11,7 +11,7 @@ The v1 scope is `docs/scope-refresh.md`, section 9.
 
 **New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you.
 
-Status: Plans 1–11 implemented; see the [roadmap](docs/superpowers/plans/README.md).
+Status: v1 in progress (scope: [`docs/scope-refresh.md`](docs/scope-refresh.md) section 9); see [`docs/next-steps.md`](docs/next-steps.md).
 The package is not published (`"private": true`).
 
 Who can use it today: a person on a **Mac** or on **Windows 11 (Preview)**, with

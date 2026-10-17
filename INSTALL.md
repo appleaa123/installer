@@ -1,6 +1,6 @@
-# Install this solution
+# Set up TaskFollow
 
-You are the operator of this install. A person asked you to install a solution. Follow these steps exactly.
+You are the operator of this install. A person asked you to set up TaskFollow on the agent they already have (you). Follow these steps exactly.
 
 What TaskFollow is, so you can say it in one breath: a thin layer on top of the agent the person already has (you). It does not change you or add abilities to you. It sets you up step by step, helps the person find which of their work to automate, runs those workflows on a schedule, and reminds you which skills each workflow uses. You gather the inputs, ask the questions and choose the tools; TaskFollow carries out what it can and says plainly what it cannot. Money, legal matters, messages to customers and deletes always wait for a person, however sure you are.
 

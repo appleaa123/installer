@@ -70,6 +70,14 @@ describe("INSTALL.md", () => {
     expect(before).toContain("without one the install stops at the dry run");
   });
 
+  it("says set up TaskFollow, not install a solution, and the package says what TaskFollow is (9.13, D175)", () => {
+    expect(DOC.split("\n")[0]).toBe("# Set up TaskFollow");
+    expect(DOC).toContain("A person asked you to set up TaskFollow on the agent they already have (you).");
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { description: string };
+    expect(pkg.description).not.toContain("Skills Wiki solutions");
+    expect(readFileSync("README.md", "utf8")).not.toContain("Plans 1–11 implemented");
+  });
+
   it("does not ask the person to install Claude Code, and names the agent file for any agent (D175)", () => {
     expect(DOC).not.toContain("ask the person to install the Claude Code command-line tool");
     expect(DOC).toContain("**Which agent are you?**");
