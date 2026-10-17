@@ -50,6 +50,13 @@ describe("START-HERE.md, the page for the person (D129)", () => {
     expect(START).toContain("claude --continue");
   });
 
+  it("works for any assistant that can run commands, Antigravity included, and says Cowork cannot install it (D175)", () => {
+    expect(START).toContain("an AI assistant that can run commands on your computer");
+    expect(START).toContain("Antigravity can install and use TaskFollow with you in its chat");
+    expect(START).toContain("Claude Cowork on the web has no terminal, so it cannot install TaskFollow");
+    expect(START).toContain("open it again in your folder and say 'carry on with TaskFollow'");
+  });
+
   it("uses no jargon the person would not know", () => {
     expect(START).not.toMatch(/\b(MCP|OAuth|keychain|JSON|API|IMAP|SMTP|CLI|launchd|schtasks)\b/);
   });
@@ -61,6 +68,18 @@ describe("INSTALL.md", () => {
     expect(before).toContain("**When TaskFollow cannot start you by itself**");
     expect(before).toContain("`taskfollow model`, then `taskfollow secret model`");
     expect(before).toContain("without one the install stops at the dry run");
+  });
+
+  it("does not ask the person to install Claude Code, and names the agent file for any agent (D175)", () => {
+    expect(DOC).not.toContain("ask the person to install the Claude Code command-line tool");
+    expect(DOC).toContain("**Which agent are you?**");
+    expect(DOC).toContain("the TaskFollow section of your agent file (`CLAUDE.md`, or `AGENTS.md` on other agents)");
+  });
+
+  it("says in the README that Antigravity is used in chat and Cowork cannot install it (D175)", () => {
+    const README = readFileSync("README.md", "utf8");
+    expect(README).toContain("Antigravity can install and use TaskFollow with you in its chat");
+    expect(README).toContain("Claude Cowork on the web has no terminal, so it cannot install TaskFollow");
   });
 
   it("says where the discovery skill is on an agent TaskFollow has no profile for (D175)", () => {
@@ -148,7 +167,7 @@ describe("INSTALL.md", () => {
     const before = DOC.slice(DOC.indexOf("## Before you start"), DOC.indexOf("## 1."));
     expect(before).toMatch(/Telegram/);
     expect(before).toMatch(/Claude Code/);
-    expect(before).toMatch(/quit Claude Code and open it again/i);
+    expect(before).toContain("the person opens their assistant again in the same folder and says 'carry on with TaskFollow' (Claude Code: `claude --continue`)");
   });
 
   it("tells the person to use a new window for their own commands, not the agent's prompt", () => {
