@@ -56,7 +56,8 @@ function stringArg(args: Args, key: string): string {
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'taskfollow resume'";
-const NO_AGENT_TOOLS_HINT = "TaskFollow has no profile for this agent, so its tools are not connected over MCP: use 'taskfollow tool <name> <json>' for TaskFollow's tools (INSTALL.md section 5); the install goes on";
+const CLI_TOOLS_CLAUSE = "use 'taskfollow tool <name> <json>' for TaskFollow's tools (INSTALL.md section 5); the install goes on";
+const NO_AGENT_TOOLS_HINT = `TaskFollow has no profile for this agent, so its tools are not connected over MCP: ${CLI_TOOLS_CLAUSE}`;
 const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'taskfollow resume'";
 const now = (): string => new Date().toISOString();
 /** Loaded when used: the lifecycle reaches the runner and the gateway, which import this module (confinedPath). */
@@ -150,7 +151,13 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
   /** D56: the agent reaches the installer's own tools over MCP, as `taskfollow --home <home> mcp-serve`. */
   register_tools_mcp: async (home, _args, state) => {
     const { profile } = await probedRuntime(state, NO_AGENT_TOOLS_HINT);
-    await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
+    try {
+      await registerMcpConfig(profile, TOOLS_MCP_NAME, toolsServerConfig(process.execPath, installerCliPath(), resolve(home)), await probeDir(home));
+    } catch (error) {
+      // D175, review of PR #64: whatever stops the registration, the person can still use the tools from the shell.
+      if (error instanceof ActionFailure) throw new ActionFailure(`${error.message}; ${CLI_TOOLS_CLAUSE}`);
+      throw error;
+    }
     return {};
   },
   /** C6 (D54): runs in the agent's own folder, allowing exactly the registered server's get_active_combo tool. */

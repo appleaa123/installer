@@ -38,6 +38,11 @@ describe("register_tools_mcp (D56)", () => {
     expect(stored).toEqual({ type: "stdio", command: process.execPath, args: [installerCliPath(), "--home", resolve(home), "mcp-serve"] });
   });
 
+  it("says how to work without MCP when the agent's profile cannot register servers (review of PR #64)", async () => {
+    const codex = { ...probed, runtime: { profile: "fake-codex" } } as unknown as InstallState;
+    await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" }, codex)).rejects.toThrow(/has no mcp_(register|remove) template[^]*; use 'taskfollow tool <name> <json>'/);
+  });
+
   it("needs a probed agent, and says how to work without one", async () => {
     await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" })).rejects.toThrow(ActionFailure);
     await expect(runAction(await makeTempHome(), { action: "register_tools_mcp" })).rejects.toThrow("use 'taskfollow tool <name> <json>' for TaskFollow's tools");
