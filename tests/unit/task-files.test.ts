@@ -137,6 +137,14 @@ describe("which files the runner chooses (Task 4)", () => {
     expect(await chooseNote(work)).toEqual({ name: "new.md", path: join(work, NOTES_DIR, "new.md") });
   });
 
+  it("meeting-notes: a hidden file such as .DS_Store is skipped (review of PR #61)", async () => {
+    const work = await notesFolder();
+    await writeFile(join(work, NOTES_DIR, "monday.md"), "notes");
+    await writeFile(join(work, NOTES_DIR, ".DS_Store"), "finder");
+    await utimes(join(work, NOTES_DIR, "monday.md"), new Date("2026-10-01"), new Date("2026-10-01"));
+    expect(await chooseNote(work)).toEqual({ name: "monday.md", path: join(work, NOTES_DIR, "monday.md") });
+  });
+
   it("meeting-notes: a symbolic link pointing out of the folder is skipped", async () => {
     const work = await notesFolder();
     await writeFile(join(work, "outside.md"), "secret");

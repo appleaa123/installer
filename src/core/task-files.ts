@@ -108,6 +108,8 @@ export async function chooseNote(workDir: string): Promise<ChosenFile | null> {
   if (folder === null) return null;
   let newest: { file: ChosenFile; mtime: number } | null = null;
   for (const name of await readdir(folder)) {
+    // Hidden files (.DS_Store, editor swap files) are never the person's notes (review of PR #61).
+    if (name.startsWith(".")) continue;
     const real = await usable(join(folder, name), folder);
     if (real === null) continue;
     const mtime = (await lstat(real)).mtimeMs;
