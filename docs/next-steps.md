@@ -4,7 +4,7 @@ Last updated 2026-10-17. The scope is `docs/scope-refresh.md` section 9 (D152, w
 
 ## Done
 
-The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task 28 passed D167), the flaky tests (#39). v1 items built and merged: the spike (D153), skills reminded (D154), the bare-minimum install (D155), the doability check (D159–D163), "I noticed" without a channel (D164), inbox triage (D168), `why.show` (D169), the four back-office workflows and invoices due (D171), the interview, the opportunity rule and discovery (D172), learning into `my-rules.md` (D173), the weekly re-check (D174).
+The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task 28 passed D167), the flaky tests (#39). v1 items built and merged: the spike (D153), skills reminded (D154), the bare-minimum install (D155), the doability check (D159–D163), "I noticed" without a channel (D164), inbox triage (D168), `why.show` (D169), the four back-office workflows and invoices due (D171), the interview, the opportunity rule and discovery (D172), learning into `my-rules.md` (D173), the weekly re-check (D174), real-user readiness (D175, #64).
 
 **Build map** (to trace a bug from a terminal result to its PR; each PR's description lists the same):
 
@@ -27,7 +27,7 @@ The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task
 
 ## In progress
 
-- Real-user readiness (D175): this PR.
+- Nothing; the owner's real-user test is next.
 
 ## Then: v1 is done when the owner uses it as a real user (9.11)
 
