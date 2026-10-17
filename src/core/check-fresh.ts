@@ -5,6 +5,7 @@ import { confinedPath } from "./actions.js";
 import { abilities, cancelChallenge, CHECKS_DIR, FRESH_DAYS, loadChallenge, recordResult, type Need, type StoredResult } from "./checks.js";
 import type { DoctorCheck, DoctorContext } from "./doctor-checks.js";
 import { loadWorkflowState } from "./sandbox.js";
+import { probedAgent } from "./probed-agent.js";
 import type { InstallState } from "./types.js";
 
 /**
@@ -42,7 +43,7 @@ function scoped(all: readonly StoredResult[], need: Need, agent: string, workflo
 export async function runnerStopReason(home: string, workflow: string, state: InstallState | undefined, now: string): Promise<string | null> {
   const declared = await loadWorkflowState(home, workflow);
   if (!declared?.shape && !declared?.described) return null;
-  const agent = state?.runtime?.profile;
+  const agent = probedAgent(state)?.agent;
   if (!agent) return null;
   const all = await abilities(home);
   for (const need of ["runner", "tools"] as const) {
@@ -57,7 +58,7 @@ export async function runnerStopReason(home: string, workflow: string, state: In
 export async function noteContradiction(home: string, workflow: string, state: InstallState | undefined, now: string): Promise<void> {
   const declared = await loadWorkflowState(home, workflow);
   if (!declared?.shape && !declared?.described) return;
-  const agent = state?.runtime?.profile;
+  const agent = probedAgent(state)?.agent;
   if (!agent) return;
   await recordResult(home, { need: "runner", workflow, result: "not-checked", reason: "A run's task did not finish in TaskFollow's runner, so this goes back to not checked until it is tested again", at: now, agent, agent_version: state?.runtime?.agent_version ?? null, test: "run" });
 }
@@ -70,7 +71,7 @@ export async function noteContradiction(home: string, workflow: string, state: I
 export async function noteRunPassed(home: string, workflow: string, state: InstallState | undefined, now: string, toolsReached: boolean): Promise<void> {
   const declared = await loadWorkflowState(home, workflow);
   if (!declared?.shape && !declared?.described) return;
-  const agent = state?.runtime?.profile;
+  const agent = probedAgent(state)?.agent;
   if (!agent) return;
   const base = { workflow, result: "yes-tested" as const, reason: `a real run through TaskFollow's runner finished on ${now.slice(0, 10)}`, at: now, agent, agent_version: state?.runtime?.agent_version ?? null, test: "run" };
   await recordResult(home, { need: "runner", ...base });
@@ -90,7 +91,7 @@ export async function firstStopNoticeToday(home: string, workflow: string, now: 
 
 /** The doctor's view (review B5): it reports stale or failed runner checks; it never runs a check itself. */
 export async function checksDoctor(ctx: DoctorContext): Promise<DoctorCheck | null> {
-  const agent = ctx.state?.runtime?.profile;
+  const agent = probedAgent(ctx.state ?? undefined)?.agent;
   if (!agent) return null;
   const all = (await abilities(ctx.home)).filter((entry) => entry.agent === agent && entry.workflow === undefined);
   if (all.length === 0) return null;

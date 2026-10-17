@@ -36,10 +36,12 @@ describe("check summary and home on an agent TaskFollow has no profile for (D175
     expect(out.text).toMatch(/Done once[^\n]*yes, tested/);
   });
 
-  it("check home works and names no runner it cannot start", async () => {
+  it("check home works, and T7's honest row shows on the page under the same agent name", async () => {
     const home = await noProfile();
     const out = (await run(home, ["home", "brief"])) as { home: string };
     expect(out.home).toBeTruthy();
+    await run(home, ["start", "t7"]);
+    expect((await summary(home)).text).toContain("TaskFollow cannot run this agent unattended here");
   });
 
   it("with no probe at all, still asks to run the probe", async () => {

@@ -3,6 +3,7 @@ import { abilities, loadChallenge, markChallenge, answerChallenge, startChalleng
 import { runnerCheck } from "./check-runner.js";
 import { decideHome } from "./homes.js";
 import { InputError } from "./inputs.js";
+import { probedAgent } from "./probed-agent.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, requireWorkflowId } from "./workflow.js";
 import type { InstallState } from "./types.js";
@@ -37,9 +38,6 @@ const RESULT_WORDS: Readonly<Record<ResultKind, string>> = {
 
 type Raw = Record<string, unknown>;
 
-/** The name results are recorded under for an agent TaskFollow has no profile for (D175). */
-export const UNPROFILED_AGENT = "your agent (no TaskFollow profile)";
-
 /** The agent being checked: the install's probed agent, or the home agent the person names (`--value '{"agent":"Claude Cowork"}'`). */
 export function agentOf(state: InstallState | undefined, value: string | undefined): { agent: string; version: string | null } {
   if (value !== undefined) {
@@ -52,10 +50,10 @@ export function agentOf(state: InstallState | undefined, value: string | undefin
     const name = typeof parsed === "object" && parsed !== null ? (parsed as Raw).agent : undefined;
     if (typeof name === "string" && name.trim() !== "") return { agent: name.trim().slice(0, 60), version: null };
   }
-  if (!state?.runtime) throw new InputError("No agent was found yet: run 'taskfollow probe' first, or name the agent being checked with --value '{\"agent\":\"<its name>\"}'");
   // D175: after a probe that knows no profile for this agent, it is still checked, under one fixed name, so results and pages agree.
-  if (!state.runtime.profile) return { agent: UNPROFILED_AGENT, version: null };
-  return { agent: state.runtime.profile, version: state.runtime.agent_version ?? null };
+  const probed = probedAgent(state);
+  if (!probed) throw new InputError("No agent was found yet: run 'taskfollow probe' first, or name the agent being checked with --value '{\"agent\":\"<its name>\"}'");
+  return probed;
 }
 
 const TESTS: Readonly<Record<string, { needs: readonly Need[]; instruction: (id: string, word: string) => string }>> = {
