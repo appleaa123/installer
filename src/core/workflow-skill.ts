@@ -106,6 +106,33 @@ export async function plannedSkillFolder(roots: SkillRoots, id: string): Promise
   return folder;
 }
 
+/** D165, D172: the skill the owner's agent runs in their own chat to find repetitive work; never a workflow. */
+export const DISCOVERY_SKILL = "find-my-repetitive-work";
+
+/**
+ * At the start of the WORKFLOWS phase (and again after a consult, `add install`): the discovery skill goes into the
+ * agent's project skills folder, recorded with the workflow skills so uninstall and the consult clean-up remove it.
+ * An agent without a known skills folder gets it under the home's exports, for the agent to read from there. A folder
+ * of that name the person already has is left as it is.
+ */
+export async function writeDiscoverySkill(home: string): Promise<{ readonly path: string }> {
+  const text = await readFile(fileURLToPath(new URL(`../../solutions/skills/${DISCOVERY_SKILL}/${SKILL_FILE}`, import.meta.url)), "utf8");
+  const { roots } = await installTargets(home);
+  if (!roots.project) {
+    const file = join(home, (await import("./uninstall.js")).EXPORTS_DIR, DISCOVERY_SKILL, SKILL_FILE);
+    await mkdir(join(file, ".."), { recursive: true, mode: 0o700 });
+    await writeFile(file, text, { mode: 0o600 });
+    return { path: file };
+  }
+  const folder = join(roots.project, DISCOVERY_SKILL);
+  const written = await loadWritten(home);
+  if (written.skill_folders.some((entry) => entry.workflow === DISCOVERY_SKILL) || (await exists(folder))) return { path: join(folder, SKILL_FILE) };
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, SKILL_FILE), text, { flag: "wx" });
+  await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: DISCOVERY_SKILL, path: folder, root: roots.project }] });
+  return { path: join(folder, SKILL_FILE) };
+}
+
 export async function writeWorkflowSkill(folder: string, id: string, description: string, rules: string | undefined, extra: { readonly shipped?: string | null; readonly examples?: string } = {}): Promise<void> {
   await mkdir(join(folder, REFERENCES_DIR), { recursive: true });
   await writeFile(join(folder, SKILL_FILE), extra.shipped ?? skillMarkdown(id, description), { flag: "wx" });

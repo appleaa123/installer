@@ -133,7 +133,7 @@ describe("the starter's suggested workflows", () => {
 
 describe("the consult path (item 7 Task 8, D163)", () => {
   it("asks only the consultation's steps after the first question", () => {
-    expect(visible({ "mode.purpose": "consult" })).toEqual(["preflight.probe", "preflight.tools", "mode.purpose", "consult.names", "consult.choose", "consult.report", "consult.cleanup", "report.final"]);
+    expect(visible({ "mode.purpose": "consult" })).toEqual(["preflight.probe", "preflight.tools", "mode.purpose", "consult.names", "workflows.discovery", "consult.choose", "consult.report", "consult.cleanup", "report.final"]);
   });
 
   it("keeps the install path as it was, without the consultation's steps", () => {

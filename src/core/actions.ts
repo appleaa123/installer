@@ -114,6 +114,11 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     await (await import("./consult.js")).consultReport(home, state, now());
     return {};
   },
+  /** D165, D172: the find-my-repetitive-work skill, there before the interview. */
+  discovery_skill: async (home) => {
+    await (await import("./workflow-skill.js")).writeDiscoverySkill(home);
+    return {};
+  },
   /** D163: the end of a consult; only the results and the interview's workflows stay. */
   consult_cleanup: async (home, _args, state) => {
     await (await import("./consult.js")).consultCleanup(home, state, now());

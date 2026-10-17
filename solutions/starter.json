@@ -1718,6 +1718,17 @@
       }
     },
     {
+      "step_id": "workflows.discovery",
+      "phase": "WORKFLOWS",
+      "type": "auto",
+      "title": "Add a skill to find your repetitive work",
+      "why": "When you are not sure what repeats in your week, your assistant can look for you, in your chat and only where you say; nothing it reads reaches TaskFollow.",
+      "blocking": true,
+      "auto": {
+        "action": "discovery_skill"
+      }
+    },
+    {
       "step_id": "workflows.sandbox",
       "phase": "WORKFLOWS",
       "type": "auto",
