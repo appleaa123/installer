@@ -17,6 +17,11 @@ describe("agent file: the section's text", () => {
     expect(text).toContain("- **inbox**: Sort the morning mail. Skills: inbox (`.claude/skills/inbox`), tone (`/elsewhere/skills/tone`), skillswiki:p/s/SKILL.md");
   });
 
+  it("the CLAUDE.md section has one opportunity line (D172)", () => {
+    const line = "When you notice work that repeats, offer to set it up as a workflow (INSTALL.md, operator rule 14); nothing is created without the owner's yes.";
+    for (const text of [sectionText([], "/w"), sectionText([{ workflow: "w", description: "x", skills: [] }], "/w")]) expect(text.split(line).length - 1).toBe(1);
+  });
+
   it("shortens a long description and says when there are no workflows", () => {
     expect(sectionText([{ workflow: "w", description: "x".repeat(300), skills: [] }], "/w")).toContain(`- **w**: ${"x".repeat(199)}…`);
     expect(sectionText([], "/w")).toContain("No workflows yet.");

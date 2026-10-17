@@ -31,6 +31,9 @@ function skillLabel(ref: string, workDir: string): string {
   return `${basename(ref)} (\`${shown}\`)`;
 }
 
+/** D172: the opportunity rule (9.4), pointing to INSTALL.md's operator rule 14, for chat outside a setup session. */
+const OPPORTUNITY = "When you notice work that repeats, offer to set it up as a workflow (INSTALL.md, operator rule 14); nothing is created without the owner's yes.";
+
 export function sectionText(lines: readonly WorkflowLine[], workDir: string): string {
   const intro = "TaskFollow runs these workflows for the owner. When the owner asks about this work in chat, use the skills listed for it. Always ask the owner before sending anything to a customer, paying, anything legal, or deleting.";
   const items = lines.map((line) => {
@@ -38,7 +41,7 @@ export function sectionText(lines: readonly WorkflowLine[], workDir: string): st
     const description = oneLine(line.description);
     return `- **${line.workflow}**${description ? `: ${description}${/[.!?…]$/.test(description) ? "" : "."}` : ""}${skills}`;
   });
-  return ["## TaskFollow workflows", "", intro, "", ...(items.length === 0 ? ["No workflows yet."] : items)].join("\n");
+  return ["## TaskFollow workflows", "", intro, "", OPPORTUNITY, "", ...(items.length === 0 ? ["No workflows yet."] : items)].join("\n");
 }
 
 const count = (text: string, part: string): number => text.split(part).length - 1;
