@@ -224,7 +224,14 @@ describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)
     expect(await rulesOf(work, "inbox")).toBe("# My rules for inbox\n\nFlag every repair request.\n- First names only.\n- Never promise a date.\n");
   });
 
-  it("keeps a line someone else added to a None yet file", async () => {
+  it.each(["Quote $& as it is", "Keep $' too", "Prices in $$ stay"])("writes %j exactly, with no replacement pattern expanded", async (text) => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await rule(home, "inbox", { rule: text });
+    expect(await rulesOf(work, "inbox")).toBe(`# My rules for inbox\n\n- ${text}\n`);
+  });
+
+  it("re-reads the file before the first rule, keeping a line someone else added to a None yet file (a re-read check, not a concurrency test)", async () => {
     const { home, work } = await install();
     await add(home, "inbox", { description: "Sort mail." });
     const file = join(skillsDir(work), "inbox", "references", "my-rules.md");

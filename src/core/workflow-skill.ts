@@ -201,7 +201,8 @@ async function ownedRulesFile(home: string, workflow: string): Promise<{ readonl
 export async function appendRule(home: string, workflow: string, rule: string): Promise<string> {
   const { shown, real } = await ownedRulesFile(home, workflow);
   const text = await readFile(real, "utf8");
-  if (text.includes(NO_RULES_YET)) await writeFile(real, text.replace(NO_RULES_YET, `- ${rule}`));
+  // A replacer function, so `$&`, `$'` or `$$` in the person's words are written as they are.
+  if (text.includes(NO_RULES_YET)) await writeFile(real, text.replace(NO_RULES_YET, () => `- ${rule}`));
   else await appendFile(real, `${text === "" || text.endsWith("\n") ? "" : "\n"}- ${rule}\n`);
   return shown;
 }
