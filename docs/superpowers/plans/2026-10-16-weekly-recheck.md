@@ -13,19 +13,19 @@
 ## What T5 and T7 are here (and why one test covers both)
 
 - **T5** (spec 5.2, "tools (chat)") is the agent *in chat* calling `check.ping` through TaskFollow's MCP server. It needs a person's chat; it cannot run unattended.
-- **Preflight T7** (spec 9, `runnerCheck` with no workflow, `check-runner.ts:44`) runs one real task step through TaskFollow's runner, under the hook, allowed only `mcp__installer__check_ping`, and passes only when the ping arrived **through MCP** and under the hook. It proves `runner` *and* `tools` (spec 9: "proving `runner` and `tools` only").
-- So the unattended re-check of "T5 and T7" is **preflight T7**: it re-proves both needs the stop rule reads (`runnerStopReason` checks `runner` and `tools`, `check-fresh.ts:46`). The plan says this plainly in D174 and the doctor's words; it does not invent an unattended T5.
+- **Preflight T7** (spec 9, `runnerCheck` with no workflow, `check-runner.ts:45`) runs one real task step through TaskFollow's runner, under the hook, allowed only `mcp__installer__check_ping`, and passes only when the ping arrived **through MCP** and under the hook. It proves `runner` *and* `tools` (spec 9: "proving `runner` and `tools` only").
+- So the unattended re-check of "T5 and T7" is **preflight T7**: it re-proves both needs the stop rule reads (`runnerStopReason` checks `runner` and `tools`, `check-fresh.ts:48`). The plan says this plainly in D174 and the doctor's words; it does not invent an unattended T5.
 - **The mechanism, stated in D174:** `problem()` and `scoped()` (`check-fresh.ts`) select results by need and agent (and workflow), **never by test**. So a T7 pass, recorded with `test: "t7"` when the ping settles the challenge, makes current a `tools` result that T5 recorded (`test: "t5"`) weeks earlier: the newest `tools` entry is now T7's.
 
 ## What exists
 
-- `runnerCheck(home, state, { now, env })` (`check-runner.ts:44-87`): needs a profile with `task` (else records *not checked*, "TaskFollow cannot run this agent unattended here"); starts a challenge with a word; `runTask` with `RUN_MS` = 5 minutes; records `yes-tested` for `runner` and `tools` (agent-wide: no `workflow`) on a pass, `not-checked` with a reason otherwise. It ignores `runTask`'s own result: a task that never started (timeout, the agent missing, a crash) looks the same as a task that ran and made no call.
+- `runnerCheck(home, state, { now, env })` (`check-runner.ts:45-83`): needs a profile with `task` (else records *not checked*, "TaskFollow cannot run this agent unattended here"); starts a challenge with a word; `runTask` with `RUN_MS` = 5 minutes; records `yes-tested` for `runner` and `tools` (agent-wide: no `workflow`) on a pass, `not-checked` with a reason otherwise. It ignores `runTask`'s own result: a task that never started (timeout, the agent missing, a crash) looks the same as a task that ran and made no call.
 - Freshness and the stop rule (`check-fresh.ts`): `problem()` treats a newest *not-checked* after any earlier pass as "a run went wrong", so a workflow with declared needs stops (`runnerStopReason`, runner.ts:209), with a stop notice at most once a day (`firstStopNoticeToday`). `checksDoctor` reports stale or failed agent-wide `runner`/`tools` as `warn`, with `taskfollow check start t7`.
 - `scoped()` (`check-fresh.ts:39-43`): a workflow's own results win over the agent-wide ones. An agent-wide refresh therefore keeps fresh every workflow that has **no** results of its own; a workflow with its own per-workflow T7 is refreshed by its own real runs (`noteRunPassed`).
-- The tick (`tick.ts:218-269`): returns early when paused (`isPaused`, :229); runs `guard`ed passes; the daily doctor keeps a `next` marker and runs with a 20 s budget per check "so the tick (and its lock) is never held for long" (`doctor.ts:23-24`, :127-141). Scheduled runs have a default tolerance of 5 minutes (`workflow.ts:23`), so a tick held 5 minutes can turn a due slot into *missed*.
+- The tick (`tick.ts:218-271`): returns early when paused (`isPaused`, :229); runs `guard`ed passes; the daily doctor keeps a `next` marker and runs with a 20 s budget per check "so the tick (and its lock) is never held for long" (`doctor.ts:23-24`, :127-141). Scheduled runs have a default tolerance of 5 minutes (`workflow.ts:23`), so a tick held 5 minutes can turn a due slot into *missed*.
 - The gateway is started by the tick as a detached process (`gateway-process.ts:57`, `spawn(process.execPath, [installerCliPath(), "--home", home, "gateway-serve"], { detached: true … })`).
 - Consultation: `state.steps["mode.purpose"].value === "consult"` (`report.ts:129`, `services.ts:46`).
-- Telling the person: `channel.notify` to the decision maker (`doctor.ts:110-125`, `tellFailures`); when no channel reaches a person, `why`'s list form shows waiting items once (D164: `suggestionsField`, `why.ts:178`, `no_channel` `why.ts:169`).
+- Telling the person: `channel.notify` to the decision maker (`doctor.ts:110-125`, `tellFailures`); when no channel reaches a person, `why`'s list form shows waiting items once (D164: `suggestionsField`, `why.ts:202`, `no_channel` `why.ts:169`).
 
 ## Design
 
@@ -43,7 +43,7 @@ Sandbox mode does not stop it: the check sends nothing outward; its notice goes 
 
 ### How it runs
 
-`startRecheck` copies the gateway's handshake exactly (`spawnGateway`, `gateway-process.ts:55-70`): it spawns `taskfollow recheck-run` (a hidden command like `gateway-serve`, not listed in `COMMANDS`) detached with `stdio: ["ignore", "ignore", "ignore", "ipc"]`; the child **takes the lock first**, then sends `process.send({ ready: true })`; the parent waits at most 10 s for that message, then `disconnect()`s and `unref()`s and returns. If the child exits before it is ready (it found the lock taken, or crashed), or the spawn itself errors, the parent throws an `ActionFailure` (a domain error, so `guard`, `tick.ts:209-216`, records it in `tick.errors` instead of rethrowing) and writes `last: { result: "error", why }` with `next` = now + 1 day. A lock whose pid is no longer alive is taken over (`isAlive`, as the tick lock). The child runs `weeklyRecheck(home, now, env)` inside a wrapper that, on any uncaught error, still writes `last` (result `error`) and audits `check.recheck` before it exits, then removes the lock. The check's own time is capped by `runTask`'s `RUN_MS` (5 minutes) plus the challenge's TTL (`RUN_MS + 60 s`): 5 minutes is a cap, not the usual time (task 34's real T7 took well under a minute).
+`startRecheck` copies the gateway's handshake exactly (`spawnGateway`, `gateway-process.ts:55-70`): it spawns `taskfollow recheck-run` (a hidden command like `gateway-serve`, not listed in `COMMANDS`) detached with `stdio: ["ignore", "ignore", "ignore", "ipc"]`; the child **takes the lock first**, then sends `process.send({ ready: true })`; the parent waits at most 10 s for that message, then `disconnect()`s and `unref()`s and returns. If the child exits before it is ready (it found the lock taken, or crashed), or the spawn itself errors, the parent throws an `ActionFailure` (a domain error, so `guard`, `tick.ts:209-216`, records it in `tick.errors` instead of rethrowing) and writes `last: { result: "error", why }` with `next` = now + 1 day, leaving `errors` unchanged: a spawn failure is TaskFollow's, not the agent's, so it never counts toward the third could-not-run. A lock whose pid is no longer alive is taken over (`isAlive`, as the tick lock). The child runs `weeklyRecheck(home, now, env)` inside a wrapper that, on any uncaught error, still writes `last` (result `error`) and audits `check.recheck` before it exits, then removes the lock. The check's own time is capped by `runTask`'s `RUN_MS` (5 minutes) plus the challenge's TTL (`RUN_MS + 60 s`): 5 minutes is a cap, not the usual time (task 34's real T7 took well under a minute).
 
 ### What it does with the outcome
 
@@ -56,7 +56,7 @@ Sandbox mode does not stop it: the check sends nothing outward; its notice goes 
 
 An error is not a fail at first: a laptop that went to sleep or a network outage must not stop the person's workflows. But a broken agent must not stay silent either: `headless.ts` returns deterministic errors for an agent that is not installed (`:71-75`), exits with a code (`:76-77`), reported an error or printed no JSON (`:147-151`), and those repeat every day. So `config/recheck.json` keeps `errors`, the count of consecutive could-not-run results; the third one is recorded and told like a fail. A pass or a fail resets `errors` to 0.
 
-This needs one change to `runnerCheck`: an option `quietOnError`. With it, after `runTask` returns, `runnerCheck` first checks `after?.status === "cancelled"` (**before** the `!throughTool` branch, `check-runner.ts:74-77`) and returns `{ error }`; then, when `runTask` returned `ok: false`, it cancels a still-open challenge, records nothing and returns `{ test: "t7", passed: false, error }`. If `runTask` returned `ok: false` but the challenge is `done`, through the tool and hooked, the pass was already recorded when the ping settled the challenge (`resultsFor`, `checks.ts:176-182`): it is a pass, and `weeklyRecheck` must not overwrite it with `last: error`. Without the option, `runnerCheck` behaves exactly as today (the person's own `check start t7` still records a not-checked, which the page explains).
+This needs one change to `runnerCheck`: an option `quietOnError`. With it, after `runTask` returns, `runnerCheck` first looks at a cancelled challenge (**before** the `!throughTool` branch, `check-runner.ts:74-77`). A cancelled challenge **with** an `abilities` entry for `challenge.id` was settled by two wrong words (`checks.ts:229-231`): a real answer, so it takes the existing fail path. A cancelled challenge **without** an entry was cancelled from outside, for example by the sweep (`cancelChallenge`, `check-fresh.ts:125`): it returns `{ error }`. Then, when `runTask` returned `ok: false`, it cancels a still-open challenge, records nothing and returns `{ test: "t7", passed: false, error }`. If `runTask` returned `ok: false` but the challenge is `done`, through the tool and hooked, the pass was already recorded when the ping settled the challenge (`resultsFor`, `checks.ts:176-182`): it is a pass, and `weeklyRecheck` must not overwrite it with `last: error`. Without the option, `runnerCheck` behaves exactly as today (the person's own `check start t7` still records a not-checked, which the page explains).
 
 ### The notice on a fail
 
@@ -64,29 +64,29 @@ Text (one message, `MAX_TEXT` applies), sent once per failing week (a fail moves
 
 > TaskFollow's weekly check found that it can no longer run your agent on this computer by itself: {why}. Workflows that run here may stop until this is fixed. Run 'taskfollow check start t7' to check again (about a minute).
 
-Delivery, with the rule `why` uses (D164): when a channel that is not customers-only exists, a decision maker is set, the engine is **not in sandbox mode and not paused**, `channel.notify` to the decision maker. Otherwise (no channel reaches them, sandbox, or paused) the text waits in `config/recheck.json` `waiting`, and `why`'s list form shows it once under a new field `recheck` (rendered: "TaskFollow's weekly check (tell the person):"), clears it and audits `check.recheck_shown`. A damaged `recheck.json` gives a `recheck_damaged` line in `why`, mirroring `suggestionsField` (`why.ts:178`). `why.show` (D169) returns `recheck` and `recheck_damaged` first, like `suggestions`.
+Delivery, with the rule `why` uses (D164): when a channel that is not customers-only exists, a decision maker is set, the engine is **not in sandbox mode and not paused**, `channel.notify` to the decision maker. Otherwise (no channel reaches them, sandbox, or paused) the text waits in `config/recheck.json` `waiting`, and `why`'s list form shows it once under a new field `recheck` (rendered: "TaskFollow's weekly check (tell the person):"), clears it and audits `check.recheck_shown`. A damaged `recheck.json` (a `StateCorruptError`, caught) gives a `recheck_damaged` line with its own text, "config/recheck.json is not valid JSON; remove it and the next weekly check writes it again", mirroring `suggestionsField` (`why.ts:202`). **Placement, after item 8:** `recheck` and `recheck_damaged` come after `suggestions`/`suggestions_damaged` and before `rule_candidates`, in all three places: the `whyCommand` spread (`why.ts:171-173`), `renderWhy`'s `told` array (`why.ts:265-274`) and `why.show`'s reordering (`why-tools.ts:35-40`). `why.show`'s description (`why-tools.ts:17`) gains "and a weekly-check notice"; D174 notes that this amends D169 and D173.
 
 **A deliberate deviation from D164, stated in D174:** a channel failure (an outage, an unknown member) puts the notice in `waiting` instead of surfacing it for a retry, because the detached child has no tick to surface an error to; the person then sees it at their next session.
 
 ### Cost, said once
 
-The report's runtime line (`report.ts`, where D155's "Runs" line says runs use the person's own plan) gains: "Once a week TaskFollow runs your agent once, for about a minute, to check it can still run here by itself." Only when conditions 1–3 above hold.
+`buildReport` is synchronous and is also called without extras (`support-bundle.ts:173`, `outbound.ts:52`), so it cannot work out by itself whether the re-check applies. `ReportExtras` (`report.ts:46-54`) gains `recheck?: boolean`, computed by the `report` command in `cli.ts:400-402`, where the profile and the checks are already in scope (conditions 2 and 3 above, and not a consultation). `runsOf` (on PR #64, `report.ts:102-105`) takes the extras and, after `planOf(state.runtime)`, appends "Once a week TaskFollow runs your agent once, for about a minute, to check it can still run here by itself." when the flag is set. The other callers pass no flag and say nothing.
 
 ## Files
 
 | File | Change |
 |---|---|
-| `src/core/check-runner.ts` | `RunnerCheckOptions.quietOnError`: a cancelled challenge first returns `error`; on `runTask` `ok: false` with an open challenge: cancel, record nothing, return `error`; a settled pass stays a pass |
+| `src/core/check-runner.ts` | `RunnerCheckOptions.quietOnError`: a challenge cancelled from outside (no result for it) first returns `error`, one cancelled by two wrong words takes the fail path; on `runTask` `ok: false` with an open challenge: cancel, record nothing, return `error`; a settled pass stays a pass |
 | `src/core/recheck.ts` (new) | `RECHECK_FILE = config/recheck.json` (`next`, `last`, `errors`, `waiting`), `RECHECK_LOCK = runtime/recheck.lock`, `RECHECK_EVERY_MS` (7 days), `RECHECK_RETRY_MS` (1 day), `RECHECK_ERRORS_TO_RECORD` (3), `RECHECK_READY_MS` (10 s), `recheckDue`, `startRecheck` (the gateway handshake), `recheckRun` (the child: lock, ready, wrapped run, unlock), `weeklyRecheck`, `takeRecheckNotices` |
-| `src/core/tick.ts` | the `recheck` pass (guarded), `TickResult.recheck: "started" | null` |
-| `src/cli.ts` | hidden `recheck-run` command |
-| `src/core/why.ts` | list form: `recheck` field (shown once), rendered line |
-| `src/core/why-tools.ts` | `recheck` moved to the front with `suggestions` |
+| `src/core/tick.ts` | the `recheck` pass (guarded), `TickResult.recheck: "started" | null`; the starter is a fifth positional parameter of `tick()` with a default; `recheck.ts` imported lazily (or `RECHECK_FILE` kept in a constants-only module) so no import cycle forms |
+| `src/cli.ts` | hidden `recheck-run` command; the `report` command (`cli.ts:400-402`) computes `ReportExtras.recheck` from the profile and checks already in scope |
+| `src/core/why.ts` | list form: `recheck` and `recheck_damaged` after `suggestions` and before `rule_candidates` (`why.ts:171-173`, `renderWhy` `:265-274`), shown once; `StateCorruptError` caught |
+| `src/core/why-tools.ts` | `recheck`/`recheck_damaged` reordered after `suggestions` and before `rule_candidates` (`why-tools.ts:35-40`); description (`:17`) mentions the weekly-check notice |
 | `src/core/check-fresh.ts` | `checksDoctor`: `warn` (not `ok`) when `last.result === "error"`, with "the weekly check could not run on {day}: {why}" |
-| `src/core/report.ts` | the cost sentence |
+| `src/core/report.ts` | `ReportExtras.recheck?: boolean` (`:46-54`); `runsOf` takes the extras and appends the cost sentence after `planOf` (on PR #64, `:102-105`, around `:140` there) |
 | `INSTALL.md` | rule 11: "…and TaskFollow's weekly check, if it waits" (one clause) |
 | `DECISIONS.md` | D174 |
-| `docs/next-steps.md` | the follow-up marked built; build map row; a new follow-up: a weekly per-workflow T7 for Home 1 workflows whose own `runner` result is stale or failed (so a stopped workflow could recover by itself) |
+| `docs/next-steps.md` (as rewritten by PR #64) | delete this item's "## In progress" line; add D174 under "## Done"; add a build-map row; add under "## Follow-ups (not yet planned)": a weekly per-workflow T7 for Home 1 workflows whose own `runner` result is stale or failed (so a stopped workflow could recover by itself) |
 | `docs/superpowers/specs/2026-10-16-doability-check.md` | section 8: the parenthesis about the follow-up becomes one sentence on the weekly re-check |
 
 ## Tasks (test-first)
@@ -95,11 +95,12 @@ The report's runtime line (`report.ts`, where D155's "Runs" line says runs use t
 
 - [ ] Failing tests in `tests/unit/check-runner.test.ts`:
   - `with quietOnError, a task that could not run records no result and cancels its check`
-  - `with quietOnError, a cancelled check returns an error before anything is recorded`
+  - `with quietOnError, a check cancelled from outside (no result for it) returns an error before anything is recorded`
+  - `with quietOnError, a check cancelled by two wrong words still records not checked (the existing fail path)`
   - `with quietOnError, a ping that settled the check is a pass even when the task then failed`
   - `with quietOnError, a pass still records runner and tools as before`
   - `without quietOnError, a task that could not run still records not checked (unchanged)`
-- [ ] Implement: keep `runTask`'s result; with `quietOnError`, first `after?.status === "cancelled"` → return `{ error }`; then a settled pass (done, through the tool, hooked) → pass as today; then `!result.ok` → cancel a still-open challenge with "the weekly check could not run" and return `{ test: "t7", passed: false, error: result.error }` before any `recordResult`.
+- [ ] Implement (a task that could not run is produced with `vi.stubEnv("FAKE_AGENT_TASK", "not json")`: the fake agent's `JSON.parse` throws, it exits 1, and `runTask` returns "exited with code 1", `fake-agent.mjs:166-200`, `headless.ts:77`): keep `runTask`'s result; with `quietOnError`, first a cancelled challenge: with an `abilities` entry for its id → the existing fail path; without one → return `{ error }`; then a settled pass (done, through the tool, hooked) → pass as today; then `!result.ok` → cancel a still-open challenge with "the weekly check could not run" and return `{ test: "t7", passed: false, error: result.error }` before any `recordResult`.
 - [ ] Run the file; commit `feat(checks): T7 can stay quiet when its task could not run`.
 
 ### Task 2: when the re-check is due
@@ -136,7 +137,7 @@ The report's runtime line (`report.ts`, where D155's "Runs" line says runs use t
 
 ### Task 4: the tick starts it, without waiting
 
-- [ ] Failing tests in `tests/unit/tick.test.ts` (inject the starter, as `tick()` takes `start` for the gateway; assert the injected starter was called and `recheck: "started"`, with no timing assertions):
+- [ ] Failing tests in `tests/unit/tick.test.ts` (inject the starter as a fifth positional parameter of `tick()` with a default, as `start` is for the gateway; an environment switch like `GATEWAY_AUTOSTART_ENV`, `gateway-process.ts:101`, keeps the suite from ever spawning a real child; assert the injected starter was called and `recheck: "started"`, with no timing assertions):
   - `the tick starts the weekly re-check when it is due`
   - `a paused install starts no re-check`
   - `a re-check that cannot start is a tick error, not a crash`
@@ -144,6 +145,7 @@ The report's runtime line (`report.ts`, where D155's "Runs" line says runs use t
   - `recheck-run takes the lock, says it is ready, runs once, and removes the lock` (call `recheckRun` directly)
   - `two ticks while a live child holds the lock start one`
   - `a child that exits before ready is a tick error and moves next a day on`
+  - `a child that exits before ready leaves the could-not-run count unchanged`
   - `a lock whose pid is dead is taken over`
 - [ ] Implement `startRecheck` (the gateway's handshake, `gateway-process.ts:55-70`), the hidden `recheck-run` command, the guarded `recheck` pass.
 - [ ] Commit `feat(tick): start the weekly re-check in its own process`.
@@ -153,7 +155,8 @@ The report's runtime line (`report.ts`, where D155's "Runs" line says runs use t
 - [ ] Failing tests:
   - `why.test.ts`: `the list shows a waiting weekly-check notice once, then clears it`
   - `why.test.ts`: `a damaged recheck file gives a recheck_damaged line and does not stop the list`
-  - `why-tool.test.ts`: `why.show puts a waiting weekly-check notice first`
+  - `why.test.ts`: `the weekly-check notice comes after suggestions and before rule candidates, in JSON and in plain lines`
+  - `why-tool.test.ts`: `why.show puts a waiting weekly-check notice after suggestions and before rule candidates`
   - `check-fresh.test.ts`: `the doctor warns when the weekly check could not run`
   - `report.test.ts`: `the report says the agent runs once a week for the check, only for an agent that can be re-checked`
   - `tests/e2e/install-doc.test.ts`: rule 11 names the weekly check
@@ -196,3 +199,7 @@ The report's runtime line (`report.ts`, where D155's "Runs" line says runs use t
 ## Plan review applied (2026-10-16)
 
 The handshake copies `spawnGateway` (lock first, ready message, 10 s, a child that exits early is a tick error and a day's retry; a dead lock is taken over); a broken agent is recorded and told on the third could-not-run in a row, and the doctor warns after any; `quietOnError` checks a cancelled challenge first and keeps a pass that settled before the task failed; notices wait in sandbox, while paused, and on a channel failure (stated as a deviation from D164); the first marker is a week after the newest pass; D174 states the need-and-agent mechanism (a T7 pass makes an old T5 `tools` result current), that 5 minutes is a cap, and "once per failing week"; a `recheck_damaged` line in `why`; the new tests listed in Tasks 1, 3, 4 and 5.
+
+## Pre-build check applied (2026-10-17, against main 80e4270 and PR #64)
+
+`ReportExtras.recheck`, computed in `cli.ts`'s `report` command, because `buildReport` is synchronous and has callers without extras; `docs/next-steps.md` edited as PR #64 rewrites it (In progress, Done, build map, Follow-ups); a cancelled challenge with a result (two wrong words) is a fail, one without (the sweep) an error; `recheck` and `recheck_damaged` after `suggestions` and before item 8's `rule_candidates` in `whyCommand`, `renderWhy` and `why.show`, with their own damaged text and `why.show`'s description (D174 amends D169 and D173); a child that exits before ready leaves the could-not-run count alone; Task 1's could-not-run comes from `FAKE_AGENT_TASK="not json"`; the starter is `tick()`'s fifth parameter, with an environment switch so the suite never spawns a real child; `recheck.ts` is imported lazily (no cycle); citations refreshed. D174 is free; no human task.
