@@ -107,7 +107,7 @@ describe("the starter's suggested workflows", () => {
     expect(offered({ "mode.purpose": "consult" })).toEqual(expect.arrayContaining(["inbox-triage", "inbox-triage-replies"]));
     expect(offered(SOLO)).not.toContain("inbox-triage");
     expect(offered(SOLO)).not.toContain("inbox-triage-replies");
-    expect(STARTER.version).toBe("2.1.0");
+    expect(STARTER.version).toBe("2.2.0");
   });
 
   it("the inbox shapes leave the time to the trigger, name their own skill, and say how many messages wait (PR #59 review)", () => {

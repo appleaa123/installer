@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { REASON_TOOL } from "./agent-hook.js";
+import { READ_TOOL, REASON_TOOL } from "./agent-hook.js";
 import { fillTemplate, runProfileCommand, schemaArgs, type HeadlessResult } from "./headless.js";
 import { ProfileError, type RuntimeProfile } from "./profile.js";
 import { installerCliPath, shellQuote, toolsServerConfig, TOOLS_MCP_NAME, winQuote } from "./register.js";
@@ -36,6 +36,8 @@ export interface TaskRequest {
   readonly hook_may_use?: readonly string[];
   /** The workflow's skills block (9.12 item 2, D153): a restricted run loads none of the agent's own skills. */
   readonly skills?: string | null;
+  /** D171: the absolute paths the runner chose for `Read`; the hook allows a read of exactly these. */
+  readonly files?: readonly string[];
 }
 
 export interface TaskOptions {
@@ -67,8 +69,8 @@ export function taskPrompt(prompt: string, input: unknown, changes: boolean, ski
   ].join("\n");
 }
 
-/** The built-in tools a task may have: none, or Bash when the step lists a command. */
-const builtinTools = (mayUse: readonly string[]): string => (mayUse.some((rule) => rule.startsWith("Bash(")) ? "Bash" : "");
+/** The built-in tools a task may have: Bash when the step lists a command, Read when it reads chosen files (D171). */
+const builtinTools = (mayUse: readonly string[]): string => [...(mayUse.some((rule) => rule.startsWith("Bash(")) ? ["Bash"] : []), ...(mayUse.includes(READ_TOOL) ? [READ_TOOL] : [])].join(",");
 
 /** Claude Code settings for this run only: the hook around every call, before, after and on failure. */
 export function hookSettings(configFile: string, execPath: string, cliPath: string, platform: string): string {
@@ -99,7 +101,7 @@ export async function runTask(home: string, profile: RuntimeProfile, request: Ta
   await mkdir(dir, { recursive: true, mode: 0o700 });
   try {
     const configFile = join(dir, "hook.json");
-    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.hook_may_use ?? request.may_use, changes: request.changes, ...(request.exact ? { exact: request.exact } : {}) }), { mode: 0o600 });
+    await writeFile(configFile, JSON.stringify({ record: request.record, may_use: request.hook_may_use ?? request.may_use, changes: request.changes, ...(request.exact ? { exact: request.exact } : {}), ...(request.files ? { files: request.files } : {}) }), { mode: 0o600 });
     const parts = {
       settingsJson: hookSettings(configFile, execPath, cliPath, options.platform ?? process.platform),
       mcpConfig: JSON.stringify({ mcpServers: { [TOOLS_MCP_NAME]: JSON.parse(toolsServerConfig(execPath, cliPath, home)) as unknown } }),

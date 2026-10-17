@@ -7,15 +7,16 @@ import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
 import { startRun } from "./runner.js";
 import { listInbox } from "./inbox.js";
-import { loadStep, type RunTrigger } from "./runs.js";
+import { listSteps, loadRun, loadStep, type RunTrigger } from "./runs.js";
 import { loadState } from "./state.js";
 import type { StepWhen } from "./types.js";
 import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { rm } from "node:fs/promises";
+import { rm, rmdir } from "node:fs/promises";
 import { SHAPES, workflowHash } from "./homes.js";
+import { notesFolder, prepareNotesFolder } from "./task-files.js";
 import { restoreFile } from "./agent-file.js";
 import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
 import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, shippedSkill, writeWorkflowSkill } from "./workflow-skill.js";
@@ -41,6 +42,9 @@ async function suggestions(home: string): Promise<readonly Raw[]> {
   const state = await loadState(home);
   return offered.filter((entry) => entry.when === undefined || (state !== null && whenHolds(entry.when as StepWhen, state)));
 }
+
+/** D171: what the person hears when a workflow reads meeting-notes/ but the install folder is not known. */
+const NO_NOTES_FOLDER = "TaskFollow does not know which folder this install was started from, so it made no meeting-notes/ folder; paste the notes in the chat instead";
 
 /** What a person may give with a suggested workflow (item 5): their time, their skills, rules and examples. */
 const SUGGESTION_KEYS = ["trigger", "skills", "my_rules", "examples"];
@@ -115,7 +119,11 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const needsSkill = owner.steps.some((step) => step.kind === "judge" && step.judge.skill !== undefined) || owner.skills.some(isSkillswikiRef);
   if (needsSkill && !(await loadState(home))?.skillswiki) throw new InputError("This workflow uses a Skills Wiki skill. Connect Skills Wiki first (INSTALL.md, section 11) or choose another workflow.");
   const { profile, roots, agentFile } = await installTargets(home);
-  const workDirKnown = (await loadState(home))?.work_dir !== undefined;
+  const workDir = (await loadState(home))?.work_dir;
+  const workDirKnown = workDir !== undefined;
+  // D171: a workflow that reads meeting-notes/ gets that folder; a link or a file there is refused before anything is written.
+  const readsNotes = owner.steps.some((step) => step.kind === "task" && step.task.read_from === "meeting-notes");
+  if (readsNotes && workDir !== undefined) await notesFolder(workDir);
   await checkLocalSkills(owner.skills.filter((ref) => !isSkillswikiRef(ref)), roots);
   // Everything that can refuse does so before anything is written (H4): the folder name and the agent file's section.
   const folder = await plannedSkillFolder(roots, id);
@@ -126,6 +134,7 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
   const workflow = parseWorkflow(final, id, DEFAULT_TOOLS);
   const before = await agentFileBefore(agentFile);
   const writtenBefore = await loadWritten(home);
+  let notes: { readonly path: string; readonly created: boolean } | null = null;
   try {
     // Item 5: a suggestion that is one of the shapes gets the skill TaskFollow ships for it; anything else the generic one.
     const shipped = fromSuggestion && Object.hasOwn(SHAPES, id) ? await shippedSkill(id) : null;
@@ -135,8 +144,14 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
     await saveWorkflowState(home, { workflow: id, sandbox: true, ...(fromSuggestion ? { shape: id, content_hash: workflowHash(final) } : {}) });
     const written = await loadWritten(home);
     if (folder && roots.project) await saveWritten(home, { ...written, skill_folders: [...written.skill_folders, { workflow: id, path: folder, root: roots.project }] });
+    if (readsNotes && workDir !== undefined) {
+      notes = await prepareNotesFolder(workDir);
+      const current = await loadWritten(home);
+      if (!current.notes_folder) await saveWritten(home, { ...current, notes_folder: notes });
+    }
   } catch (error) {
     if (folder) await rm(folder, { recursive: true, force: true });
+    if (notes?.created) await rmdir(notes.path).catch(() => undefined);
     if (agentFile) await restoreFile(agentFile, before).catch(() => undefined);
     await rm(join(home, WORKFLOWS_DIR, id), { recursive: true, force: true }).catch(() => undefined);
     await saveWritten(home, writtenBefore).catch(() => undefined);
@@ -144,8 +159,9 @@ async function addWorkflow(home: string, id: string, value: string | undefined, 
     throw new ActionFailure(`TaskFollow could not write the workflow's files (${folder ?? join(home, WORKFLOWS_DIR, id)}): ${(error as Error).message}. Nothing was added; check that the folder can be written, then try again`);
   }
   const note = folder === null ? { note: noFolderNote(profile, roots, workDirKnown) } : {};
+  const notesNote = readsNotes && workDir === undefined ? { notes: NO_NOTES_FOLDER } : notes ? { notes_folder: notes.path } : {};
   await appendAudit(home, { ts: now, actor: "agent", event: "workflow.added", ref: `workflow:${id}`, payload: { mode: workflow.mode, from: value === undefined ? "suggestion" : "description", skills: workflow.skills, skill_folder: folder, agent_file: agentFile } });
-  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, skill_folder: folder, agent_file: agentFile, ...note, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
+  return { status: "added", workflow: id, version: 1, mode: workflow.mode, sandbox: true, skills: workflow.skills, skill_folder: folder, agent_file: agentFile, ...note, ...notesNote, next: `Run 'taskfollow dryrun ${id}' and show the person what it would do` };
 }
 
 async function describeAll(home: string): Promise<Record<string, unknown>[]> {
@@ -210,6 +226,12 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   const run = state?.dry_run;
   if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskfollow dryrun ${id}' first`);
   if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskfollow dryrun ${id}' again`);
+  // Review of PR #61: a dry run that stopped early (no file to read, D171) or ran no step showed nothing to confirm.
+  const record = await loadRun(home, id, run.run_id);
+  if (record?.reason) throw new InputError(`The last dry run of '${id}' ended early: ${record.reason} Then run 'taskfollow dryrun ${id}' again`);
+  if (record && !(await listSteps(home, record)).some((log) => log.status === "done" && !log.skipped)) {
+    throw new InputError(`The last dry run of '${id}' ran no step, so there is nothing to confirm yet; run 'taskfollow dryrun ${id}' again when it has something to do`);
+  }
   await saveWorkflowState(home, { ...state, workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.dry_run_confirmed", ref: `workflow:${id}`, payload: { by, version: run.version, run_id: run.run_id } });
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };

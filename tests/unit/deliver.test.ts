@@ -146,7 +146,7 @@ describe("deliver: the shipped inbox triage skill (item 5)", () => {
   const triage = { ...raw(DESCRIPTION), workflow: ID };
   const shipped = (id: string) => readFile(join(process.cwd(), "solutions", "shapes", id, "SKILL.md"), "utf8");
 
-  it.each(["inbox-triage", "inbox-triage-replies"])("shipped shape skills pass checkDelivered (%s)", async (id) => {
+  it.each(["inbox-triage", "inbox-triage-replies", "invoices-due"])("shipped shape skills pass checkDelivered (%s)", async (id) => {
     const { home } = await install();
     await expect(checkDelivered(home, await shipped(id))).resolves.toBeUndefined();
   });

@@ -1,10 +1,12 @@
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { confinedPath } from "./actions.js";
+import type { CalcWhere } from "./calc.js";
 import { isTimeZone, parseCron } from "./cron.js";
 import { conditionRoots, parseCondition, templateRoots } from "./expressions.js";
 import { InputError } from "./inputs.js";
 import { checkSchema } from "./json-schema.js";
+import { READ_FROM, READ_TOOL, type ReadFrom } from "./task-files.js";
 import type { ToolRegistry } from "./tools.js";
 
 /**
@@ -77,6 +79,8 @@ export interface TaskSpec {
   readonly changes: boolean;
   readonly output: Readonly<Record<string, unknown>>;
   readonly timeout_minutes: number;
+  /** D171: with `Read` in `may_use`, which files the runner chooses for the agent to read (task-files.ts). */
+  readonly read_from?: ReadFrom;
 }
 
 /** A calc step (D144): arithmetic on a list an earlier step produced; `compare` is usually `${previous.<step>}`. */
@@ -85,6 +89,10 @@ export interface CalcStepSpec {
   readonly group_by?: string;
   readonly sum: readonly string[];
   readonly compare?: string;
+  /** D171: the rows to keep (calc.ts). */
+  readonly where?: CalcWhere;
+  /** The cron trigger's time zone, stamped when the file loads, for `due_within_days`. */
+  readonly tz?: string;
 }
 
 interface StepBase {
@@ -216,8 +224,9 @@ function parseMayUse(value: unknown, where: string, fail: (message: string) => n
   if (!Array.isArray(value) || value.length === 0) return fail(`${where}.may_use must list the tools the agent may use`);
   return value.map((rule, index) => {
     const at = `${where}.may_use[${index}]`;
+    if (rule === READ_TOOL) return rule;
     if (typeof rule !== "string" || !(MCP_RULE.test(rule) || BASH_RULE.test(rule))) {
-      return fail(`${at} must be mcp__<server>, mcp__<server>__<tool>, or Bash(...) with a command, for example Bash(shopify store execute:*)`);
+      return fail(`${at} must be mcp__<server>, mcp__<server>__<tool>, Bash(...) with a command, for example Bash(shopify store execute:*), or Read with read_from`);
     }
     if (rule.startsWith("mcp__installer")) return fail(`${at}: TaskFollow's own tools are used through tool and approve steps, not by a task`);
     return rule;
@@ -234,9 +243,14 @@ function parseTask(value: unknown, where: string, fail: (message: string) => nev
   const minutes = value.timeout_minutes ?? DEFAULT_TASK_MINUTES;
   if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TASK_MINUTES) return fail(`${where}.timeout_minutes must be a whole number from 1 to ${MAX_TASK_MINUTES}`);
   if (value.changes !== undefined && typeof value.changes !== "boolean") return fail(`${where}.changes must be true or false`);
+  const mayUse = parseMayUse(value.may_use, where, fail);
+  const readFrom = value.read_from;
+  if (readFrom !== undefined && !(READ_FROM as readonly unknown[]).includes(readFrom)) return fail(`${where}.read_from must be ${READ_FROM.join(" or ")}`);
+  if (mayUse.includes(READ_TOOL) !== (readFrom !== undefined)) return fail(`${where}: ${READ_TOOL} in may_use and read_from go together (the runner chooses the files to read)`);
   return {
-    prompt: text(value.prompt, `${where}.prompt`, fail), may_use: parseMayUse(value.may_use, where, fail), changes: value.changes === true,
+    prompt: text(value.prompt, `${where}.prompt`, fail), may_use: mayUse, changes: value.changes === true,
     output: value.output as Raw, timeout_minutes: minutes, ...(value.input === undefined ? {} : { input: value.input }),
+    ...(readFrom === undefined ? {} : { read_from: readFrom as ReadFrom }),
   };
 }
 
@@ -249,7 +263,39 @@ function parseCalc(value: unknown, where: string, fail: (message: string) => nev
   if (!Array.isArray(value.sum) || value.sum.length === 0 || !value.sum.every((field) => typeof field === "string" && FIELD.test(field))) return fail(`${where}.sum must list the fields to add up, for example ["total"]`);
   if (value.group_by !== undefined && (typeof value.group_by !== "string" || !FIELD.test(value.group_by))) return fail(`${where}.group_by must be a field name`);
   if (value.compare !== undefined && (typeof value.compare !== "string" || !ONE_REFERENCE.test(value.compare))) return fail(`${where}.compare must be one reference, for example "\${previous.totals}"`);
-  return { from: value.from, sum: value.sum as string[], ...(value.group_by === undefined ? {} : { group_by: value.group_by as string }), ...(value.compare === undefined ? {} : { compare: value.compare as string }) };
+  return {
+    from: value.from, sum: value.sum as string[], ...(value.group_by === undefined ? {} : { group_by: value.group_by as string }), ...(value.compare === undefined ? {} : { compare: value.compare as string }),
+    ...(value.where === undefined ? {} : { where: parseWhere(value.where, `${where}.where`, fail) }),
+  };
+}
+
+const MAX_DUE_DAYS = 366;
+
+/** `where`: field names with the texts to keep, and at most `due_within_days` (1–366); nothing else. */
+function parseWhere(value: unknown, where: string, fail: (message: string) => never): CalcWhere {
+  if (!isRecord(value)) return fail(`${where} must be an object, for example {"status":["to check"],"due_within_days":7}`);
+  const fields: Record<string, readonly string[]> = {};
+  let days: number | undefined;
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "due_within_days") {
+      if (typeof entry !== "number" || !Number.isInteger(entry) || entry < 1 || entry > MAX_DUE_DAYS) return fail(`${where}.due_within_days must be a whole number from 1 to ${MAX_DUE_DAYS}`);
+      days = entry;
+    } else if (FIELD.test(key) && Array.isArray(entry) && entry.length > 0 && entry.every((text) => typeof text === "string")) {
+      fields[key] = entry as string[];
+    } else {
+      return fail(`${where}.${key} must list the texts to keep, for example ["to check"]; the only other key is due_within_days`);
+    }
+  }
+  return { ...(Object.keys(fields).length > 0 ? { fields } : {}), ...(days === undefined ? {} : { due_within_days: days }) };
+}
+
+/** D171: a calc with `due_within_days` takes "today" in the cron trigger's own zone; any other trigger has none to give. */
+function withCalcZone(steps: readonly WorkflowStep[], trigger: Trigger, fail: (message: string) => never): WorkflowStep[] {
+  return steps.map((step) => {
+    if (step.kind !== "calc" || step.calc.where?.due_within_days === undefined) return step;
+    if (trigger.kind !== "cron") return fail(`step '${step.id}': calc where.due_within_days needs a schedule (a cron trigger), whose time zone says which day today is`);
+    return { ...step, calc: { ...step.calc, tz: trigger.tz } };
+  });
 }
 
 function parseStep(value: unknown, index: number, registry: ToolRegistry, fail: (message: string) => never): WorkflowStep {
@@ -367,9 +413,10 @@ export function parseWorkflow(value: unknown, id: string, registry: ToolRegistry
   const version = value.version;
   if (typeof version !== "number" || !Number.isInteger(version) || version < 1) return fail("version must be a whole number from 1");
   const fallback = value.fallback === undefined ? {} : { fallback: parseAgent(isRecord(value.fallback) ? { ...value.fallback, input: undefined } : value.fallback, registry, "fallback", fail) };
+  const trigger = parseTrigger(value.trigger, fail);
   const workflow: Workflow = {
     id, version, description: typeof value.description === "string" ? value.description : "", mode: value.mode === "agentic" ? "agentic" : "typed",
-    trigger: parseTrigger(value.trigger, fail), steps: withLastRun(rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), fail), ...fallback,
+    trigger, steps: withCalcZone(withLastRun(rawSteps(value, fail).map((step, index) => parseStep(step, index, registry, fail)), fail), trigger, fail), ...fallback,
     skills: parseSkills(value.skills, fail),
   };
   try {
