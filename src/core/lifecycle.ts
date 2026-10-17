@@ -224,6 +224,10 @@ async function addRule(home: string, id: string, value: string | undefined, now:
     const kind = /holds (.+?); remove/.exec(error.message)?.[1] ?? "something that must stay on this computer";
     throw new InputError(`This rule holds ${kind}: say it without that`);
   }
+  // A consult's clean-up removes written.json but keeps the rules; until `add install` brings the folder back, say so.
+  const { consultKeptRules } = await import("./consult.js");
+  const owned = (await loadWritten(home)).skill_folders.some((entry) => entry.workflow === id);
+  if (!owned && (await consultKeptRules(home, id)) !== null) throw new InputError(`This consultation was cleaned up, so workflow '${id}' has no rules file now; its rules are kept and come back with 'taskfollow add install': tell the person, and keep the rule in mind in chat`);
   const { closeRuleCandidate, listRuleCandidates } = await import("./learning.js");
   const candidate = learning === undefined ? undefined : (await listRuleCandidates(home)).find((entry) => entry.id === learning);
   if (learning !== undefined && candidate?.status !== "open") throw new InputError(candidate ? `Rule candidate ${learning} is ${candidate.status} already` : `There is no rule candidate ${learning} ('taskfollow learnings' lists them)`);
