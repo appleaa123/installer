@@ -207,7 +207,7 @@ const CHECKS: Readonly<Record<string, CheckRun>> = {
     const name = state?.roles?.decision_maker.trim().toLowerCase();
     const members = await (await import("./members.js")).listMembers(home, now());
     if (name && members.some((member) => member.status === "joined" && member.name.toLowerCase() === name)) return { ok: true };
-    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskfollow invite \"<their name>\"' in their own terminal and send the code to the bot, then verify again" };
+    return { ok: false, hint: "The decision maker has not joined yet: they run 'taskfollow invite \"<their name>\"' in their own terminal and follow the line it prints (on Telegram the link or `/join <code>`; by email a first line `JOIN <code>`; in Slack `JOIN <code>`), then verify again" };
   },
   /** §6.2 ACTIVATE: the gateway runs, so messages arrive and approvals are announced (D72). */
   gateway_running: async (home) => ((await (await import("./gateway-process.js")).gatewayStatus(home)).status === "running" ? { ok: true } : { ok: false, hint: "The gateway is not running: run 'taskfollow gateway start', then 'taskfollow resume'" }),

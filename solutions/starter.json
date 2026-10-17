@@ -1666,7 +1666,7 @@
       "blocking": true,
       "instructions": [
         "In your own terminal, run: taskfollow invite \"<your name, exactly as you gave it earlier>\"",
-        "Send the code it prints to the bot in Telegram",
+        "On Telegram open the link it printed, or send `/join <code>` to the bot",
         "Tell the agent when the bot welcomes you"
       ],
       "verify": {
@@ -1710,7 +1710,7 @@
       "blocking": true,
       "instructions": [
         "In your own terminal, run: taskfollow invite \"<your name, exactly as you gave it earlier>\"",
-        "Send the code it prints to your Telegram bot, by email from your own address to the assistant's mailbox, or as a direct message to the Slack app",
+        "Follow the line `taskfollow invite` printed for your channel: on Telegram open the link or send `/join <code>`; by email, send an email whose first line is `JOIN <code>`; in Slack, send `JOIN <code>` to the app",
         "Tell the agent when the assistant welcomes you"
       ],
       "verify": {
