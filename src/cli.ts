@@ -458,6 +458,8 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === "mcp-serve") return mcpServeCommand(home);
   if (command === "agent-hook") return agentHookCommand(arg ?? "", extra ?? "");
   if (command === "gateway-serve") return serveGateway(home);
+  // D174: the weekly re-check's own detached process, started by the tick.
+  if (command === "recheck-run") return (await import("./core/recheck.js")).recheckRun(home);
   if (command === "check-serve") return checkServeCommand(home, requireArg(arg, command));
   if (command === "check") {
     emit(process.stdout, await checkCommand(home, (await loadState(home)) ?? undefined, positionals.slice(1), { ...flags }, { interactive: process.stdin.isTTY === true, now: () => new Date().toISOString(), launch: (pageHome, id, word) => launchCheckPage(pageHome, id, word) }));

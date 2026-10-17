@@ -6,7 +6,10 @@ import { runnerStopReason } from "../../src/core/check-fresh.js";
 import { AUDIT_FILE } from "../../src/core/audit.js";
 import { abilities, freshResult, recordResult } from "../../src/core/checks.js";
 import { readConfig, writeConfig } from "../../src/core/data-source.js";
-import { RECHECK_EVERY_MS, RECHECK_FILE, RECHECK_LOCK, RECHECK_RETRY_MS, recheckDue, weeklyRecheck, type RecheckState } from "../../src/core/recheck.js";
+import { EventEmitter } from "node:events";
+import { access } from "node:fs/promises";
+import { RECHECK_EVERY_MS, RECHECK_FILE, RECHECK_LOCK, RECHECK_RETRY_MS, recheckDue, recheckRun, startRecheck, weeklyRecheck, type RecheckState } from "../../src/core/recheck.js";
+import { deadPid } from "../helpers/dead-pid.js";
 import { setPaused } from "../../src/core/pause.js";
 import { setSandboxMode, saveWorkflowState } from "../../src/core/sandbox.js";
 import { loadState, saveState } from "../../src/core/state.js";
@@ -220,4 +223,73 @@ describe("the weekly re-check and what it tells (D174)", () => {
     await weeklyRecheck(home, at);
     expect(await runnerStopReason(home, "brief", (await loadState(home)) ?? undefined, NOW)).toContain("no longer holds");
   }, 60_000);
+});
+
+describe("the re-check's own process (D174)", () => {
+  const lockOf = (home: string): string => join(home, RECHECK_LOCK);
+  const holdLock = async (home: string, pid: number): Promise<void> => {
+    await mkdir(dirname(lockOf(home)), { recursive: true });
+    await writeFile(lockOf(home), String(pid));
+  };
+  const gone = (path: string): Promise<boolean> => access(path).then(() => false, () => true);
+
+  it("recheck-run takes the lock, says it is ready, runs once, and removes the lock", async () => {
+    const home = await passedHome();
+    const said: unknown[] = [];
+    let held = false;
+    const code = await recheckRun(home, { send: (message) => void said.push(message), check: async () => { held = !(await gone(lockOf(home))); return { test: "t7", passed: true }; }, now: at });
+    expect(code).toBe(0);
+    expect(said).toEqual([{ ready: true }]);
+    expect(held).toBe(true);
+    expect(await gone(lockOf(home))).toBe(true);
+    expect((await state(home)).last).toMatchObject({ result: "pass" });
+  });
+
+  it("two ticks while a live child holds the lock start one", async () => {
+    const home = await passedHome();
+    await writeConfig(home, RECHECK_FILE, { next: ago(1) });
+    await holdLock(home, process.pid);
+    expect(await recheckDue(home, NOW)).toBe(false);
+    const said: unknown[] = [];
+    let ran = false;
+    expect(await recheckRun(home, { send: (message) => void said.push(message), check: async () => { ran = true; return { passed: true }; }, now: at })).not.toBe(0);
+    expect(said).toEqual([]);
+    expect(ran).toBe(false);
+  });
+
+  it("a lock whose pid is dead is taken over", async () => {
+    const home = await passedHome();
+    await holdLock(home, deadPid());
+    let ran = false;
+    expect(await recheckRun(home, { send: () => undefined, check: async () => { ran = true; return { passed: true }; }, now: at })).toBe(0);
+    expect(ran).toBe(true);
+  });
+
+  it("a child that exits before ready is a tick error and moves next a day on", async () => {
+    const home = await passedHome();
+    await writeConfig(home, RECHECK_FILE, { next: ago(1), errors: 2 });
+    const child = Object.assign(new EventEmitter(), { pid: 4242, disconnect: () => undefined, unref: () => undefined });
+    const spawnChild = () => {
+      setImmediate(() => child.emit("exit", 3));
+      return child;
+    };
+    await expect(startRecheck(home, at, spawnChild)).rejects.toThrow("The weekly check could not start");
+    expect(await state(home)).toMatchObject({ next: new Date(Date.parse(NOW) + RECHECK_RETRY_MS).toISOString(), last: { result: "error" } });
+  });
+
+  it("a child that exits before ready leaves the could-not-run count unchanged", async () => {
+    const home = await passedHome();
+    await writeConfig(home, RECHECK_FILE, { next: ago(1), errors: 2 });
+    const child = Object.assign(new EventEmitter(), { pid: 4242, disconnect: () => undefined, unref: () => undefined });
+    await expect(startRecheck(home, at, () => { setImmediate(() => child.emit("exit", 1)); return child; })).rejects.toThrow();
+    expect((await state(home)).errors).toBe(2);
+  });
+
+  it("a child that says it is ready lets the tick go on without waiting", async () => {
+    const home = await passedHome();
+    let unrefd = false;
+    const child = Object.assign(new EventEmitter(), { pid: 4242, disconnect: () => undefined, unref: () => { unrefd = true; } });
+    await startRecheck(home, at, () => { setImmediate(() => child.emit("message", { ready: true })); return child; });
+    expect(unrefd).toBe(true);
+  });
 });

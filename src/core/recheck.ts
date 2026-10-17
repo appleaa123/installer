@@ -1,16 +1,18 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { confinedPath } from "./actions.js";
 import { appendAudit } from "./audit.js";
 import { runnerCheck } from "./check-runner.js";
 import { listChannels, isCustomersOnly } from "./channels.js";
 import { abilities, recordResult } from "./checks.js";
 import { readConfig, writeConfig } from "./data-source.js";
-import { isAlive } from "./durable.js";
+import { createExclusive, isAlive } from "./durable.js";
 import { ActionFailure } from "./failure.js";
 import { isPaused } from "./pause.js";
 import { sandboxMode } from "./sandbox.js";
 import { probedAgent } from "./probed-agent.js";
+import { installerCliPath } from "./register.js";
 import { loadProfileById } from "./profile.js";
 import { StateCorruptError, loadState } from "./state.js";
 import type { InstallState } from "./types.js";
@@ -27,6 +29,8 @@ export const RECHECK_RETRY_MS = 86_400_000;
 /** The third could-not-run in a row is recorded and told like a fail: a broken agent must not stay silent. */
 export const RECHECK_ERRORS_TO_RECORD = 3;
 export const RECHECK_READY_MS = 10_000;
+/** `none` keeps the tick from starting the re-check process (the test suite sets it, as for the gateway). */
+export const RECHECK_AUTOSTART_ENV = "INSTALLER_RECHECK_AUTOSTART";
 export const RECHECK_DAMAGED = "config/recheck.json is not valid JSON; remove it and the next weekly check writes it again";
 
 export interface RecheckState {
@@ -146,4 +150,95 @@ export async function weeklyRecheck(home: string, now: () => string, env?: NodeJ
   await saveRecheck(home, { next: plus(at, RECHECK_EVERY_MS), last: { at, result: "fail", why }, errors: 0 }, notice);
   await audit("fail");
   return "fail";
+}
+
+/** What `startRecheck` needs of a child process; tests pass a fake that never runs anything. */
+export interface RecheckChild {
+  readonly pid?: number;
+  once(event: "message", listener: (message: unknown) => void): unknown;
+  once(event: "exit", listener: (code: number | null) => void): unknown;
+  once(event: "error", listener: (error: Error) => void): unknown;
+  disconnect(): void;
+  unref(): void;
+}
+type SpawnChild = (home: string) => RecheckChild;
+const spawnRecheck: SpawnChild = (home) =>
+  spawn(process.execPath, [installerCliPath(), "--home", home, "recheck-run"], { detached: true, windowsHide: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+
+/**
+ * Starts `recheck-run` detached and waits, at most RECHECK_READY_MS, until it took the lock and said it is ready, as the
+ * gateway starts (gateway-process.ts). A child that could not start is TaskFollow's failure, not the agent's: kept,
+ * tried again tomorrow, never counted toward the third could-not-run.
+ */
+export async function startRecheck(home: string, now: () => string, spawnChild: SpawnChild = spawnRecheck): Promise<void> {
+  const failed = async (why: string): Promise<never> => {
+    const at = now();
+    await saveRecheck(home, { next: plus(at, RECHECK_RETRY_MS), last: { at, result: "error", why } });
+    throw new ActionFailure(why);
+  };
+  let child: RecheckChild;
+  try {
+    child = spawnChild(home);
+  } catch (error) {
+    return failed(`The weekly check could not start (${(error as Error).message})`);
+  }
+  const outcome = await new Promise<string | null>((done) => {
+    const timer = setTimeout(() => done(`The weekly check did not start within ${RECHECK_READY_MS / 1000} s`), RECHECK_READY_MS);
+    child.once("message", () => {
+      clearTimeout(timer);
+      done(null);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      done(`The weekly check could not start (exit ${code})`);
+    });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      done(`The weekly check could not start (${error.message})`);
+    });
+  });
+  if (outcome !== null) return failed(outcome);
+  child.disconnect();
+  child.unref();
+}
+
+/** The tick's part (D174): start the re-check when it is due, never while the suite runs (the environment switch). */
+export async function startRecheckIfDue(home: string, now: () => string, env: Readonly<Record<string, string | undefined>>, start: (home: string, now: () => string) => Promise<void> = startRecheck): Promise<"started" | null> {
+  if (env[RECHECK_AUTOSTART_ENV] === "none") return null;
+  if (!(await recheckDue(home, now()))) return null;
+  await start(home, now);
+  return "started";
+}
+
+interface RunOptions {
+  readonly send?: (message: unknown) => void;
+  readonly check?: typeof runnerCheck;
+  readonly now?: () => string;
+}
+
+/** Takes the lock, or none when a live re-check holds it (a dead holder's lock is taken over). */
+async function takeLock(home: string): Promise<string | null> {
+  const path = await confinedPath(home, RECHECK_LOCK);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await createExclusive(path, String(process.pid))) return path;
+    if ((await lockHolder(home)) !== null) return null;
+    await rm(path, { force: true });
+  }
+  return null;
+}
+
+/** `taskfollow recheck-run`, the detached child: lock first, then ready, then one re-check; the lock goes either way. */
+export async function recheckRun(home: string, options: RunOptions = {}): Promise<number> {
+  const lock = await takeLock(home);
+  if (lock === null) return 3;
+  try {
+    (options.send ?? ((message: unknown) => process.send?.(message)))({ ready: true });
+    await weeklyRecheck(home, options.now ?? (() => new Date().toISOString()), process.env, options.check);
+    return 0;
+  } catch {
+    return 1;
+  } finally {
+    await rm(lock, { force: true });
+  }
 }
