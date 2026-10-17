@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadState } from "../../src/core/state.js";
 import { runCli } from "../helpers/cli.js";
 import { makeTempHome } from "../helpers/temp-home.js";
@@ -42,5 +42,35 @@ describe("an install on an agent with no TaskFollow profile (D175)", () => {
     const text = `${dry.stdout}${dry.stderr}`;
     expect(text).toContain("taskfollow model --value");
     expect(text).toContain("taskfollow secret model");
+  });
+
+  it("passes the dry run once a direct model is set up (a fake model server, never a real one)", async () => {
+    const { startFakeModel } = await import("../helpers/fake-model.js");
+    const { modelCommand } = await import("../../src/core/model.js");
+    const { setSecret } = await import("../../src/core/keychain.js");
+    const { dryrunCommand, lifecycleStatus, workflowCommand } = await import("../../src/core/lifecycle.js");
+    const fake = await startFakeModel();
+    try {
+      const home = await makeTempHome();
+      const env = { ...fake.env, INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+      expect(runCli(["start", "--solution", `file:${await pinnedStarter()}`], { home, env }).code).toBe(0);
+      // The CLI runs synchronously, which would block this process's fake model, so the rest runs the same commands in-process.
+      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+      const now = () => "2026-10-17T12:00:00.000Z";
+      // What the person does in their own terminal (taskfollow model, taskfollow secret model), done here directly.
+      await modelCommand(home, JSON.stringify({ provider: "anthropic", model: "test-model" }), now, true);
+      await setSecret("model", fake.key, env);
+      fake.answer(JSON.stringify({ tool: "done", summary: "Nothing new today." }));
+      await workflowCommand(home, "add", "brief", JSON.stringify({ description: "Each morning, tell me what is new.", tools: ["memo.list"] }), now);
+      const dry = await dryrunCommand(home, "brief", undefined, { interactive: false }, now);
+      expect(dry).toMatchObject({ dry_runs: [{ workflow: "brief", status: "completed" }] });
+      expect(await lifecycleStatus(home)).toEqual([expect.objectContaining({ id: "brief", ran: true })]);
+      expect(fake.requests().length).toBeGreaterThan(0);
+      const report = runCli(["report"], { home, env });
+      expect(report.stdout).toMatch(/⚠️ Limited +Connect your agent to the installer's tools — [^\n]*taskfollow tool/);
+    } finally {
+      vi.unstubAllEnvs();
+      await fake.stop();
+    }
   });
 });
