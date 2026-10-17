@@ -169,8 +169,32 @@ export async function whyCommand(home: string, arg: string | undefined, now: () 
     no_channel: (await listChannels(home)).every((config) => isCustomersOnly(config.channel)),
     // D164: "I noticed" suggestions no channel could deliver, shown once, at the person's next session.
     ...(await suggestionsField(home, now())),
+    // Item 8: corrections made in approvals, kept until the agent adds a rule or the person says no.
+    ...(await ruleCandidatesField(home, now())),
     next: "Run 'taskfollow why <run>' with a run id to see who did what in that run, and why",
   };
+}
+
+const RULE_CANDIDATES_SHOWN = 5;
+
+/** Collects first, so a correction made in the terminal shows at the very next session, not only after a tick. */
+async function ruleCandidatesField(home: string, now: string): Promise<{ rule_candidates?: readonly { id: number; text: string }[]; rule_candidates_more?: number; rule_candidates_damaged?: string }> {
+  // Lazy, as why-tools does: learning.ts reaches the tool set, which reaches this module.
+  const { collectRuleCandidates, listRuleCandidates } = await import("./learning.js");
+  const { isDomainError } = await import("./doctor-checks.js");
+  let candidates;
+  try {
+    await collectRuleCandidates(home, now);
+    candidates = await listRuleCandidates(home);
+  } catch (error) {
+    // One damaged approval or written.json must not stop the list of runs.
+    if (!isDomainError(error)) throw error;
+    return { rule_candidates_damaged: `Corrections to turn into rules could not be read: ${error.message}` };
+  }
+  const open = candidates.filter((candidate) => candidate.status === "open").sort((a, b) => a.id - b.id);
+  if (open.length === 0) return {};
+  const shown = open.slice(0, RULE_CANDIDATES_SHOWN).map((candidate) => ({ id: candidate.id, text: `rule ${candidate.id}: ${candidate.body}` }));
+  return { rule_candidates: shown, ...(open.length > shown.length ? { rule_candidates_more: open.length - shown.length } : {}) };
 }
 
 export const DAMAGED_NOTICE = "config/watch-notice.json is not valid JSON; remove it and the next tick writes it again";
@@ -237,9 +261,16 @@ export function renderWhy(why: Raw): string {
   }
   const runs = Array.isArray(why.runs) ? (why.runs as Raw[]) : [];
   const suggestions = Array.isArray(why.suggestions) ? (why.suggestions as Raw[]) : [];
+  const candidates = Array.isArray(why.rule_candidates) ? (why.rule_candidates as Raw[]) : [];
   const told = [
     ...(suggestions.length === 0 ? [] : ["", "TaskFollow noticed (tell the person):", ...suggestions.map((entry) => `    ${str(entry.text)}`)]),
     ...(typeof why.suggestions_damaged === "string" ? ["", why.suggestions_damaged] : []),
+    ...(candidates.length === 0 ? [] : [
+      "", "Corrections to turn into rules (propose one rule each in the person's words; add it with 'taskfollow workflow rule' only after they say yes, or 'taskfollow learnings dismiss <n>'):",
+      ...candidates.map((entry) => `    ${str(entry.text)}`),
+      ...(typeof why.rule_candidates_more === "number" ? [`    and ${why.rule_candidates_more} more ('taskfollow learnings')`] : []),
+    ]),
+    ...(typeof why.rule_candidates_damaged === "string" ? ["", why.rule_candidates_damaged] : []),
   ];
   if (runs.length === 0) return [`No runs since ${str(why.since)}.`, ...told].join("\n");
   const untold = why.no_channel === true;

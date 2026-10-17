@@ -223,3 +223,75 @@ describe("taskfollow why: each run's result (9.12 item 3, level 1)", () => {
   });
 });
 
+describe("corrections to turn into rules (item 8)", () => {
+  /** A home whose workflow 'inbox' has the skill folder TaskFollow wrote, with `count` rejected approvals of step 'reply'. */
+  async function corrected(count: number) {
+    const home = await runnerHome();
+    const { saveWritten } = await import("../../src/core/workflow-skill.js");
+    await saveWritten(home, { skill_folders: [{ workflow: "inbox", path: join(home, "skills", "inbox"), root: join(home, "skills") }] });
+    const { requestApproval, rejectItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    for (let index = 0; index < count; index += 1) {
+      const asked = await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", { n: index }), via: "runner", run: { workflow: "inbox", run_id: `r${index}`, step: "reply" }, why: "Reply" }, AT);
+      await rejectItem(home, asked.id, { name: "Owner", role: "decision_maker" }, "too formal", AT);
+    }
+    return home;
+  }
+
+  it("lists an open rule candidate made since the last tick, as rule_candidates", async () => {
+    const home = await corrected(1);
+    const why = await whyCommand(home, undefined, () => LATER);
+    expect(why.rule_candidates).toEqual([{ id: 1, text: "rule 1: In workflow 'inbox', a person rejected the mcp__mail__send call in step 'reply'. Their reason: \"too formal\"." }]);
+    const { renderWhy } = await import("../../src/core/why.js");
+    expect(renderWhy(why)).toContain("Corrections to turn into rules (propose one rule each in the person's words; add it with 'taskfollow workflow rule' only after they say yes, or 'taskfollow learnings dismiss <n>'):\n    rule 1: In workflow 'inbox'");
+  });
+
+  it("lists at most five candidates and says how many more", async () => {
+    const home = await corrected(7);
+    const why = await whyCommand(home, undefined, () => LATER);
+    expect(why.rule_candidates).toHaveLength(5);
+    expect(why.rule_candidates_more).toBe(2);
+    const { renderWhy } = await import("../../src/core/why.js");
+    expect(renderWhy(why)).toContain("    and 2 more ('taskfollow learnings')");
+  });
+
+  it("lists a candidate at every session until it is closed; a dismissed or added one is no longer listed", async () => {
+    const home = await corrected(2);
+    expect((await whyCommand(home, undefined, () => LATER)).rule_candidates).toHaveLength(2);
+    expect((await whyCommand(home, undefined, () => LATER)).rule_candidates).toHaveLength(2);
+    const { closeRuleCandidate } = await import("../../src/core/learning.js");
+    await closeRuleCandidate(home, 1, "dismissed", LATER);
+    await closeRuleCandidate(home, 2, "added", LATER);
+    expect((await whyCommand(home, undefined, () => LATER)).rule_candidates).toBeUndefined();
+  });
+
+  it("still lists the runs when an approval file is damaged, and says so in rule_candidates_damaged", async () => {
+    const { home, run } = await finishedRun();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(home, "state", "approvals", "9.json"), "{ not json");
+    const why = await whyCommand(home, undefined, () => LATER);
+    expect(why).toMatchObject({ runs: [{ run_id: run.run_id }] });
+    expect(why.rule_candidates_damaged).toEqual(expect.stringContaining("Corrections to turn into rules could not be read"));
+  });
+
+  it("expires no approval and audits nothing while collecting, even with an overdue item", async () => {
+    const home = await corrected(1);
+    const { requestApproval } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", { overdue: true }), via: "runner", run: { workflow: "inbox", run_id: "old", step: "reply" }, why: "Reply" }, "2026-10-01T12:00:00.000Z");
+    await whyCommand(home, undefined, () => LATER);
+    const { readFile } = await import("node:fs/promises");
+    const events = (await readFile(join(home, "audit", "audit.jsonl"), "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { event: string }).event);
+    expect(events).not.toContain("approval.expired");
+  });
+
+  it("collects a candidate once and audits rules.candidate once", async () => {
+    const home = await corrected(1);
+    await whyCommand(home, undefined, () => LATER);
+    await whyCommand(home, undefined, () => LATER);
+    const { readFile } = await import("node:fs/promises");
+    const events = (await readFile(join(home, "audit", "audit.jsonl"), "utf8")).trim().split("\n").map((line) => (JSON.parse(line) as { event: string }).event);
+    expect(events.filter((event) => event === "rules.candidate")).toHaveLength(1);
+  });
+});
+

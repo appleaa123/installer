@@ -23,7 +23,7 @@ import { doctorCommand } from "./core/doctor.js";
 import { gatewayCommand, serveGateway } from "./core/gateway-process.js";
 import { hardenCommand } from "./core/hardening.js";
 import { hostCommand } from "./core/host.js";
-import { listLearnings } from "./core/learning.js";
+import { learningsCommand } from "./core/learning.js";
 import { dryrunCommand, sandboxCommand, workflowCommand } from "./core/lifecycle.js";
 import { EngineError, advance, resume, start, submit, verifyStep, type EngineDeps, type StartExtras, type SubmitPayload } from "./core/engine.js";
 import { ActionFailure } from "./core/failure.js";
@@ -434,7 +434,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   harden: async ({ deps }, flags, arg, extra) => hardenCommand(deps.home, arg, extra, flags.value, person(flags), deps.now),
   autonomy: async ({ state, deps }, flags, arg, extra) => autonomyCommand(deps.home, state.roles, { sub: arg, arg: extra, as: flags.as, reason: flags.reason, interactive: process.stdin.isTTY === true }, deps.now),
   alerts: async ({ deps }, flags, arg, extra) => alertsCommand(deps.home, arg, extra, person(flags), deps.now),
-  learnings: async ({ deps }) => ({ learnings: await listLearnings(deps.home) }),
+  learnings: async ({ deps }, _flags, arg, extra) => learningsCommand(deps.home, arg, extra, deps.now()),
   pause: async ({ deps }, flags, arg) => pauseCommand(deps.home, arg, person(flags), flags.reason, deps.now),
   unpause: async ({ deps }, flags) => unpauseCommand(deps.home, person(flags), deps.now),
   host: async ({ deps }, _flags, arg, extra) => hostCommand(deps.home, arg, extra, deps.now),

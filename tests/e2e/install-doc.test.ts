@@ -71,6 +71,25 @@ describe("INSTALL.md", () => {
     expect(DOC).toContain("14. When you notice work that repeats, in what the person asks you to do, in what a workflow's results show, or in a suggestion TaskFollow noticed, say so in one sentence and show the workflow you would set up: what starts it, what it reads, what it may change, and what waits for their yes. If they give feedback, change it and show it again. Add it only after they say yes; never create, change or turn on a workflow without one. Propose each kind of work once; propose it again only if they ask.");
   });
 
+  it("INSTALL.md has operator rule 15 with workflow rule, the yes and the scheduled-workflow question (item 8, D173)", () => {
+    const rule = DOC.slice(DOC.indexOf("15. When the person edits or rejects a result"));
+    expect(rule).toContain("propose one short rule for that workflow's `references/my-rules.md`, in their words, and show it.");
+    expect(rule).toContain("Add it with `taskfollow workflow rule <id> --value '{\"rule\":\"…\"}'` only after they say yes, then tell them the exact text that was added.");
+    expect(rule).toContain("A rule never changes what needs their approval.");
+    expect(rule).toContain("Never run `workflow rule` without their yes to that exact text; if they change the wording, show it again.");
+    expect(rule).toContain("At the start of a session, also ask whether they corrected a result of a workflow that runs on their assistant's own schedule");
+  });
+
+  it("operator rules are numbered 1 to 15 without gaps", () => {
+    const rules = DOC.slice(DOC.indexOf("## Operator rules")).split("\n").map((line) => /^(\d+)\. /.exec(line)?.[1]).filter((number): number is string => number !== undefined).map(Number);
+    expect(rules).toEqual(Array.from({ length: 15 }, (_, index) => index + 1));
+  });
+
+  it("rule 11 says rule candidates stay listed until closed", () => {
+    const rule = DOC.slice(DOC.indexOf("11. At the start of each session"), DOC.indexOf("\n12. "));
+    expect(rule).toContain("If it lists corrections to turn into rules, they stay listed until a rule is added or the person says no (rule 15).");
+  });
+
   it("keeps one placeholder, for the optional Skills Wiki URL, after the optional section starts (D129)", () => {
     const optional = DOC.indexOf("## 11.");
     expect(optional).toBeGreaterThan(0);

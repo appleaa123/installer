@@ -90,3 +90,22 @@ describe("consult: the report and the clean-up (item 7 Task 8)", () => {
   });
 });
 
+describe("consult: rules from corrections (item 8)", () => {
+  const rule = (home: string, text: string) => workflowCommand(home, "rule", "brief", JSON.stringify({ rule: text }), () => AT);
+
+  it("before consult cleanup, workflow rule writes the rule", async () => {
+    const { home, work } = await consultHome();
+    await rule(home, "Friendly tone.");
+    expect(await readFile(join(work, ".claude", "skills", "brief", "references", "my-rules.md"), "utf8")).toContain("Flag every repair.\n- Friendly tone.\n");
+  });
+
+  it("after consult cleanup, workflow rule refuses and says to tell the person; after add install it works again", async () => {
+    const { home, work } = await consultHome();
+    await consultCleanup(home, (await loadState(home)) ?? undefined, AT);
+    await expect(rule(home, "Friendly tone.")).rejects.toThrow("This consultation was cleaned up, so workflow 'brief' has no rules file now; its rules are kept and come back with 'taskfollow add install': tell the person, and keep the rule in mind in chat");
+    await restoreAfterConsult(home);
+    await rule(home, "Friendly tone.");
+    expect(await readFile(join(work, ".claude", "skills", "brief", "references", "my-rules.md"), "utf8")).toContain("Flag every repair.\n- Friendly tone.\n");
+  });
+});
+

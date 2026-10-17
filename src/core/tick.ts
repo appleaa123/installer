@@ -14,7 +14,7 @@ import { ActionFailure } from "./failure.js";
 import { keepGatewayRunning, startGateway } from "./gateway-process.js";
 import { listInbox, type InboxItem } from "./inbox.js";
 import { isPaused } from "./pause.js";
-import { collectLearnings, submitLearnings } from "./learning.js";
+import { collectLearnings, collectRuleCandidates, submitLearnings } from "./learning.js";
 import { InputError } from "./inputs.js";
 import { resumeRun, startRun } from "./runner.js";
 import { listRuns, recordMissed, runForKey, type OnDamaged, type RunRecord } from "./runs.js";
@@ -245,6 +245,7 @@ export async function tick(home: string, now: () => string = () => new Date().to
     });
     await guard(state, "learning", async () => {
       await collectLearnings(home, state.at);
+      await collectRuleCandidates(home, state.at);
       result.learnings = (await submitLearnings(home, (await loadState(home))?.skillswiki?.url, state.at)).length;
     });
     await guard(state, "gateway", async () => {

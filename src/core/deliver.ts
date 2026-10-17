@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { TOKEN_PATTERN } from "./agent-hook.js";
 import { listChannels } from "./channels.js";
 import { decideHome, type AgentRef } from "./homes.js";
@@ -8,7 +8,7 @@ import { getSecret } from "./keychain.js";
 import { loadState } from "./state.js";
 import { ENGINE_SECRETS } from "./uninstall.js";
 import { REFERENCES_DIR, SKILL_FILE } from "./skills.js";
-import { RULES_FILE, rulesMarkdown, skillMarkdown } from "./workflow-skill.js";
+import { loadWritten, RULES_FILE, rulesMarkdown, skillMarkdown } from "./workflow-skill.js";
 import type { Trigger, Workflow } from "./workflow.js";
 import { storedZip } from "./zip.js";
 
@@ -83,7 +83,9 @@ const readOr = async (path: string): Promise<string | null> => readFile(path, "u
 /** The workflow's skill as one SKILL.md: the install folder's skill (item 2) with its rules inside, or one made from the description. */
 async function skillText(home: string, workflow: Workflow): Promise<string> {
   const workDir = (await loadState(home))?.work_dir;
-  const folder = workDir ? join(workDir, ".claude", "skills", workflow.id) : undefined;
+  // Item 8: the folder TaskFollow recorded when it wrote the skill, else the agent's project folder as before.
+  const recorded = (await loadWritten(home)).skill_folders.find((entry) => entry.workflow === workflow.id)?.path;
+  const folder = recorded ?? (workDir ? join(workDir, ".claude", "skills", workflow.id) : undefined);
   const skill = folder ? await readOr(join(folder, SKILL_FILE)) : null;
   const rules = folder ? await readOr(join(folder, REFERENCES_DIR, RULES_FILE)) : null;
   // Review M1: the zip has no references folder, so the pointer to it goes, and the rules sit under one heading.
@@ -95,11 +97,12 @@ async function skillText(home: string, workflow: Workflow): Promise<string> {
 
 const RULES_HEADING = "## The owner's own rules";
 
+/** Where a skill zip is written (and, for item 8, whether a workflow was delivered): the install folder, else the home. */
+export const deliveredZip = async (home: string, name: string): Promise<string> => join((await loadState(home))?.work_dir ?? home, DELIVER_DIR, `${name}.zip`);
+
 export async function writeSkillZip(home: string, name: string, skill: string): Promise<string> {
-  const workDir = (await loadState(home))?.work_dir ?? home;
-  const dir = join(workDir, DELIVER_DIR);
-  await mkdir(dir, { recursive: true });
-  const zip = join(dir, `${name}.zip`);
+  const zip = await deliveredZip(home, name);
+  await mkdir(dirname(zip), { recursive: true });
   await writeFile(zip, storedZip([{ name: `${name}/`, data: Buffer.alloc(0) }, { name: `${name}/${SKILL_FILE}`, data: Buffer.from(skill, "utf8") }]));
   return zip;
 }

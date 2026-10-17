@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { appendAudit } from "./audit.js";
 import { readConfig, writeConfig } from "./data-source.js";
@@ -14,12 +15,12 @@ import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { rm, rmdir } from "node:fs/promises";
+import { rm, rmdir, stat } from "node:fs/promises";
 import { SHAPES, workflowHash } from "./homes.js";
 import { notesFolder, prepareNotesFolder } from "./task-files.js";
 import { restoreFile } from "./agent-file.js";
-import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, type SkillRoots } from "./skills.js";
-import { agentFileBefore, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, saveWritten, shippedSkill, writeWorkflowSkill } from "./workflow-skill.js";
+import { checkLocalSkills, HOME_FOLDER_NOTE, isSkillswikiRef, REFERENCES_DIR, type SkillRoots } from "./skills.js";
+import { agentFileBefore, appendRule, installTargets, loadWritten, plannedSkillFolder, refreshAgentFile, RULES_FILE, saveWritten, shippedSkill, writeWorkflowSkill } from "./workflow-skill.js";
 import { MAX_WORKFLOW_SKILLS, WORKFLOWS_DIR, WORKFLOW_FILE, loadWorkflow, parseWorkflow, requireWorkflowId, workflowIds, type Workflow } from "./workflow.js";
 
 /**
@@ -179,12 +180,68 @@ async function describeAll(home: string): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
-/** `taskfollow workflow list | suggestions | add <id> [--value <plain words>]`. */
+/** `taskfollow workflow list | suggestions | add <id> [--value <plain words>] | rule <id> --value <json>`. */
 export async function workflowCommand(home: string, sub: string | undefined, id: string | undefined, value: string | undefined, now: () => string): Promise<Record<string, unknown>> {
   if (sub === undefined || sub === "list") return { workflows: await describeAll(home) };
   if (sub === "suggestions") return { suggestions: (await suggestions(home)).map((entry) => ({ workflow: entry.workflow, description: entry.description ?? "", mode: entry.mode ?? "typed", trigger: entry.trigger ?? { manual: true } })) };
   if (sub === "add") return addWorkflow(home, requireWorkflowId(id), value, now());
-  throw new InputError("workflow takes: list, suggestions, add <id> [--value <json>]");
+  if (sub === "rule") return addRule(home, requireWorkflowId(id), value, now());
+  throw new InputError("workflow takes: list, suggestions, add <id> [--value <json>], rule <id> --value <json>");
+}
+
+/** D97's limit for what a person's correction becomes. */
+const MAX_RULE = 600;
+const RULE_SHAPE = "A rule is one line of 1 to 600 characters, with no line breaks, not starting with #, and not naming references/my-rules.md: say it in the person's words, shorter";
+
+function ruleWords(value: string | undefined): { readonly rule: string; readonly learning?: number } {
+  const usage = `workflow rule needs --value '{"rule":"<the rule, in the person's words>"}', with "learning":<n> when it answers a rule candidate`;
+  let words: unknown;
+  try {
+    words = value === undefined ? undefined : JSON.parse(value);
+  } catch {
+    throw new InputError(usage);
+  }
+  if (!isRecord(words) || typeof words.rule !== "string") throw new InputError(usage);
+  if (words.learning !== undefined && !(typeof words.learning === "number" && Number.isInteger(words.learning) && words.learning > 0)) throw new InputError(usage);
+  const rule = words.rule.trim();
+  if (rule.length < 1 || rule.length > MAX_RULE || /[\r\n]/.test(rule) || rule.startsWith("#") || rule.includes(`${REFERENCES_DIR}/${RULES_FILE}`)) throw new InputError(RULE_SHAPE);
+  return { rule, ...(words.learning !== undefined ? { learning: words.learning } : {}) };
+}
+
+/**
+ * Item 8 (9.5): one rule the person said yes to, into the workflow's `references/my-rules.md`. The rule never reaches
+ * the gate: levels, the hook and approvals never read the file (D161). Lazy imports: deliver.ts and learning.ts
+ * reach this module's neighbours, so a static import would be a cycle.
+ */
+async function addRule(home: string, id: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
+  await loadWorkflow(home, id, DEFAULT_TOOLS);
+  const { rule, learning } = ruleWords(value);
+  const { checkDelivered, deliveredZip } = await import("./deliver.js");
+  try {
+    await checkDelivered(home, rule);
+  } catch (error) {
+    if (!(error instanceof InputError)) throw error;
+    const kind = /holds (.+?); remove/.exec(error.message)?.[1] ?? "something that must stay on this computer";
+    throw new InputError(`This rule holds ${kind}: say it without that`);
+  }
+  // A consult's clean-up removes written.json but keeps the rules; until `add install` brings the folder back, say so.
+  const { consultKeptRules } = await import("./consult.js");
+  const owned = (await loadWritten(home)).skill_folders.some((entry) => entry.workflow === id);
+  if (!owned && (await consultKeptRules(home, id)) !== null) throw new InputError(`This consultation was cleaned up, so workflow '${id}' has no rules file now; its rules are kept and come back with 'taskfollow add install': tell the person, and keep the rule in mind in chat`);
+  const { closeRuleCandidate, listRuleCandidates } = await import("./learning.js");
+  const candidate = learning === undefined ? undefined : (await listRuleCandidates(home)).find((entry) => entry.id === learning);
+  if (learning !== undefined && candidate?.status !== "open") throw new InputError(candidate ? `Rule candidate ${learning} is ${candidate.status} already` : `There is no rule candidate ${learning} ('taskfollow learnings' lists them)`);
+  if (candidate && candidate.workflow !== id) throw new InputError(`Rule candidate ${learning} is for workflow '${candidate.workflow}', not '${id}': add the rule to '${candidate.workflow}'`);
+  const file = await appendRule(home, id, rule);
+  if (learning !== undefined) await closeRuleCandidate(home, learning, "added", now);
+  await appendAudit(home, { ts: now, actor: "agent", event: "rules.added", ref: `workflow:${id}`, payload: { workflow: id, ...(learning !== undefined ? { learning } : {}), sha256: createHash("sha256").update(rule).digest("hex") } });
+  // 9.15: TaskFollow cannot reach a skill already uploaded to Claude Cowork; it says so, with the steps.
+  const delivered = await stat(await deliveredZip(home, id)).then(() => true, () => false);
+  return {
+    status: "added", workflow: id, rule, file,
+    next: `Tell the person exactly this rule, word for word: it applies from the next run and in chat now. To change or remove a rule, they edit ${file} themselves.`,
+    ...(delivered ? { cowork: `A Cowork zip was made for this workflow; if you uploaded it, Cowork still has the copy from before this rule: run \`taskfollow check deliver ${id}\` and upload the new zip.` } : {}),
+  };
 }
 
 /**

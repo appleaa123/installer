@@ -13,6 +13,7 @@ import { writeWorkflow } from "../helpers/workflow-home.js";
 import { recordResult } from "../../src/core/checks.js";
 import { confirmDescribed, descriptionHash, workflowHash } from "../../src/core/homes.js";
 import { runnerHome } from "../helpers/runner-home.js";
+import { appendRule, NO_RULES_YET, saveWritten } from "../../src/core/workflow-skill.js";
 
 /** Plan Task 9 (spec section 10, D158): a workflow for Claude Cowork as a skill zip plus schedule text, checked first. */
 const AT = "2026-10-16T12:00:00.000Z";
@@ -66,6 +67,22 @@ describe("deliver: a workflow for Claude Cowork (plan Task 9)", () => {
     expect(out.schedule).toContain("SendUserMessage");
     expect(out.steps.join(" ")).toContain("Settings, then Skills");
     expect(out.steps.join(" ")).toContain("Cowork cannot delete them from a chat");
+  });
+
+  it("skillText reads the skill folder TaskFollow recorded, and a zip made after a rule holds the rule (item 8)", async () => {
+    const { home, work } = await install();
+    const root = join(work, "agent-skills");
+    const folder = join(root, "morning-brief");
+    await mkdir(join(folder, "references"), { recursive: true });
+    await writeFile(join(folder, "SKILL.md"), "---\nname: morning-brief\ndescription: Use for the owner's morning brief.\n---\n\n## The owner's own rules\n\nRead `references/my-rules.md` first.\n");
+    await writeFile(join(folder, "references", "my-rules.md"), `# My rules for morning-brief\n\n${NO_RULES_YET}\n`);
+    await saveWritten(home, { skill_folders: [{ workflow: "morning-brief", path: folder, root }] });
+    await appendRule(home, "morning-brief", "Flag repairs first.");
+    await readyForCowork(home, "Read my inbox each morning and tell me what needs a visit.");
+    const out = await deliver(home, "Read my inbox each morning and tell me what needs a visit.");
+    const skill = readZip(await readFile(out.zip))[1]?.data.toString("utf8") ?? "";
+    expect(skill).toContain("## The owner's own rules\n\n- Flag repairs first.");
+    expect(skill).not.toContain("references/my-rules.md");
   });
 
   it("generates the skill from the description when the install folder has none", async () => {

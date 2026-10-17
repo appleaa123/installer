@@ -97,6 +97,12 @@ async function loadConsult(home: string): Promise<ConsultState> {
   return ((await readConfig(home, CONSULT_FILE)) as ConsultState | null) ?? { rules: {} };
 }
 
+/** Item 8: the rules a consult's clean-up kept for a workflow, or null when there was no clean-up or none were kept. */
+export async function consultKeptRules(home: string, id: string): Promise<string | null> {
+  const saved = await loadConsult(home);
+  return saved.cleaned_at !== undefined ? (saved.rules[id] ?? null) : null;
+}
+
 /** The consult report's path relative to the home, once written; for `taskfollow report`. */
 export async function consultReportPath(home: string): Promise<string | undefined> {
   return (await loadConsult(home)).report;
