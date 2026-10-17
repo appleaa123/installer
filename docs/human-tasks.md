@@ -222,6 +222,21 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** what each step printed, word for word, and the rows in the sheet.
 
+### 40. "Find my repetitive work" on your test Gmail (item 6b, D172, about 10 minutes)
+
+**Why:** the discovery skill lets your own agent look through your mail in your own chat and suggest workflows, while TaskFollow sees nothing it read (D148, D165). It was built and tested with a fake agent; whether a real agent follows the skill (reads only, quotes nothing, names nobody, adds only what you keep) is proven only by using it. Claude Code 2.1.295 or later, in a throwaway install. Claude prepares each command with you.
+
+1. Start a throwaway install `~/taskfollow-task40` and connect the test Gmail to your agent the way you already use it (its own Gmail tool), not through TaskFollow. Before anything else, Claude records the checksum of `~/.claude/settings.json`.
+2. When the install reaches the workflows, check that `.claude/skills/find-my-repetitive-work/SKILL.md` is in the install folder. At the end of the interview the agent says at most once: *"Not sure what repeats in your week? Ask me to find your repetitive work any time."*
+3. In a fresh chat in that folder, ask: "find my repetitive work". The agent asks where to look and how far back. Say: my email, the last four weeks.
+4. Check the list: one plain line per kind of work, no quoted message, no person named, and nothing sent, labelled, moved or deleted in the mailbox.
+5. Keep one line and drop the others. The agent proposes one workflow and adds it only after your yes.
+6. `taskfollow why` and the audit show only `workflow.added` for that workflow: nothing else from your mail reached TaskFollow.
+
+**Clean up:** `claude mcp remove -s user installer`; inspect, then delete `~/.claude/projects/*taskfollow-task40*`; the settings checksum must equal step 1's; delete `~/taskfollow-task40`. Never run `taskfollow uninstall` there.
+
+**Paste back:** the agent's list (it should hold no names or quotes), what each step printed, word for word, and anything the agent did that the skill says it must not.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
