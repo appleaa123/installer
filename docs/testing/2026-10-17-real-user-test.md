@@ -6,7 +6,7 @@ The numbers in brackets, like **[37]**, are the human tasks in `docs/human-tasks
 
 ## Before you start (10 minutes)
 
-1. **Use test accounts first.** Your test Gmail for email, and a new, empty Google Sheet if you choose one. Keep your real business mailbox out of it until Parts A and C have gone well.
+1. **Use test accounts first.** Your test Gmail for email, and **choose Google Sheets** when the install asks where you keep your contacts (a new, empty sheet is fine): lead qualification, CRM update, invoice processing, meeting follow-up and invoices due are offered only with it. Keep your real business mailbox out of it until Parts A and C have gone well.
 2. **Make the package.** TaskFollow is not on npm yet, so `npx --yes taskfollow` in START-HERE won't find it. In a terminal:
    ```
    cd ~/Desktop/ML-Project/installer
