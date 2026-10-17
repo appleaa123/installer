@@ -24,7 +24,7 @@
   "steps": [
     { "step_id": "preflight.probe", "phase": "PREFLIGHT", "type": "auto", "title": "Check what your agent can do", "why": "Later steps adapt to what your agent supports.", "blocking": true,
       "auto": { "action": "probe_runtime" } },
-    { "step_id": "preflight.tools", "phase": "PREFLIGHT", "type": "auto", "title": "Connect your agent to the installer's tools", "why": "Your agent asks for approvals and uses local tools through this connection; anything it may not do alone waits for a person's approval.", "blocking": true,
+    { "step_id": "preflight.tools", "phase": "PREFLIGHT", "type": "auto", "title": "Connect your agent to the installer's tools", "why": "Your agent asks for approvals and uses local tools through this connection; anything it may not do alone waits for a person's approval.", "blocking": false,
       "auto": { "action": "register_tools_mcp" } },
     { "step_id": "mode.who", "phase": "MODE", "type": "ask", "title": "Is this assistant just for you, or will other people use it too?", "why": "On your own it is simpler: fewer questions and nobody to invite. With others, it can message the team and one person approves important actions.", "blocking": true,
       "input": { "kind": "choice", "options": ["me", "team"] }, "default": "me" },

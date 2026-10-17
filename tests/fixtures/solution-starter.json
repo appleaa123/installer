@@ -21,7 +21,7 @@
   "steps": [
     { "step_id": "preflight.probe", "phase": "PREFLIGHT", "type": "auto", "title": "Check what your agent can do", "why": "Later steps adapt to what your agent supports.", "blocking": true,
       "auto": { "action": "probe_runtime", "args": { "profile": "fake-agent" } } },
-    { "step_id": "preflight.tools", "phase": "PREFLIGHT", "type": "auto", "title": "Connect your agent to the installer's tools", "why": "Your agent asks for approvals and uses local tools through this connection; anything it may not do alone waits for a person's approval.", "blocking": true,
+    { "step_id": "preflight.tools", "phase": "PREFLIGHT", "type": "auto", "title": "Connect your agent to the installer's tools", "why": "Your agent asks for approvals and uses local tools through this connection; anything it may not do alone waits for a person's approval.", "blocking": false,
       "auto": { "action": "register_tools_mcp" } },
     { "step_id": "mode.shared-work", "phase": "MODE", "type": "ask", "title": "Is there shared work, such as a shared inbox, customer list or team reports?", "why": "Shared work needs one machine the whole team uses.", "blocking": true,
       "input": { "kind": "choice", "options": ["no", "yes", "both"] } },

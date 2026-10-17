@@ -56,7 +56,7 @@ function stringArg(args: Args, key: string): string {
 /** Working folder for headless agent calls made by the probe, inside the engine home (D34). */
 export const PROBE_DIR = join("runtime", "probe");
 const NO_AGENT_HINT = "The probe found no known agent to register Skills Wiki in; install a supported agent, then run 'taskfollow resume'";
-const NO_AGENT_TOOLS_HINT = "The probe found no known agent to connect the installer's tools to; install a supported agent, then run 'taskfollow resume', or use 'taskfollow tool' instead";
+const NO_AGENT_TOOLS_HINT = "TaskFollow has no profile for this agent, so its tools are not connected over MCP: use 'taskfollow tool <name> <json>' for TaskFollow's tools (INSTALL.md section 5); the install goes on";
 const NO_COMBO_HINT = "No combo is active in Skills Wiki yet: activate one in your dashboard, then run 'taskfollow resume'";
 const now = (): string => new Date().toISOString();
 /** Loaded when used: the lifecycle reaches the runner and the gateway, which import this module (confinedPath). */

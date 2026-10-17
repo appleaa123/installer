@@ -18,6 +18,11 @@ const visible = (answers: Record<string, unknown>) => visibleSteps(STARTER, stat
 const channelSteps = (ids: string[]) => ids.filter((id) => id.startsWith("channels.") || id === "activate.gateway");
 
 describe("the starter for a person on their own (9.12 item 3)", () => {
+  it("does not stop the install when the tools cannot be connected over MCP (D175)", () => {
+    const skillswiki = parseSolution(JSON.parse(readFileSync("solutions/starter-skillswiki.json", "utf8")));
+    for (const solution of [STARTER, skillswiki]) expect(solution.steps.find((step) => step.step_id === "preflight.tools")?.blocking).toBe(false);
+  });
+
   it("has no channel step and no gateway when nothing was chosen, and asks where runs happen", () => {
     const ids = visible(SOLO);
     expect(channelSteps(ids)).toEqual([]);

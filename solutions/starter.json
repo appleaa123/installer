@@ -812,7 +812,7 @@
       "type": "auto",
       "title": "Connect your agent to the installer's tools",
       "why": "Your agent asks for approvals and uses local tools through this connection; anything it may not do alone waits for a person's approval.",
-      "blocking": true,
+      "blocking": false,
       "auto": {
         "action": "register_tools_mcp"
       }

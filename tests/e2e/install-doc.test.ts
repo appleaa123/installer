@@ -56,6 +56,10 @@ describe("START-HERE.md, the page for the person (D129)", () => {
 });
 
 describe("INSTALL.md", () => {
+  it("says any agent without TaskFollow's MCP server uses taskfollow tool (D175)", () => {
+    expect(DOC).toContain("Only Claude Code has TaskFollow's tools registered as an MCP server; any other agent uses `taskfollow tool <name> '<json arguments>'`");
+  });
+
   it("states the five operator rules from spec §6.1", () => {
     for (const rule of ["1. Never invent an answer", "2. Always tell the person why", "3. Never request, repeat or store secrets", "4. At a blocking human step, stop", "5. After every `agent_action`, run the step's verify", "6. Never approve, edit or reject an approval yourself"]) {
       expect(DOC).toContain(rule);

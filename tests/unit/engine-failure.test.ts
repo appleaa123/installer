@@ -63,6 +63,32 @@ describe.skipIf(cannotLock)("an auto step whose action fails (D53)", () => {
   });
 });
 
+describe.skipIf(cannotLock)("a non-blocking auto step whose action fails (D175)", () => {
+  const OPTIONAL = { ...WRITE, step_id: "pre.optional", blocking: false };
+  const NEXT = { step_id: "pre.next", phase: "PREFLIGHT", type: "ask", title: "Next", why: "Needed.", blocking: true, input: { kind: "text" } };
+  const optional = () => parseSolution({ id: "optional", version: "1", steps: [OPTIONAL, NEXT] });
+
+  it("is blocked at once and the install goes on", async () => {
+    const home = await lockedHome();
+    const { deps } = memoryDeps(home, optional());
+    const first = await start(deps, null, "file:/f.json");
+    expect(first.state.steps["pre.optional"]).toMatchObject({ status: "blocked", attempts: 1, hint: "Cannot write config/a.txt (EACCES)" });
+    expect(first.result).toMatchObject({ status: "step", view: { step: { step_id: "pre.next" } } });
+  });
+
+  it("is tried once more on each resume, and the install still goes on", async () => {
+    const home = await lockedHome();
+    const { deps } = memoryDeps(home, optional());
+    const first = await start(deps, null, "file:/f.json");
+    const again = await resume(deps, first.state);
+    expect(again.state.steps["pre.optional"]).toMatchObject({ status: "blocked", attempts: 1 });
+    expect(again.result).toMatchObject({ status: "step", view: { step: { step_id: "pre.next" } } });
+    await unlock(home);
+    const fixed = await resume(deps, again.state);
+    expect(fixed.state.steps["pre.optional"]).toMatchObject({ status: "done" });
+  });
+});
+
 describe("authoring errors are not failures", () => {
   it("an action with a bad argument still throws and records nothing", async () => {
     const home = await makeTempHome();

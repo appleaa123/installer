@@ -61,7 +61,7 @@ Every command prints one line of JSON. Read its `status`:
 
 ## 5. The installer's tools and approvals
 
-The install connects you to the installer's own MCP server, `installer`; its tools appear to you as `mcp__installer__memo_list`, `mcp__installer__approvals_request` and so on. If the tools do not appear (a new tool server can need Claude Code to be restarted; do not ask the person for that), run the same tools from the shell: `taskfollow tool <name> '<json arguments>'`, for example `taskfollow tool memo.list '{}'`. Both follow the same rules.
+The install connects you to the installer's own MCP server, `installer`; its tools appear to you as `mcp__installer__memo_list`, `mcp__installer__approvals_request` and so on. If the tools do not appear (a new tool server can need Claude Code to be restarted; do not ask the person for that), run the same tools from the shell: `taskfollow tool <name> '<json arguments>'`, for example `taskfollow tool memo.list '{}'`. Both follow the same rules. Only Claude Code has TaskFollow's tools registered as an MCP server; any other agent uses `taskfollow tool <name> '<json arguments>'`, which goes through the same approval gate.
 
 A tool that changes something a person must approve first (level L2 or L3) refuses to run and says so. Then:
 
