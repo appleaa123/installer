@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decide, handleHook, loadHookConfig, type HookConfig } from "../../src/core/agent-hook.js";
 import { buildTaskArgv, type TaskRequest } from "../../src/core/agent-task.js";
+import { dryrunCommand, workflowCommand } from "../../src/core/lifecycle.js";
 import { MAX_ATTACHMENT_BYTES } from "../../src/core/mime.js";
+import { writePinnedSolution } from "../../src/core/pin.js";
 import { loadProfileById } from "../../src/core/profile.js";
 import { startRun } from "../../src/core/runner.js";
 import { loadStep } from "../../src/core/runs.js";
@@ -189,6 +191,19 @@ describe("no usable file means no agent run (Task 4)", () => {
     const run = await startRun({ home, workflow, key: `notes-flow:${AT}`, trigger: { kind: "manual" }, now: () => AT, sandbox: false });
     expect(run).toMatchObject({ status: "completed", reason: NO_NOTE });
     expect((await loadStep(home, run, "notes"))?.skipped).toBe(true);
+  });
+
+  it("a dry run that ended early, or ran no step, cannot be confirmed (review of PR #61)", async () => {
+    const { home } = await notesHome();
+    await writePinnedSolution(home, JSON.stringify({ id: "fixture-dry", version: "1.0.0", workflows: [], steps: [{ step_id: "report.final", phase: "REPORT", type: "auto", title: "Finish", why: "Finishes.", blocking: true, auto: { action: "noop" } }] }));
+    const add = (id: string, steps: object[]) => workflowCommand(home, "add", id, JSON.stringify({ description: "Reads notes", trigger: { manual: true }, steps }), () => AT);
+    const person = { interactive: true, as: "Owner" };
+    await add("notes-flow", [readStep("meeting-notes")]);
+    await dryrunCommand(home, "notes-flow", undefined, person, () => AT);
+    await expect(dryrunCommand(home, "confirm", "notes-flow", person, () => AT)).rejects.toThrow(`ended early: ${NO_NOTE}`);
+    await add("never-flow", [{ id: "memos", when: 'run.trigger == "never"', tool: "memo.list", args: {} }]);
+    await dryrunCommand(home, "never-flow", undefined, person, () => AT);
+    await expect(dryrunCommand(home, "confirm", "never-flow", person, () => AT)).rejects.toThrow("ran no step");
   });
 
   it("attachments: no usable attachment starts no agent", async () => {

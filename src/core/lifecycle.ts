@@ -7,7 +7,7 @@ import { listOutbox } from "./outbound.js";
 import { loadPinnedSolution } from "./pin.js";
 import { startRun } from "./runner.js";
 import { listInbox } from "./inbox.js";
-import { loadStep, type RunTrigger } from "./runs.js";
+import { listSteps, loadRun, loadStep, type RunTrigger } from "./runs.js";
 import { loadState } from "./state.js";
 import type { StepWhen } from "./types.js";
 import { whenHolds } from "./visibility.js";
@@ -226,6 +226,12 @@ async function confirm(home: string, id: string, by: string, now: string): Promi
   const run = state?.dry_run;
   if (!run || run.version !== workflow.version) throw new InputError(`Workflow '${id}' has no dry run of version ${workflow.version} yet: run 'taskfollow dryrun ${id}' first`);
   if (run.status === "failed") throw new InputError(`The last dry run of '${id}' failed; fix it and run 'taskfollow dryrun ${id}' again`);
+  // Review of PR #61: a dry run that stopped early (no file to read, D171) or ran no step showed nothing to confirm.
+  const record = await loadRun(home, id, run.run_id);
+  if (record?.reason) throw new InputError(`The last dry run of '${id}' ended early: ${record.reason} Then run 'taskfollow dryrun ${id}' again`);
+  if (record && !(await listSteps(home, record)).some((log) => log.status === "done" && !log.skipped)) {
+    throw new InputError(`The last dry run of '${id}' ran no step, so there is nothing to confirm yet; run 'taskfollow dryrun ${id}' again when it has something to do`);
+  }
   await saveWorkflowState(home, { ...state, workflow: id, sandbox: false, dry_run: { ...run, confirmed_by: by, confirmed_at: now } });
   await appendAudit(home, { ts: now, actor: "human", event: "workflow.dry_run_confirmed", ref: `workflow:${id}`, payload: { by, version: run.version, run_id: run.run_id } });
   return { status: "confirmed", workflow: id, version: run.version, run_id: run.run_id };
