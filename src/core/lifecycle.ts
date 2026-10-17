@@ -231,6 +231,7 @@ async function addRule(home: string, id: string, value: string | undefined, now:
   const { closeRuleCandidate, listRuleCandidates } = await import("./learning.js");
   const candidate = learning === undefined ? undefined : (await listRuleCandidates(home)).find((entry) => entry.id === learning);
   if (learning !== undefined && candidate?.status !== "open") throw new InputError(candidate ? `Rule candidate ${learning} is ${candidate.status} already` : `There is no rule candidate ${learning} ('taskfollow learnings' lists them)`);
+  if (candidate && candidate.workflow !== id) throw new InputError(`Rule candidate ${learning} is for workflow '${candidate.workflow}', not '${id}': add the rule to '${candidate.workflow}'`);
   const file = await appendRule(home, id, rule);
   if (learning !== undefined) await closeRuleCandidate(home, learning, "added", now);
   await appendAudit(home, { ts: now, actor: "agent", event: "rules.added", ref: `workflow:${id}`, payload: { workflow: id, ...(learning !== undefined ? { learning } : {}), sha256: createHash("sha256").update(rule).digest("hex") } });
@@ -239,7 +240,7 @@ async function addRule(home: string, id: string, value: string | undefined, now:
   return {
     status: "added", workflow: id, rule, file,
     next: `Tell the person exactly this rule, word for word: it applies from the next run and in chat now. To change or remove a rule, they edit ${file} themselves.`,
-    ...(delivered ? { cowork: `This workflow also runs on Claude Cowork's own schedule, which still has the copy uploaded before this rule. To use the rule there: run 'taskfollow check deliver ${id}' and upload the new zip in Settings, then Skills, in place of the old '${id}' skill.` } : {}),
+    ...(delivered ? { cowork: `A Cowork zip was made for this workflow; if you uploaded it, Cowork still has the copy from before this rule: run \`taskfollow check deliver ${id}\` and upload the new zip.` } : {}),
   };
 }
 

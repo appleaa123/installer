@@ -307,6 +307,20 @@ describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)
     await expect(rule(home, "inbox", { rule: "Again.", learning: candidate?.id })).rejects.toThrow(`Rule candidate ${candidate?.id} is added already`);
   });
 
+  it("refuses to close a candidate with a rule for a different workflow", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await add(home, "leads", { description: "Qualify leads." });
+    const { requestApproval, rejectItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    const { collectRuleCandidates } = await import("../../src/core/learning.js");
+    const asked = await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", { to: 1 }), via: "runner", run: { workflow: "inbox", run_id: "r1", step: "reply" }, why: "Reply" }, AT);
+    await rejectItem(home, asked.id, { name: "Owner", role: "decision_maker" }, "too formal", AT);
+    const [candidate] = await collectRuleCandidates(home, AT);
+    await expect(rule(home, "leads", { rule: "Friendly tone.", learning: candidate?.id })).rejects.toThrow(`Rule candidate ${candidate?.id} is for workflow 'inbox', not 'leads': add the rule to 'inbox'`);
+    expect(await rulesOf(work, "leads")).toContain("None yet.");
+  });
+
   it("audits the rule by fingerprint, never by its text", async () => {
     const { home } = await install();
     await add(home, "inbox", { description: "Sort mail." });
@@ -342,7 +356,7 @@ describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)
     await writeFile(join(work, "taskfollow-deliver", "inbox.zip"), "zip");
     expect(await rule(home, "inbox", { rule: "Mine." })).toMatchObject({
       status: "added",
-      cowork: "This workflow also runs on Claude Cowork's own schedule, which still has the copy uploaded before this rule. To use the rule there: run 'taskfollow check deliver inbox' and upload the new zip in Settings, then Skills, in place of the old 'inbox' skill.",
+      cowork: "A Cowork zip was made for this workflow; if you uploaded it, Cowork still has the copy from before this rule: run `taskfollow check deliver inbox` and upload the new zip.",
     });
   });
 
