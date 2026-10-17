@@ -14,7 +14,7 @@ const EXAMPLE = { run: "a run id, for example 2026-10-14-1a2b3c4d", since: "a da
 export const WHY_TOOLS: readonly ToolDef[] = [
   {
     name: "why.show", meta: true,
-    description: "What happened and why, from TaskFollow's own records: the runs since a date (default: the last 24 hours) with their results, one run's timeline (who did what, and why) by its id, or one day's direct calls to watched services. It changes nothing, except that waiting suggestions are shown only once: tell the person about them.",
+    description: "What happened and why, from TaskFollow's own records: the runs since a date (default: the last 24 hours) with their results, one run's timeline (who did what, and why) by its id, or one day's direct calls to watched services. It changes nothing, except that waiting suggestions are shown only once, and corrections from approvals are kept as rule candidates: tell the person about both.",
     fields: { run: { type: "string", maxLength: 32 }, since: { type: "string", maxLength: 40 }, direct: { type: "string", maxLength: 10 } }, required: [],
     parse: (args) => {
       onlyKeys(args, KEYS, "why.show");
@@ -32,8 +32,11 @@ export const WHY_TOOLS: readonly ToolDef[] = [
       const { whyCommand } = await import("./why.js");
       const { run, since, direct } = args as { run?: string; since?: string; direct?: string };
       const shown = await whyCommand(ctx.home, run ?? since ?? (direct !== undefined ? "direct" : undefined), ctx.now, direct);
-      const { suggestions, suggestions_damaged: damaged, ...rest } = shown;
-      return { ...(suggestions !== undefined ? { suggestions } : {}), ...(damaged !== undefined ? { suggestions_damaged: damaged } : {}), ...rest };
+      const { suggestions, suggestions_damaged: damaged, rule_candidates: candidates, rule_candidates_more: more, ...rest } = shown;
+      return {
+        ...(suggestions !== undefined ? { suggestions } : {}), ...(damaged !== undefined ? { suggestions_damaged: damaged } : {}),
+        ...(candidates !== undefined ? { rule_candidates: candidates } : {}), ...(more !== undefined ? { rule_candidates_more: more } : {}), ...rest,
+      };
     },
   },
 ];

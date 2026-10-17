@@ -3,7 +3,7 @@ import { editItem, rejectItem } from "../../src/core/approvals.js";
 import { setSecret } from "../../src/core/keychain.js";
 import { prepareAgentCall } from "../../src/core/agent-call.js";
 import { getApproval, refuseDecision, requestApproval } from "../../src/core/approvals.js";
-import { collectLearnings, collectRuleCandidates, listLearnings, listRuleCandidates, redactValue, submitLearnings } from "../../src/core/learning.js";
+import { collectLearnings, collectRuleCandidates, learningsCommand, listLearnings, listRuleCandidates, redactValue, submitLearnings } from "../../src/core/learning.js";
 import { saveWritten } from "../../src/core/workflow-skill.js";
 import { callTool } from "../../src/core/mcp.js";
 import { startRun } from "../../src/core/runner.js";
@@ -188,6 +188,24 @@ describe("rule candidates for my-rules.md (item 8)", () => {
     await rejectItem(at, created.id, { name: "Owner", role: "decision_maker" }, "Not this product", AT);
     const [found] = await collectRuleCandidates(at, AT);
     expect(found?.body).toBe("In workflow 'store', a person rejected the mcp__shop__update call in step 'publish'. Their reason: \"Not this product\".");
+  });
+
+  it("learnings lists Skills Wiki learnings and rule candidates", async () => {
+    const { at, item } = await owned(SKILL);
+    await rejectItem(at, item, ADA, "wrong tone", AT);
+    await collectLearnings(at, AT);
+    await collectRuleCandidates(at, AT);
+    expect(await learningsCommand(at, undefined, undefined, AT)).toEqual({ learnings: [expect.objectContaining({ pack: "demo" })], rule_candidates: [expect.objectContaining({ workflow: "draft", status: "open" })] });
+  });
+
+  it("learnings dismiss closes an open candidate and audits it; it refuses an unknown or closed one", async () => {
+    const { at, item } = await owned();
+    await rejectItem(at, item, ADA, "no", AT);
+    const [candidate] = await collectRuleCandidates(at, AT);
+    expect(await learningsCommand(at, "dismiss", String(candidate?.id), AT)).toEqual({ status: "dismissed", learning: candidate?.id });
+    await expect(learningsCommand(at, "dismiss", String(candidate?.id), AT)).rejects.toThrow(`Rule candidate ${candidate?.id} is dismissed already`);
+    await expect(learningsCommand(at, "dismiss", "99", AT)).rejects.toThrow("There is no rule candidate 99");
+    await expect(learningsCommand(at, "dismiss", "x", AT)).rejects.toThrow("learnings dismiss <n>");
   });
 
   it("an approval the agent tried to decide (refused) makes no candidate", async () => {

@@ -53,6 +53,6 @@ describe("taskfollow workflow, dryrun, sandbox, harden, autonomy, alerts and lea
     expect(runCli(["autonomy", "grant", "note/add/memo.add", "--as", "Owner"], { home: dir }).json).toMatchObject({ code: 2, error: expect.stringContaining("decision maker runs it in their own terminal") });
     expect(runCli(["alerts"], { home: dir }).json).toEqual({ alerts: [] });
     expect(runCli(["alerts", "ack", "1"], { home: dir }).code).toBe(2);
-    expect(runCli(["learnings"], { home: dir }).json).toEqual({ learnings: [] });
+    expect(runCli(["learnings"], { home: dir }).json).toEqual({ learnings: [], rule_candidates: [] });
   });
 });

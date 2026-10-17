@@ -152,6 +152,15 @@ export async function collectRuleCandidates(home: string, now: string): Promise<
 
 export const listRuleCandidates = (home: string): Promise<RuleCandidate[]> => listRecords(home, RULES_DIR, isRuleCandidate);
 
+/** `taskfollow learnings [dismiss <n>]`: both kinds listed; a candidate the person said no to is dismissed. */
+export async function learningsCommand(home: string, sub: string | undefined, id: string | undefined, now: string): Promise<Record<string, unknown>> {
+  if (sub === undefined || sub === "list") return { learnings: await listLearnings(home), rule_candidates: await listRuleCandidates(home) };
+  if (sub !== "dismiss" || !id || !/^[1-9]\d*$/.test(id)) throw new InputError("learnings takes: list, or 'learnings dismiss <n>' with the number of a rule candidate");
+  const closed = await closeRuleCandidate(home, Number(id), "dismissed", now);
+  await appendAudit(home, { ts: now, actor: "agent", event: "rules.dismissed", ref: `rule:${closed.id}`, payload: { workflow: closed.workflow } });
+  return { status: "dismissed", learning: closed.id };
+}
+
 /** Closes an open candidate: its rule was added (`workflow rule`), or the person said no (`learnings dismiss`). */
 export async function closeRuleCandidate(home: string, id: number, status: "added" | "dismissed", now: string): Promise<RuleCandidate> {
   const found = (await listRuleCandidates(home)).find((candidate) => candidate.id === id);

@@ -118,6 +118,19 @@ describe("why.show, the why command as a tool (D169)", () => {
     expect(shown.suggestions).toEqual([SUGGESTION]);
   });
 
+  it("why.show puts suggestions first, then rule_candidates (item 8)", async () => {
+    const { home } = await finishedRun();
+    await waitSuggestion(home);
+    const { saveWritten } = await import("../../src/core/workflow-skill.js");
+    await saveWritten(home, { skill_folders: [{ workflow: "inbox", path: join(home, "skills", "inbox"), root: join(home, "skills") }] });
+    const { requestApproval, rejectItem } = await import("../../src/core/approvals.js");
+    const { prepareAgentCall } = await import("../../src/core/agent-call.js");
+    const asked = await requestApproval(home, { prepared: prepareAgentCall("reply", "mcp__mail__send", {}), via: "runner", run: { workflow: "inbox", run_id: "r1", step: "reply" }, why: "Reply" }, AT);
+    await rejectItem(home, asked.id, { name: "Owner", role: "decision_maker" }, "too formal", AT);
+    const shown = await show(home, {});
+    expect(Object.keys(shown).slice(0, 2)).toEqual(["suggestions", "rule_candidates"]);
+  });
+
   it("why.show puts a damaged suggestion file's message first too", async () => {
     const { home } = await finishedRun();
     await waitSuggestion(home);
@@ -166,6 +179,8 @@ describe("why.show, the why command as a tool (D169)", () => {
   });
 
   it("why.show writes nothing to the audit log of its own, except D164's shown-suggestions line", async () => {
+    // Item 8 (D173): the list form also keeps corrections as rule candidates (and audits rules.candidate); this
+    // fixture's approval was approved, not edited or rejected, and no skill folder is recorded, so nothing is kept.
     const { home, run } = await finishedRun();
     const before = await auditLines(home);
     await show(home, {});
