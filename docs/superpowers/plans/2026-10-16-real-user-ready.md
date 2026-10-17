@@ -1,6 +1,6 @@
 # Real-user readiness (D175)
 
-Written 2026-10-16. Plan only: nothing here is built yet. Built **after items 6a and 6b**, which also edit `solutions/starter.json` and `INSTALL.md`; line numbers below are from main `5bc26c8` and may move, so every task names the text to find, not only the line.
+Written 2026-10-16. Plan only: nothing here is built yet. Built **after item 8** (D173, operator rule 15, building now); items 6a (D171) and 6b (D172) are merged. Line numbers below are checked against main `d1ae599` where marked "pre-build check"; item 8 may still move some, so every task names the text to find, not only the line.
 
 ## Goal, in the owner's words
 
@@ -31,7 +31,7 @@ Written 2026-10-16. Plan only: nothing here is built yet. Built **after items 6a
 
 Files: `solutions/starter.json`, `solutions/starter-skillswiki.json` (step `preflight.tools`, the line containing `"Connect your agent to the installer's tools"`), `INSTALL.md` §5, `tests/unit/starter-minimum.test.ts`, `tests/e2e/` (one new file or the existing starter e2e).
 
-- `preflight.tools` gets `"blocking": false` in both starters, and in `tests/fixtures/solution-starter.json` (line 24). Its hint stays `NO_AGENT_TOOLS_HINT`.
+- `preflight.tools` gets `"blocking": false` in both starters, and in `tests/fixtures/solution-starter.json` (line 24). In the shipped starter the step is at `starter.json:810-819`, `"blocking": true` at `:815` (pre-build check). Its hint stays `NO_AGENT_TOOLS_HINT`.
 - **Non-blocking alone is not enough (review finding 1).** A failed auto step is returned as the current step until `resume` (`engine.ts:161-170`; `currentStep` skips only a *blocked* non-blocking step, `engine.ts:82`), and `resume` reopens every blocked step with `attempts: 0` (`engine.ts:268-269`), so the three-failure loop would repeat on every resume. Change, in the engine: `failStep` (`engine.ts:115-123`) moves a step that is **not blocking** straight to `blocked` on its first failure (hint and reason kept), and `resume` leaves a non-blocking blocked step alone (it reopens only blocking ones and failed ones). A blocking step keeps today's three tries.
 - The hint's last clause becomes truthful for any agent: "…no known agent to connect TaskFollow's tools to: use 'taskfollow tool <name>' for TaskFollow's tools (INSTALL.md section 5); install Claude Code only if you want the tools over MCP". (No "install a supported agent, then resume" as the only way out.)
 - INSTALL.md §5 gains one sentence: "Only Claude Code registers TaskFollow's tools as an MCP server; any other agent uses `taskfollow tool <name> '<json>'`, which goes through the same approval gate."
@@ -39,8 +39,8 @@ Files: `solutions/starter.json`, `solutions/starter-skillswiki.json` (step `pref
 
 Tests:
 - `starter-minimum.test.ts`: "preflight.tools is not blocking in either starter".
-- e2e `an install on an agent with no profile reaches the MODE questions in one start`: a scratch home, `PATH` without `claude`/`codex`; ONE `start --solution starter` returns step `mode.purpose`; `preflight.tools` is recorded `blocked` with the new hint after one attempt; `report` lists it under Limited.
-- `engine.test.ts`: "a non-blocking auto step that fails is blocked at once and the install goes on"; "resume reopens a blocked blocking step but leaves a blocked non-blocking step alone"; "a blocking step still gets three tries" (kept behaviour).
+- e2e `an install on an agent with no profile reaches the MODE questions in one start`. **Safety (pre-build check, finding 6): do NOT strip `PATH`.** A `start` in a test home has registered with the real Claude Code before (`docs/human-tasks.md:271`). Use the pinned-starter pattern of `tests/e2e/consult.test.ts:11-19` with `probe.args = { profile: "missing-agent" }` (`tests/fixtures/profiles/missing-agent.json`). ONE `start --solution <pinned>` returns step `mode.purpose` (`starter.json` ~:821); `preflight.tools` is recorded `blocked` with the new hint after one attempt; `report` lists it under Limited.
+- `tests/unit/engine-failure.test.ts` (next to its tests at :39 and :53, not engine.test.ts): "a non-blocking auto step that fails is blocked at once and the install goes on"; "resume reopens a blocked blocking step but leaves a blocked non-blocking step alone"; "a blocking step still gets three tries" (kept behaviour).
 - **Why non-blocking is safe for Claude Code too (Q1, accepted):** a Claude Code install whose registration fails shows `register.ts:69`'s error under Limited; T5 still records the tools path through `taskfollow tool`; T7 carries its own `--mcp-config`, so the runner proof does not depend on the user-scope registration.
 
 ### Task 2 — A2: the doability page for an unknown agent
@@ -68,7 +68,7 @@ Files: `INSTALL.md` "Before you start", `src/core/report.ts` (`runtimeLimits`, `
 
 Tests:
 - "runtimeLimits for an unknown agent says in plain words what runs and what needs a key".
-- "the report's agent line for an unknown agent has no 'fallbacks apply' and no level number".
+- "the report's agent line for an unknown agent has no 'fallbacks apply' and no level number". In the same commit, rewrite `tests/unit/report.test.ts:108-113` ("says fallbacks apply when no agent was recognised"), which asserts the old "unknown agent — level 0 of 3 …" line.
 - "the Runs line names Claude only for Claude Code".
 - e2e "a dry run on an agent with no profile stops with the hint naming taskfollow model and taskfollow secret model" (the exact hint is asserted), and "with a direct model set up (a fake model server, as the model tests do), the same dry run completes".
 
@@ -76,7 +76,10 @@ Tests:
 
 Files: `src/core/skills.ts` (`skillRoots` and a new `rootsFor`), `src/core/workflow-skill.ts` (`installTargets`), `src/core/runner.ts:55`, `src/core/check-reads.ts:35`, `src/core/check-skill.ts:26`, `src/core/agent-file.ts`, `src/core/uninstall.ts`, `src/core/lifecycle.ts` (`noFolderNote`), tests `skills.test.ts`, `workflow-skill.test.ts`, `runner.test.ts` (skills block), `check-reads.test.ts`, `check-skill.test.ts`, `uninstall.test.ts`.
 
-- **One function (review finding 2).** `rootsFor(profile | undefined, workDir, env)` in `skills.ts` is the only place roots are derived: the profile's `skills_dirs` when it has them; otherwise, with a known `work_dir`, `{ project: <work_dir>/.agents/skills }`. It replaces the four `profile ? skillRoots(...) : {}` call sites (`runner.ts:55`, `check-reads.ts:35`, `check-skill.ts:26`, `installTargets`) and the inventory (`skills.ts:154`), so a run, the checks and `workflow add` agree on where the skill is.
+- **One function (review finding 2).** `rootsFor(profile | undefined, workDir, env)` in `skills.ts` is the only place roots are derived: the profile's `skills_dirs` when it has them; otherwise, with a known `work_dir`, `{ project: <work_dir>/.agents/skills }`. **It keeps `skillRoots`' home-folder guard (`skills.ts:57-58`, pre-build check finding 2):** when the install folder is the person's home folder, there is no project root and nothing is written; never `~/.agents/skills`. It replaces the four `profile ? skillRoots(...) : {}` call sites (`runner.ts:55`, `check-reads.ts:35`, `check-skill.ts:26`, `installTargets`) and the inventory (`skills.ts:154`), so a run, the checks and `workflow add` agree on where the skill is. `restoreAfterConsult` (`consult.ts:108`) also reads `installTargets` and follows automatically.
+- **The discovery skill moves too (pre-build check finding 1).** 6b's `writeDiscoverySkill` (`workflow-skill.ts:117-135`) goes through `installTargets`, so with `rootsFor` it lands in `<work_dir>/.agents/skills/find-my-repetitive-work` and is recorded in `written.json`; `exports/` is used only when `work_dir` is unknown or is the home folder. Update INSTALL.md 9b item 2 (`:137`) to say where the skill is, and the uninstall "kept" entry (`uninstall.ts:94`) to say "only when TaskFollow knows no install folder". D175 amends D172 accordingly.
+- **The Cowork zip (pre-build check finding 3).** `skillText` (`deliver.ts:84-88`) hard-codes `.claude/skills`. After item 8 merges (it should read the path from `loadWritten`), verify it; if it still names `.claude/skills`, route it through `installTargets` / `written.json` in this item, so a workflow skill under `.agents/skills` is the one zipped.
+- **The no-folder note (pre-build check finding 4).** `noFolderNote` (`lifecycle.ts:104-108`): the "does not know which folder" branch (`:106`) is conditioned on `!workDirKnown` alone, since with the fallback every profile has a project root once `work_dir` is known.
 - **Any profile without `skills_dirs` (review finding 3).** `profiles/codex.json` has `instructions_file: "AGENTS.md"` but no `skills_dirs`, so today `workflow add … my_rules` is refused for Codex. The fallback applies to any profile without `skills_dirs`, not only to no profile; no profile file changes. This amends Out of scope's earlier "Codex unchanged" (D150): Codex gets `.agents/skills/` too.
 - The agent file: the profile's `instructions_file` when it has one; with no profile, `<work_dir>/AGENTS.md`.
 - **The folder is read by all six agents (Q2; sources read 2026-10-16, recorded in D175):** Codex learn.chatgpt.com/docs/build-skills; Gemini CLI geminicli.com/docs/cli/skills/; Cursor cursor.com/docs/context/skills; OpenClaw docs.openclaw.ai/tools/skills.md (caveat: its workspace defaults to `~/.openclaw/workspace`, so the install folder must be its workspace); Hermes hermes-agent.nousresearch.com/docs/user-guide/features/skills (after `hermes skills trust`); Antigravity antigravity.google/docs/skills. No fallback folder is needed.
@@ -95,6 +98,10 @@ Tests:
 - "taskfollow skills for an unknown agent says listed in AGENTS.md, ask your agent to read it".
 - "uninstall removes the .agents/skills folders and the AGENTS.md section TaskFollow wrote, and nothing else".
 - "a Claude Code install still writes .claude/skills and CLAUDE.md".
+- "an install with no agent profile writes the discovery skill under .agents/skills, not exports/".
+- "an install in the home folder writes no workflow skill and no discovery skill under ~/.agents/skills".
+- "a Cowork zip of a workflow whose skill is under .agents/skills carries that skill" (only if `skillText` still names `.claude/skills` after item 8).
+- "with a known install folder, the no-folder note never says TaskFollow does not know the folder".
 
 ### Task 5 — A6 and Cowork: the words for any agent
 
@@ -105,9 +112,11 @@ Files: `INSTALL.md` "Before you start" point 4, `START-HERE.md` (prerequisites, 
 - Antigravity (D114, D170a): one sentence in START-HERE and the README row: "Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts Antigravity on its own, because Antigravity's terms forbid that (read 2026-10-09)."
 - Cowork, one paragraph in START-HERE and README: "Claude Cowork on the web has no terminal, so it cannot install TaskFollow. Install with an assistant that has one; TaskFollow can then hand a workflow that only reads and reports to Cowork, as a skill you upload and a scheduled task you paste (INSTALL.md 9c)."
 
+- Operator rule 10 (`INSTALL.md:253`) says "of your agent file (CLAUDE.md, or AGENTS.md on other agents)" instead of naming only CLAUDE.md (pre-build check finding 5). D175 adds no operator rule (rule 14 is at `INSTALL.md:259`, rule 15 is item 8's).
+- Anchors (pre-build check finding 9): INSTALL.md point 4 at `:14`, point 1 at `:11`; START-HERE `:6` (prerequisites), `:23-51` (steps 3–4), `:65` (last bullet).
 - INSTALL.md "Before you start" point 1's restart line ("quit Claude Code … `claude --continue`") becomes agent-neutral: "if you have to restart, the person opens their assistant again in the same folder and says 'carry on with TaskFollow' (Claude Code: `claude --continue`)". START-HERE's last bullet gets the same wording.
 
-Tests (doc text): "INSTALL.md does not ask the person to install Claude Code", "the restart line names Claude Code only as an example", "START-HERE names an assistant other than Claude Code", "README's Antigravity row says it can be used in chat", "START-HERE says Cowork on the web cannot install TaskFollow".
+Tests (doc text): "INSTALL.md does not ask the person to install Claude Code", "the restart line names Claude Code only as an example". Update `tests/e2e/install-doc.test.ts:116-117`, which asserts /quit Claude Code and open it again/, in the same commit, "START-HERE names an assistant other than Claude Code", "README's Antigravity row says it can be used in chat", "START-HERE says Cowork on the web cannot install TaskFollow".
 
 ### Task 6 — B: §9.13 leftovers
 
@@ -115,7 +124,7 @@ Files: `package.json` (`description`), `INSTALL.md` title and first paragraph, `
 
 - `package.json` description: "A thin layer on the AI agent you already have: step-by-step setup, workflows with a person's approval, and honest feedback on what your agent can do".
 - INSTALL.md title "# Set up TaskFollow", first line: "You are the operator of this install. A person asked you to set up TaskFollow on the agent they already have (you). Follow these steps exactly." (Check every test that quotes the old title first; update it in the same commit.)
-- README "Status": "v1 in progress (scope: docs/scope-refresh.md section 9); see docs/next-steps.md". Remove "Plans 1–11 implemented".
+- README "Status" (`:14`): "v1 in progress (scope: docs/scope-refresh.md section 9); see docs/next-steps.md". Remove "Plans 1–11 implemented". README `:15` ("The package is not published (`"private": true`)") goes with Task 10. The agent table rows for Antigravity (`:36`) and "Any other agent" (`:37`) are reworded with Task 5 (any agent installs and uses TaskFollow in chat; `.agents/skills`, AGENTS.md). `docs/next-steps.md:24`'s stale sentence goes with the rewrite.
 - `docs/next-steps.md` rewritten from §9, short and current: Done (v1 items with PR and decision), In progress, The owner's tasks (pointer to human-tasks.md), Postponed (D170b level 2, WhatsApp extras, other agents' profiles), Rules to keep. Drop the stale test counts and "the full rewrite comes once…". Keep the build map table (it traces bugs to PRs).
 
 Tests: "package.json's description does not say Skills Wiki solutions", "INSTALL.md's first line says set up TaskFollow".
@@ -136,7 +145,7 @@ Tests:
 
 ### Task 8 — C2: how to join, in the exact words
 
-Files: `solutions/starter.json` (`channels.join-solo` and the Telegram join step; find `"Send the code it prints`), `solutions/starter-skillswiki.json` (the two join steps), `src/core/actions.ts` (the "has not joined yet" hint), `INSTALL.md` §7 items 1, 2 and 5, tests `starter-minimum.test.ts`, `actions.test.ts`. (The review also named the `members.ts:13` comment; it already says `/join CODE`, the start link, or an email whose first line is `JOIN CODE`, so it stays.)
+Files: `solutions/starter.json` (`channels.join-solo` and the Telegram join step; find `"Send the code it prints`), `solutions/starter-skillswiki.json` (the two join steps), `src/core/actions.ts` (the "has not joined yet" hint), `INSTALL.md` §7 items 1, 2 and 5, tests `starter-minimum.test.ts`, `actions.test.ts`. Anchors (pre-build check): `starter.json:1669` (team) and `:1713` (solo), `starter-skillswiki.json:107` and `:110`, `actions.ts:210`, INSTALL §7 item 2 (`:89`) and item 5 (`:93`). (The review also named the `members.ts:13` comment; it already says `/join CODE`, the start link, or an email whose first line is `JOIN CODE`, so it stays.)
 
 - The instruction becomes: "Follow the line `taskfollow invite` printed for your channel: on Telegram open the link or send `/join <code>`; by email, send an email whose first line is `JOIN <code>`; in Slack, send `JOIN <code>` to the app". The Telegram-only step: "on Telegram open the link it printed, or send `/join <code>` to the bot".
 - `actions.ts` hint ends the same way.
@@ -162,13 +171,13 @@ Files: `package.json` (`scripts`), `START-HERE.md` (one note), `tests/unit/packa
 - Remove `"private": true` (`package.json:4`): it makes `npm publish` refuse, which would block the owner's publish. The owner still runs the publish.
 - START-HERE, under the install sentence: "Before TaskFollow is published, the person who invited you sends a file `taskfollow-<version>.tgz`; run `npm install -g <that file>` first, then use the same sentence."
 
-Tests: "package.json builds before packing", "package.json is not private".
+Tests, in `tests/e2e/release.test.ts` (next to the pack tests at :23-30): "package.json builds before packing", "package.json is not private".
 
 ### Task 11 — docs and the decision
 
 D175 in DECISIONS.md (the findings and fixes, the `.agents/skills` evidence with its date), the build map row in `docs/next-steps.md`, human task 42 in `docs/human-tasks.md`.
 
-## Human task 42 (about 30 minutes; 37 is the highest on main, items 6a, 6b and 8 take 38–41): install on an agent TaskFollow has no profile for
+## Human task 42 (about 30 minutes; 40 is the highest on main, item 8 takes 41, this item takes 42): install on an agent TaskFollow has no profile for
 
 On Antigravity (or any agent a friend has): first read Antigravity's current terms (the clause on other programs, D114) and tell Claude whether it still stands. Then, in a throwaway folder, paste the one-sentence install into Antigravity's chat and go through setup on your own; add one report-only workflow and run it once by asking in chat. Tell Claude where it confused you, where it stopped, and what the report's Agent line said.
 
@@ -196,3 +205,7 @@ On Antigravity (or any agent a friend has): first read Antigravity's current ter
 6. Task 3: the Runs line names Claude only for Claude Code (report.ts:91-92).
 7. C3 keeps `skipped: true` and uses `prepared.level`; C1 compares the SMTP name too; C2 covers INSTALL §7 items 1–2; the restart line is agent-neutral; `"private": true` is removed. Rejected: the `members.ts:13` comment is already right.
 Q1 accepted with the review's reasons; Q2 answered with sources (Task 4, D175).
+
+## Pre-build check applied (2026-10-16, main d1ae599)
+
+Rebased onto main after 6a (D171) and 6b (D172) merged. Applied: (1) the discovery skill follows `rootsFor` into `.agents/skills`, INSTALL 9b item 2 and the uninstall "kept" entry updated, D175 amends D172; `restoreAfterConsult` named; (2) `rootsFor` keeps the home-folder guard; (3) `skillText`'s hard-coded `.claude/skills` is verified after item 8 and routed through the written path if still there; (4) `noFolderNote` on `!workDirKnown` alone; (5) operator rule 10 names AGENTS.md; (6) the e2e uses the pinned starter with the `missing-agent` profile and never strips PATH; (7) engine tests in `engine-failure.test.ts`, anchors refreshed; (8) `report.test.ts:108-113` rewritten with Task 3; (9) `install-doc.test.ts:116-117` updated with Task 5; (10) README :14/:15/:36/:37, release tests in `release.test.ts`, next-steps :24; (11) join-wording anchors; (12) human task 42 with 40 the highest on main. All citations checked on d1ae599.
