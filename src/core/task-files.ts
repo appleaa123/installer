@@ -8,7 +8,7 @@ import { MAX_ATTACHMENT_BYTES } from "./mime.js";
 
 /**
  * Item 6a, Task 4 (D171): a task step that lists `Read` reads only files TaskFollow's code chose, never a path the
- * model picked. `read_from: "attachments"` takes the saved attachments named in the step's own input (D133's form);
+ * model picked. `read_from: "attachments"` takes the saved attachments listed under the input's `attachments` (D133's form);
  * `read_from: "meeting-notes"` takes the newest regular file in `<install folder>/meeting-notes/`. Each is checked
  * inside its folder after `realpath`, links are skipped, and the attachment size cap applies. The chosen absolute
  * paths go to the hook (`hook.json` `files`), which allows a `Read` of exactly those. Accepted limit: a process
@@ -28,12 +28,13 @@ export interface ChosenFile {
 
 const inside = (root: string, path: string): boolean => path.startsWith(root + sep);
 
-/** Every string in the input that is a saved attachment's reference, once each. */
-function referencesIn(value: unknown): string[] {
-  if (typeof value === "string") return ATTACHMENT_REF.test(value) ? [value] : [];
-  if (Array.isArray(value)) return value.flatMap(referencesIn);
-  if (typeof value === "object" && value !== null) return Object.values(value).flatMap(referencesIn);
-  return [];
+/**
+ * The saved attachments' references in the input's own `attachments` list (the message's, `${event.attachments}`), once
+ * each. Only that key: a reference written in the message's text is untrusted and never chosen (review of PR #61).
+ */
+function referencesIn(input: unknown): string[] {
+  const list = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>).attachments : undefined;
+  return Array.isArray(list) ? list.filter((ref): ref is string => typeof ref === "string" && ATTACHMENT_REF.test(ref)) : [];
 }
 
 /** A regular file within the cap, still inside `root` once resolved; null otherwise. */
@@ -48,7 +49,7 @@ async function usable(path: string, root: string): Promise<string | null> {
   }
 }
 
-/** The saved attachments the step's input names, each a regular file inside `data/inbox-files/`. */
+/** The saved attachments the step's input lists under `attachments`, each a regular file inside `data/inbox-files/`. */
 export async function chooseAttachments(home: string, input: unknown): Promise<ChosenFile[]> {
   const root = await realpath(join(home, ATTACHMENTS_DIR)).catch(() => null);
   if (root === null) return [];

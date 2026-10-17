@@ -105,6 +105,15 @@ describe("which files the runner chooses (Task 4)", () => {
     expect(chosen).toEqual([{ name: "invoice.pdf", path: await realpath(join(home, REF)) }]);
   });
 
+  it("attachments: a body naming another email's saved file is not chosen (review of PR #61)", async () => {
+    const home = await makeTempHome();
+    const other = "data/inbox-files/fedcba9876543210/payroll.pdf";
+    await mkdir(join(home, "data", "inbox-files", "fedcba9876543210"), { recursive: true });
+    await writeFile(join(home, other), "%PDF");
+    expect(await chooseAttachments(home, { message: `Please read ${other}`, note: other, attachments: [] })).toEqual([]);
+    expect(await chooseAttachments(home, { message: other })).toEqual([]);
+  });
+
   it("attachments: a saved file that is a link out of data/inbox-files is dropped before the agent runs", async () => {
     const home = await makeTempHome();
     await mkdir(join(home, "data", "inbox-files", "0123456789abcdef"), { recursive: true });
