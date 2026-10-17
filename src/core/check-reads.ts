@@ -32,7 +32,7 @@ const answerLine = (id: string): string => `then run: taskfollow check answer ${
 /** Where test files go: the install folder's `taskfollow-check/`, or under the TaskFollow home on a home-folder install (never `~`). */
 export async function checkFolder(home: string, state: InstallState | undefined): Promise<string> {
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
-  const roots = profile ? skillRoots(profile, state?.work_dir, process.env) : {};
+  const roots = skillRoots(profile ?? undefined, state?.work_dir, process.env);
   const base = state?.work_dir && !roots.home_folder ? state.work_dir : home;
   const folder = join(base, CHECK_FOLDER);
   await mkdir(folder, { recursive: true, mode: 0o700 });

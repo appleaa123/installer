@@ -63,6 +63,10 @@ describe("INSTALL.md", () => {
     expect(before).toContain("without one the install stops at the dry run");
   });
 
+  it("says where the discovery skill is on an agent TaskFollow has no profile for (D175)", () => {
+    expect(DOC).toContain("it is in `.agents/skills/find-my-repetitive-work/` in the install folder; only when TaskFollow knows no install folder");
+  });
+
   it("says any agent without TaskFollow's MCP server uses taskfollow tool (D175)", () => {
     expect(DOC).toContain("Only Claude Code has TaskFollow's tools registered as an MCP server; any other agent uses `taskfollow tool <name> '<json arguments>'`");
   });

@@ -165,7 +165,7 @@ describe("discovery: the find-my-repetitive-work skill (Task 9, D165)", () => {
   });
 
   it("uninstall says the exports/ copy stays with the home (review of PR #62)", () => {
-    expect(readFileSync("src/core/uninstall.ts", "utf8")).toContain("the find-my-repetitive-work skill under exports/");
+    expect(readFileSync("src/core/uninstall.ts", "utf8")).toContain("the find-my-repetitive-work skill under exports/, only when TaskFollow knew no install folder");
   });
 
   it("INSTALL.md 9b says what to do when the person is not sure what repeats", () => {

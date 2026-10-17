@@ -104,7 +104,7 @@ function newWorkflow(id: string, value: string | undefined, suggested: readonly 
 /** What the person must hear when the workflow's own skill cannot be written (9.7: say every gap clearly). */
 function noFolderNote(profile: { name: string; skills_dirs?: { project?: string } } | undefined, roots: SkillRoots, workDirKnown: boolean): string {
   if (roots.home_folder) return HOME_FOLDER_NOTE;
-  if (!workDirKnown && profile?.skills_dirs?.project) return "TaskFollow does not know which folder this install was started from, so the workflow's own skill and the CLAUDE.md section are not written; tell the person";
+  if (!workDirKnown) return "TaskFollow does not know which folder this install was started from, so the workflow's own skill and the agent file's section are not written; tell the person";
   return `${profile?.name ?? "This agent"} has no skills folder TaskFollow knows, so this workflow's own rules have nowhere to live yet; tell the person`;
 }
 

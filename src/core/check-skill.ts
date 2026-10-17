@@ -23,7 +23,7 @@ export async function startSkillCheck(home: string, state: InstallState | undefi
   const { agent, version } = agentOf(state, typeof flags.value === "string" ? flags.value : undefined);
   const workflow = typeof flags.workflow === "string" ? (await loadWorkflow(home, requireWorkflowId(flags.workflow), DEFAULT_TOOLS)).id : undefined;
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile).catch(() => null) : null;
-  const project = profile ? skillRoots(profile, state?.work_dir, process.env).project : undefined;
+  const project = skillRoots(profile ?? undefined, state?.work_dir, process.env).project;
   if (!project) {
     await recordResult(home, { need: "skills", ...(workflow ? { workflow } : {}), result: "not-checked", reason: NO_FOLDER, at: context.now(), agent, agent_version: version, test: "t4" });
     return { need: "skills", result: "not checked", why: NO_FOLDER };

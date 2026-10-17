@@ -42,14 +42,20 @@ export async function loadWritten(home: string): Promise<Written> {
 
 export const saveWritten = (home: string, written: Written): Promise<void> => writeConfig(home, WRITTEN_FILE, written);
 
-/** The install's agent and its folders; nothing when no agent was found yet. */
+/** The agent-level file for an agent TaskFollow has no profile for: the cross-agent `AGENTS.md` (D175). */
+export const SHARED_AGENT_FILE = "AGENTS.md";
+
+/**
+ * The install's agent and its folders. An agent TaskFollow has no profile for still gets the shared folders (D175):
+ * `.agents/skills` and `AGENTS.md` in the install folder; nothing when the install folder is unknown or the home folder.
+ */
 export async function installTargets(home: string): Promise<{ readonly profile?: RuntimeProfile; readonly roots: SkillRoots; readonly agentFile: string | null }> {
   const state = await loadState(home);
-  if (!state?.runtime?.profile) return { roots: {}, agentFile: null };
-  const profile = await loadProfileById(state.runtime.profile);
-  const roots = skillRoots(profile, state.work_dir, process.env);
-  const agentFile = state.work_dir && profile.instructions_file && !roots.home_folder ? join(state.work_dir, profile.instructions_file) : null;
-  return { profile, roots, agentFile };
+  const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
+  const roots = skillRoots(profile, state?.work_dir, process.env);
+  const file = profile ? profile.instructions_file : SHARED_AGENT_FILE;
+  const agentFile = state?.work_dir && file && !roots.home_folder ? join(state.work_dir, file) : null;
+  return { ...(profile ? { profile } : {}), roots, agentFile };
 }
 
 const oneLine = (text: string): string => {

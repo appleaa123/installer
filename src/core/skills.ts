@@ -50,8 +50,15 @@ const realOrSame = (path: string): string => {
   }
 };
 
-export function skillRoots(profile: RuntimeProfile, workDir: string | undefined, env: NodeJS.ProcessEnv): SkillRoots {
-  const dirs = profile.skills_dirs;
+/** D175: the project skills folder of the open Agent Skills convention, used when the agent's profile names none. */
+export const SHARED_SKILLS_DIR = ".agents/skills";
+
+/**
+ * The one place the agent's skill folders are worked out (D175): the profile's own, or `.agents/skills` in the install
+ * folder for an agent TaskFollow has no profile for, or whose profile names none. Never in the person's home folder.
+ */
+export function skillRoots(profile: RuntimeProfile | undefined, workDir: string | undefined, env: NodeJS.ProcessEnv): SkillRoots {
+  const dirs = profile?.skills_dirs ?? { project: SHARED_SKILLS_DIR };
   const user = env[USER_SKILLS_ENV] || (dirs?.user ? expandHome(dirs.user) : undefined);
   const project = workDir && dirs?.project ? join(workDir, dirs.project) : undefined;
   const homeFolder = workDir !== undefined && (realOrSame(workDir) === realOrSame(homedir()) || (project !== undefined && user !== undefined && realOrSame(project) === realOrSame(user)));
@@ -152,10 +159,10 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
   const notes: string[] = [];
   const skills: SkillEntry[] = [];
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
-  if (!profile) notes.push("No agent was found yet ('taskfollow probe'), so its skill folders are not known");
-  else if (!profile.skills_dirs) notes.push(`${profile.name} has no skills folder TaskFollow knows; only Skills Wiki skills can be listed for it`);
-  if (profile) {
-    const roots = skillRoots(profile, state?.work_dir, env);
+  if (!state?.runtime) notes.push("No agent was found yet ('taskfollow probe'), so its skill folders are not known");
+  else if (!profile?.skills_dirs) notes.push(SHARED_SKILLS_NOTE);
+  if (state?.runtime) {
+    const roots = skillRoots(profile, state.work_dir, env);
     if (roots.home_folder) notes.push(HOME_FOLDER_NOTE);
     if (roots.project) skills.push(...(await localSkills(roots.project, "install folder", notes)));
     if (roots.user) skills.push(...(await localSkills(roots.user, "your own", notes)));
@@ -171,6 +178,9 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
   }
   return { skills, notes };
 }
+
+/** D175: what TaskFollow does with skills on an agent whose profile names no skills folder; never claims they are loaded (R5). */
+export const SHARED_SKILLS_NOTE = "TaskFollow keeps workflow skills in .agents/skills (read by Codex, Gemini CLI, Cursor, OpenClaw, Hermes and Antigravity) and lists them in AGENTS.md; ask your agent to read it";
 
 export const HOME_FOLDER_NOTE = "TaskFollow was started from your home folder, so it will not write a workflow skill or CLAUDE.md there; start it from the install folder (START-HERE step 4)";
 

@@ -91,7 +91,7 @@ export async function uninstall(home: string, person: { interactive: boolean; as
   await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, removed, secrets, watch_removed: watch } });
   return {
     status: "uninstalled", gateway, unregistered, removed, secrets, audit_export: await exportAudit(home, now()), commands,
-    kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above", "the find-my-repetitive-work skill under exports/, when your agent had no skills folder TaskFollow knows (it stays with the home)"],
+    kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above", "the find-my-repetitive-work skill under exports/, only when TaskFollow knew no install folder (it stays with the home)"],
     note: "Run the printed commands in your own terminal to unload what was loaded into the OS; once you have kept the audit export, delete the home folder yourself.",
   };
 }
