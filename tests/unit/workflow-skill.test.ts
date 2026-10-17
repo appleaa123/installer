@@ -328,6 +328,17 @@ describe("workflow rule: a rule the owner said yes to, into my-rules.md (item 8)
     expect(await localSkillText(join(skillsDir(work), "inbox"), (await installTargets(home)).roots)).toContain("- Friendly tone, first names only.");
   });
 
+  it("a rule for a delivered workflow says Cowork still has the old copy, and how to deliver again", async () => {
+    const { home, work } = await install();
+    await add(home, "inbox", { description: "Sort mail." });
+    await mkdir(join(work, "taskfollow-deliver"), { recursive: true });
+    await writeFile(join(work, "taskfollow-deliver", "inbox.zip"), "zip");
+    expect(await rule(home, "inbox", { rule: "Mine." })).toMatchObject({
+      status: "added",
+      cowork: "This workflow also runs on Claude Cowork's own schedule, which still has the copy uploaded before this rule. To use the rule there: run 'taskfollow check deliver inbox' and upload the new zip in Settings, then Skills, in place of the old 'inbox' skill.",
+    });
+  });
+
   it("a rule saying to send without asking changes no approval level", async () => {
     const { home } = await install();
     await add(home, "inbox", { description: "Sort mail." });

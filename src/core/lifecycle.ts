@@ -15,7 +15,7 @@ import { whenHolds } from "./visibility.js";
 import { loadSandboxMode, loadWorkflowState, saveWorkflowState, setSandboxMode, type DrySample, type WorkflowState } from "./sandbox.js";
 import { HEARTBEAT_FILE, wants } from "./tick.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
-import { rm, rmdir } from "node:fs/promises";
+import { rm, rmdir, stat } from "node:fs/promises";
 import { SHAPES, workflowHash } from "./homes.js";
 import { notesFolder, prepareNotesFolder } from "./task-files.js";
 import { restoreFile } from "./agent-file.js";
@@ -216,7 +216,7 @@ function ruleWords(value: string | undefined): { readonly rule: string; readonly
 async function addRule(home: string, id: string, value: string | undefined, now: string): Promise<Record<string, unknown>> {
   await loadWorkflow(home, id, DEFAULT_TOOLS);
   const { rule, learning } = ruleWords(value);
-  const { checkDelivered } = await import("./deliver.js");
+  const { checkDelivered, deliveredZip } = await import("./deliver.js");
   try {
     await checkDelivered(home, rule);
   } catch (error) {
@@ -230,9 +230,12 @@ async function addRule(home: string, id: string, value: string | undefined, now:
   const file = await appendRule(home, id, rule);
   if (learning !== undefined) await closeRuleCandidate(home, learning, "added", now);
   await appendAudit(home, { ts: now, actor: "agent", event: "rules.added", ref: `workflow:${id}`, payload: { workflow: id, ...(learning !== undefined ? { learning } : {}), sha256: createHash("sha256").update(rule).digest("hex") } });
+  // 9.15: TaskFollow cannot reach a skill already uploaded to Claude Cowork; it says so, with the steps.
+  const delivered = await stat(await deliveredZip(home, id)).then(() => true, () => false);
   return {
     status: "added", workflow: id, rule, file,
     next: `Tell the person exactly this rule, word for word: it applies from the next run and in chat now. To change or remove a rule, they edit ${file} themselves.`,
+    ...(delivered ? { cowork: `This workflow also runs on Claude Cowork's own schedule, which still has the copy uploaded before this rule. To use the rule there: run 'taskfollow check deliver ${id}' and upload the new zip in Settings, then Skills, in place of the old '${id}' skill.` } : {}),
   };
 }
 
