@@ -56,6 +56,8 @@ Claude Code opens in the same window. Sign in when it asks, and say yes if it as
 
 ## 5. Give it one sentence
 
+If the person who invited you sent a file named `taskfollow-<version>.tgz`, TaskFollow is not published yet: first paste `npm install -g ` followed by that file's path (drag the file into the terminal), press Return, then go on.
+
 Paste this into Claude Code (or your assistant) and press Return:
 
 > Please install TaskFollow for me. Run `npx --yes taskfollow instructions` and follow exactly what it prints. I am not technical: explain each step in plain words and tell me exactly what to click or type.

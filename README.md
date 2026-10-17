@@ -12,7 +12,7 @@ The v1 scope is `docs/scope-refresh.md`, section 9.
 **New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you.
 
 Status: v1 in progress (scope: [`docs/scope-refresh.md`](docs/scope-refresh.md) section 9); see [`docs/next-steps.md`](docs/next-steps.md).
-The package is not published (`"private": true`).
+The package is not published yet; until it is, testers install from a tarball the owner sends (START-HERE).
 
 Who can use it today: a person on a **Mac** or on **Windows 11 (Preview)**, with
 **Node 22 or newer**, an AI agent such as Claude Code that follows

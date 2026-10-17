@@ -1,8 +1,9 @@
 # Release checklist
 
-The installer is not published: `package.json` says `"private": true`, so
-`npm publish` refuses. This list prepares a release that a person installs
-from a tarball. Publishing to a registry is a separate decision (D119).
+The installer is not published yet. `package.json` is no longer private
+(D175) and builds before packing (`prepack`), so `npm pack` makes a current
+tarball and `npm publish` works once the owner decides to publish (D119).
+This list prepares a release that a person installs from a tarball.
 
 ## 1. Before
 
@@ -51,7 +52,7 @@ Semantic versioning, judged by what an existing install sees:
 
 ## 5. Not part of a release
 
-- Publishing to npm: it needs `"private": true` removed, a package name that
-  is free, and an npm account (a decision for Allen).
+- Publishing to npm: it needs a package name that is free and the owner's
+  npm account; the owner runs `npm publish`.
 - Signed installer updates (D65, D111).
 - CI: none, by decision (O7, D48); the offline suite runs on the developer's machine.

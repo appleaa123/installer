@@ -29,6 +29,12 @@ describe("release readiness (D119)", () => {
     expect(files.filter((path) => /^(tests|src|docs|node_modules|certification)\//.test(path) || path.includes(".env") || path.endsWith(".ts"))).toEqual([]);
   });
 
+  it("builds before packing, so a package never ships a stale build, and is not private, so the owner can publish (D175)", async () => {
+    const pkg = JSON.parse(await readFile("package.json", "utf8")) as { private?: boolean; scripts: Record<string, string> };
+    expect(pkg.scripts.prepack).toBe("npm run build");
+    expect(pkg.private).toBeUndefined();
+  });
+
   it("ships a CLI that starts with a node shebang", async () => {
     expect((await readFile("dist/cli.js", "utf8")).split("\n")[0]).toBe("#!/usr/bin/env node");
   });
