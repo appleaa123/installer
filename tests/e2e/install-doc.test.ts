@@ -76,6 +76,7 @@ describe("INSTALL.md", () => {
     expect(rule).toContain("propose one short rule for that workflow's `references/my-rules.md`, in their words, and show it.");
     expect(rule).toContain("Add it with `taskfollow workflow rule <id> --value '{\"rule\":\"…\"}'` only after they say yes, then tell them the exact text that was added.");
     expect(rule).toContain("A rule never changes what needs their approval.");
+    expect(rule).toContain("Never run `workflow rule` without their yes to that exact text; if they change the wording, show it again.");
     expect(rule).toContain("At the start of a session, also ask whether they corrected a result of a workflow that runs on their assistant's own schedule");
   });
 
