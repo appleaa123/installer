@@ -282,7 +282,13 @@ describe("meeting follow-up and its notes folder (Task 6, D166)", () => {
     const notes = step("meeting-follow-up", "notes");
     if (notes?.kind !== "task") throw new Error("no notes task");
     const action = ((notes.task.output as { properties: { actions: { items: { required: string[] } } } }).properties.actions.items);
-    expect(action.required).toEqual(["what"]);
+    expect(action.required).toEqual(["id", "what"]);
+  });
+
+  it("each action's id names the meeting, so two meetings on one day do not collide (review of PR #61)", () => {
+    const notes = step("meeting-follow-up", "notes");
+    if (notes?.kind !== "task") throw new Error("no notes task");
+    expect(notes.task.prompt).toContain("a short slug of the meeting's name");
   });
 
   it("tasks is one approve of records.import with the actions as rows, then one send to one address", () => {

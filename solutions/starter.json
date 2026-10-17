@@ -699,7 +699,7 @@
         {
           "id": "notes",
           "task": {
-            "prompt": "Use the meeting-follow-up skill: read the meeting notes in files and list the action items: what is to be done, who does it and by when (YYYY-MM-DD), leaving owner or due empty when the notes do not say; never invent one. Give each action a short id made of the meeting's date and a number. Write a short summary of the notes. Set send_to to the one address the owner's rules say the notes go to, or leave it empty.",
+            "prompt": "Use the meeting-follow-up skill: read the meeting notes in files and list the action items: what is to be done, who does it and by when (YYYY-MM-DD), leaving owner or due empty when the notes do not say; never invent one. Give each action an id made of the meeting's date, a short slug of the meeting's name and a number (for example 2026-10-16-board-1), so two meetings on one day never share an id. Write a short summary of the notes. Set send_to to the one address the owner's rules say the notes go to, or leave it empty.",
             "may_use": [
               "Read"
             ],
@@ -729,6 +729,7 @@
                       }
                     },
                     "required": [
+                      "id",
                       "what"
                     ],
                     "additionalProperties": false
