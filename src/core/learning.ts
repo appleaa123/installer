@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { listApprovals, type ApprovalItem } from "./approvals.js";
+import { listApprovals, listStoredApprovals, type ApprovalItem } from "./approvals.js";
 import { appendAudit, canonicalJson } from "./audit.js";
 import type { DataContract } from "./contract.js";
 import { ActionFailure } from "./failure.js";
@@ -138,7 +138,8 @@ const isRuleCandidate = (value: unknown): value is RuleCandidate => isRecord(val
 export async function collectRuleCandidates(home: string, now: string): Promise<RuleCandidate[]> {
   const owned = new Set((await loadWritten(home)).skill_folders.map((entry) => entry.workflow));
   const names = personalFields(await loadPinnedContract(home));
-  const decided = (await listApprovals(home, now)).filter((item) => item.source.run && owned.has(item.source.run.workflow) && (item.decision?.decision === "edited" || item.decision?.decision === "rejected"));
+  // Stored items only: collecting expires nothing and audits nothing but the candidates it makes.
+  const decided = (await listStoredApprovals(home)).filter((item) => item.source.run && owned.has(item.source.run.workflow) && (item.decision?.decision === "edited" || item.decision?.decision === "rejected"));
   const found: RuleCandidate[] = [];
   for (const item of decided) {
     const run = item.source.run;

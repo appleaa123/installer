@@ -32,10 +32,11 @@ export const WHY_TOOLS: readonly ToolDef[] = [
       const { whyCommand } = await import("./why.js");
       const { run, since, direct } = args as { run?: string; since?: string; direct?: string };
       const shown = await whyCommand(ctx.home, run ?? since ?? (direct !== undefined ? "direct" : undefined), ctx.now, direct);
-      const { suggestions, suggestions_damaged: damaged, rule_candidates: candidates, rule_candidates_more: more, ...rest } = shown;
+      const { suggestions, suggestions_damaged: damaged, rule_candidates: candidates, rule_candidates_more: more, rule_candidates_damaged: unread, ...rest } = shown;
       return {
         ...(suggestions !== undefined ? { suggestions } : {}), ...(damaged !== undefined ? { suggestions_damaged: damaged } : {}),
-        ...(candidates !== undefined ? { rule_candidates: candidates } : {}), ...(more !== undefined ? { rule_candidates_more: more } : {}), ...rest,
+        ...(candidates !== undefined ? { rule_candidates: candidates } : {}), ...(unread !== undefined ? { rule_candidates_damaged: unread } : {}),
+        ...(more !== undefined ? { rule_candidates_more: more } : {}), ...rest,
       };
     },
   },

@@ -162,6 +162,9 @@ async function expireIfDue(home: string, stored: ApprovalItem, now: string): Pro
   return expired;
 }
 
+/** Every item as stored, changing nothing (no expiry, no audit): for readers that must not write (item 8). */
+export const listStoredApprovals = (home: string): Promise<ApprovalItem[]> => listRecords(home, APPROVALS_DIR, isApprovalItem);
+
 /** Every item, expiring the overdue ones; urgent open items first (§11.7 fast path), then by id. */
 export async function listApprovals(home: string, now: string): Promise<ApprovalItem[]> {
   const items: ApprovalItem[] = [];
