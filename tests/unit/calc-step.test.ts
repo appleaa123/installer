@@ -111,6 +111,12 @@ describe("calc where: only the rows a report is about (D166, D171)", () => {
     expect(await loadStep(home, run, "due")).toMatchObject({ status: "done", output: { count: 2, sum: { amount: 150.5 }, no_date: 2, today: "2026-10-17" } });
   });
 
+  it("calc where matches a status whatever its case and spaces (review of PR #61)", () => {
+    const typed = [{ id: "X", status: " To Check ", amount: "1.00" }, { id: "Y", status: "PAID", amount: "2.00" }];
+    expect(calculate(typed, { sum: ["amount"], where: { fields: { status: ["to check"] } } }).rows).toEqual([typed[0]]);
+    expect(calculate(typed, { sum: ["amount"], where: { fields: { status: [" Paid"] } } }).rows).toEqual([typed[1]]);
+  });
+
   it("calc where gives the kept rows, so a report can list exactly those (review of PR #61)", () => {
     const result = calculate(INVOICES, { sum: ["amount"], where: { fields: { status: OPEN }, due_within_days: 7 }, today: "2026-10-16" });
     expect(result.rows?.map((row) => (row as { id: string }).id)).toEqual(["A"]);

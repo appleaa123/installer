@@ -49,7 +49,9 @@ function dateAfter(today: string, days: number): string {
 
 /** The rows `where` keeps, and how many it left out for having no date. */
 function filtered(rows: readonly { readonly row: unknown; readonly index: number }[], where: CalcWhere, today: string | undefined): { rows: { row: unknown; index: number }[]; noDate: number } {
-  const listed = rows.filter(({ row }) => Object.entries(where.fields ?? {}).every(([field, values]) => values.includes(String(fieldOf(row, field) ?? ""))));
+  // Sheets hold what people typed: "To check " matches "to check" (review of PR #61).
+  const plain = (text: unknown): string => String(text ?? "").trim().toLowerCase();
+  const listed = rows.filter(({ row }) => Object.entries(where.fields ?? {}).every(([field, values]) => values.some((value) => plain(value) === plain(fieldOf(row, field)))));
   if (where.due_within_days === undefined) return { rows: listed, noDate: 0 };
   if (today === undefined || !DATE.test(today)) throw new ActionFailure("calc: due_within_days needs today's date in the workflow's time zone");
   const limit = dateAfter(today, where.due_within_days);
