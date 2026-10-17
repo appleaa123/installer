@@ -10,6 +10,7 @@ import { loadPinnedContract } from "./pin.js";
 import { parseSkillswikiRef, skillswikiTarget } from "./skillswiki.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
 import { loadWorkflow, type Workflow } from "./workflow.js";
+import { loadWritten } from "./workflow-skill.js";
 
 /**
  * The learning loop (spec §10.10, D19, D34, D97). A person who edits or rejects an approval item that a workflow
@@ -67,15 +68,20 @@ function judgedBy(workflow: Workflow, step: string): string | null {
   return last?.kind === "judge" ? (last.judge.skill ?? null) : null;
 }
 
-/** What the person did, in the engine's words, redacted, at most MAX_BODY characters. */
-export function learningBody(item: ApprovalItem, names: ReadonlySet<string>): string {
+/**
+ * What the person did, in the engine's words, redacted, at most MAX_BODY characters. For a Skills Wiki learning
+ * (D97) it speaks of the skill's judgment; for a rule candidate (item 8) it names the step the person corrected.
+ */
+export function learningBody(item: ApprovalItem, names: ReadonlySet<string>, kind: "skill" | "rule" = "skill"): string {
   const decision = item.decision;
-  const where = `In workflow '${item.source.run?.workflow ?? ""}', a person ${decision?.decision === "edited" ? "changed" : "rejected"} the ${item.action.tool} call that followed this skill's judgment.`;
+  const what = kind === "skill" ? "that followed this skill's judgment" : `in step '${item.source.run?.step ?? ""}'`;
+  const where = `In workflow '${item.source.run?.workflow ?? ""}', a person ${decision?.decision === "edited" ? "changed" : "rejected"} the ${item.action.tool} call ${what}.`;
   const reason = decision?.reason ? ` Their reason: "${redactText(decision.reason)}".` : "";
   const original = decision?.original?.args ?? {};
   const changed = Object.keys(item.action.args).filter((key) => canonicalJson(item.action.args[key]) !== canonicalJson(original[key]));
   const edits = decision?.decision === "edited" ? ` They changed ${changed.join(", ") || "nothing"} to: ${JSON.stringify(redactValue(Object.fromEntries(changed.map((key) => [key, item.action.args[key]])), names))}.` : "";
-  return `${where}${reason}${edits} Next time, judge similar input the way this correction shows.`.slice(0, MAX_BODY);
+  const advice = kind === "skill" ? " Next time, judge similar input the way this correction shows." : "";
+  return `${where}${reason}${edits}${advice}`.slice(0, MAX_BODY);
 }
 
 async function candidate(home: string, item: ApprovalItem, names: ReadonlySet<string>, now: string): Promise<Learning | null> {
@@ -106,6 +112,45 @@ export async function collectLearnings(home: string, now: string): Promise<Learn
   }
   return found;
 }
+
+/**
+ * Item 8 (9.5): a person's edit or rejection of an item a workflow with its own skill folder asked for becomes one
+ * rule candidate, kept on this computer until the agent proposes a rule for `references/my-rules.md` and either adds
+ * it (`workflow rule`) or dismisses it. Its body comes from the person's side only, like a D97 learning; it is never
+ * sent anywhere.
+ */
+export const RULES_DIR = join("state", "learnings", "rules");
+export const RULES_CLAIM_DIR = join("state", "learnings", "from-approvals-rules");
+
+export type RuleCandidate = {
+  readonly id: number;
+  readonly approval: number;
+  readonly workflow: string;
+  readonly step: string;
+  readonly body: string;
+  readonly status: "open" | "added" | "dismissed";
+  readonly created_at: string;
+  readonly closed_at?: string;
+};
+
+const isRuleCandidate = (value: unknown): value is RuleCandidate => isRecord(value) && typeof value.id === "number" && typeof value.body === "string" && typeof value.workflow === "string";
+
+export async function collectRuleCandidates(home: string, now: string): Promise<RuleCandidate[]> {
+  const owned = new Set((await loadWritten(home)).skill_folders.map((entry) => entry.workflow));
+  const names = personalFields(await loadPinnedContract(home));
+  const decided = (await listApprovals(home, now)).filter((item) => item.source.run && owned.has(item.source.run.workflow) && (item.decision?.decision === "edited" || item.decision?.decision === "rejected"));
+  const found: RuleCandidate[] = [];
+  for (const item of decided) {
+    const run = item.source.run;
+    if (!run || !(await claimOnce(home, RULES_CLAIM_DIR, item.id))) continue;
+    const made = await createRecord<RuleCandidate>(home, RULES_DIR, (id) => ({ id, approval: item.id, workflow: run.workflow, step: run.step, body: learningBody(item, names, "rule"), status: "open", created_at: now }));
+    await appendAudit(home, { ts: now, actor: "engine", event: "rules.candidate", ref: `rule:${made.id}`, payload: { approval: item.id, workflow: run.workflow } });
+    found.push(made);
+  }
+  return found;
+}
+
+export const listRuleCandidates = (home: string): Promise<RuleCandidate[]> => listRecords(home, RULES_DIR, isRuleCandidate);
 
 const bodiesOf = (value: unknown): string[] => (isRecord(value) && Array.isArray(value.learnings) ? value.learnings : []).filter(isRecord).map((entry) => String(entry.body ?? ""));
 
