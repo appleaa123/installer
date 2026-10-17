@@ -105,11 +105,14 @@ describe("runtime line", () => {
     expect(report.runtime_limits).toEqual(["no session resume"]);
   });
 
-  it("says fallbacks apply when no agent was recognised (Review Focus 2)", () => {
+  it("says in plain words what TaskFollow can do on an agent it has no profile for (Review Focus 2, D175)", () => {
     const unknown = { ...runtime, profile: null, agent_version: null, c4_headless: false, c4_schema: false, c5_resume: false, support_level: 0, tier: "unknown" } as const;
     const report = buildReport(basicSolution(), { ...allDone(), runtime: unknown, skillswiki: { url: "https://wiki.test/mcp" } });
     expect(report.overall).toBe("ready_with_limits");
-    expect(renderReport(report)).toContain("🤖 Agent      unknown agent — level 0 of 3 (no known agent profile; fallbacks apply, MCP not checked yet)");
+    const text = renderReport(report);
+    expect(text).toContain("🤖 Agent      your agent (no TaskFollow profile) — TaskFollow cannot start this agent by itself: scheduled runs need a model key, or run by hand when you ask; approvals and records work through `taskfollow tool`");
+    expect(text).not.toContain("fallbacks apply");
+    expect(text).not.toMatch(/your agent \(no TaskFollow profile\) — level/);
   });
 
   it("counts a working MCP client as the third level with nothing missing", () => {
@@ -181,8 +184,17 @@ describe("how the person is told, and where runs happen (9.12 item 3, 9.13 item 
     expect(buildReport(STARTER, starterState(SOLO)).runs).toContain("on this computer while it is on and awake");
     const yes = buildReport(STARTER, starterState({ ...SOLO, "mode.always-on": answer("yes") })).runs ?? "";
     expect(yes).toContain("Until a computer that stays on is set up");
-    expect(yes).toContain("your own Claude plan");
+    expect(yes).not.toContain("Claude plan");
     expect(buildReport(STARTER, starterState({ "mode.purpose": answer("install"), "mode.who": answer("me") })).runs).toBeUndefined();
+  });
+
+  it("names Claude's plan only for Claude Code (D175)", () => {
+    const claude = { profile: "claude-code", agent_version: "2.1.301", c2_shell: true, c4_headless: true, c4_schema: true, c5_resume: true, c6_mcp: "not_probed" as const, support_level: 2 as const, tier: "compatible" as const, notes: [] };
+    expect(buildReport(STARTER, { ...starterState(SOLO), runtime: claude }).runs).toContain("They use your own Claude plan.");
+    expect(buildReport(STARTER, { ...starterState(SOLO), runtime: { ...claude, profile: "codex" } }).runs).toContain("They use your own plan with that agent.");
+    const none = buildReport(STARTER, { ...starterState(SOLO), runtime: { ...claude, profile: null, support_level: 0 as const, tier: "unknown" as const } }).runs ?? "";
+    expect(none).toContain("Workflows that need a model's judgment use a model key of your own (taskfollow model).");
+    expect(none).not.toContain("Claude");
   });
 
   it("does not lower the overall verdict for an install with no channel", () => {

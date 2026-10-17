@@ -56,6 +56,13 @@ describe("START-HERE.md, the page for the person (D129)", () => {
 });
 
 describe("INSTALL.md", () => {
+  it("says before the questions that an agent TaskFollow cannot start needs a model key for the dry run (D175)", () => {
+    const before = DOC.slice(DOC.indexOf("## Before you start"), DOC.indexOf("How to talk to the person"));
+    expect(before).toContain("**When TaskFollow cannot start you by itself**");
+    expect(before).toContain("`taskfollow model`, then `taskfollow secret model`");
+    expect(before).toContain("without one the install stops at the dry run");
+  });
+
   it("says any agent without TaskFollow's MCP server uses taskfollow tool (D175)", () => {
     expect(DOC).toContain("Only Claude Code has TaskFollow's tools registered as an MCP server; any other agent uses `taskfollow tool <name> '<json arguments>'`");
   });

@@ -31,4 +31,16 @@ describe("an install on an agent with no TaskFollow profile (D175)", () => {
     expect(state?.steps["preflight.tools"]).toMatchObject({ status: "blocked", attempts: 1 });
     expect(state?.steps["preflight.tools"]?.hint).toContain("taskfollow tool");
   });
+
+  it("stops a dry run that needs a model's judgment with the steps to give it a model key", async () => {
+    const home = await makeTempHome();
+    const env = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    expect(runCli(["start", "--solution", `file:${await pinnedStarter()}`], { home, env }).code).toBe(0);
+    const added = runCli(["workflow", "add", "brief", "--value", JSON.stringify({ description: "Each morning, tell me what is new.", tools: ["memo.list"] })], { home, env });
+    expect(added.code, added.stderr).toBe(0);
+    const dry = runCli(["dryrun", "brief"], { home, env });
+    const text = `${dry.stdout}${dry.stderr}`;
+    expect(text).toContain("taskfollow model --value");
+    expect(text).toContain("taskfollow secret model");
+  });
 });
