@@ -26,6 +26,13 @@ export interface RunnerCheckOptions {
   readonly now: () => string;
   readonly workflow?: Workflow;
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * The weekly re-check (D174): a task that could not run, or a check cancelled from outside, records nothing and
+   * returns `error`, so a laptop asleep or an outage never reads as a failed check.
+   */
+  readonly quietOnError?: boolean;
+  /** The task runner; tests pass one to reach cases the fake agent cannot produce. */
+  readonly task?: typeof runTask;
 }
 
 const usesTool = (workflow: Workflow, tool: string): boolean => workflow.steps.some((step) => (step.kind === "agent" && step.agent.tools.includes(tool)) || (step.kind === "tool" && step.tool === tool) || (step.kind === "approve" && step.tool === tool));
@@ -60,7 +67,7 @@ export async function runnerCheck(home: string, state: InstallState | undefined,
     ? `This is a check by TaskFollow, nothing else. Call the tool check.ping with id ${challenge.id} and the TaskFollow check word given in the owner's skills below. Then answer {"done": true}.`
     : `This is a check by TaskFollow, nothing else. Call the tool check.ping with id ${challenge.id} and word ${word ?? ""}. Then answer {"done": true}.`;
   const skills = workflow ? skillsBlock([{ ref: "taskfollow-check", text: `TaskFollow check word: ${word ?? ""}` }]) : null;
-  await runTask(home, profile, { prompt, input: {}, may_use: [PING_RULE], changes: false, output: OUTPUT, timeoutMs: RUN_MS, record, ...(skills ? { skills } : {}) }, { env: options.env ?? process.env });
+  const ran = await (options.task ?? runTask)(home, profile, { prompt, input: {}, may_use: [PING_RULE], changes: false, output: OUTPUT, timeoutMs: RUN_MS, record, ...(skills ? { skills } : {}) }, { env: options.env ?? process.env });
   const after = await loadChallenge(home, challenge.id);
   const hooked = await pingUnderHook(record);
   const now = options.now();
@@ -72,6 +79,17 @@ export async function runnerCheck(home: string, state: InstallState | undefined,
     for (const need of needs) await recordResult(home, { need, ...(workflow ? { workflow: workflow.id } : {}), result: "not-checked", reason, at: now, agent, agent_version: version, test: "t7", challenge: challenge.id });
     return { test: "t7", passed: false, why };
   };
+  if (options.quietOnError) {
+    // A cancelled check with a result was settled by two wrong words (a real answer: the fail path below); one without
+    // was cancelled from outside, e.g. by the sweep. A pass the ping settled stays a pass even if the task then failed.
+    const answered = (await abilities(home)).some((entry) => entry.challenge === challenge.id);
+    if (after?.status === "cancelled" && !answered) return { test: "t7", passed: false, error: "the check was cancelled before the task answered it" };
+    const passed = after?.status === "done" && throughTool && hooked;
+    if (!ran.ok && !passed) {
+      if (after?.status === "open") await cancelChallenge(home, after, "the weekly check could not run", now);
+      return { test: "t7", passed: false, error: ran.error };
+    }
+  }
   if (after?.status === "open") return fail("The agent's task ran but did not make the test call, so TaskFollow saw nothing", "the task did not make the test call");
   if (!throughTool) return fail("The check was answered, but not with the right word through TaskFollow's tool, so it does not show the runner works", "the right word did not come through the tool");
   if (after?.status !== "done") return fail("The check was cancelled before it was answered", "the check was cancelled");
