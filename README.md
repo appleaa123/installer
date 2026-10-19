@@ -35,7 +35,7 @@ TaskFollow's approvals do not depend on what the instructions say. An action tha
 TaskFollow is not on npm yet. Until it is, install the file whoever invited you sent, in a terminal, before you start your assistant:
 
 ```bash
-npm install -g /path/to/taskfollow-0.1.0.tgz
+npm install -g /path/to/taskfollow-<version>.tgz
 ```
 
 Then make a folder for TaskFollow and open your assistant in it. With Claude Code:
@@ -57,7 +57,7 @@ From there your assistant leads. Sometimes it asks you to paste a line into a **
 | | Works with you in the chat | Runs your work while you are away |
 |---|---|---|
 | **Claude Code** | Yes, tested | Yes, tested (certified on macOS) |
-| **Codex, OpenClaw, Hermes, Pi, Gemini CLI, Cursor and other assistants that run commands** | Yes | Work that only reads and reports can run on your assistant's own scheduler. Work that sends, pays or deletes runs on TaskFollow's runner, which needs your model key (usually the one your assistant already uses), entered once on TaskFollow's page. |
+| **Codex, OpenClaw, Hermes, Pi, Gemini CLI, Cursor and other assistants that run commands** | Yes | Work that only reads and reports can run on your assistant's own scheduler. Work that sends, pays or deletes runs on TaskFollow's runner; its steps where a model judges something need a model key of your own (if your assistant already uses one, usually that one), entered once on TaskFollow's page. |
 
 Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts it on its own, because its terms forbid invocation by other programs.
 
