@@ -1,27 +1,101 @@
-# taskfollow
+# TaskFollow
 
-TaskFollow is a thin layer on top of the AI agent a business owner already has
-(Claude Code first). It does not change the agent or add capabilities to it; it
-makes that agent "vertical": step-by-step setup, finding and running the owner's
-workflows (a schedule and a run record), and reminding the agent which skills each
-workflow uses, from Skills Wiki or the agent's own skills. The agent's model gathers
-the inputs and decides; TaskFollow executes what it can or says plainly what is
-missing. Money, legal matters, messages to customers and deletes always ask a person.
-The v1 scope is `docs/scope-refresh.md`, section 9.
+TaskFollow turns the AI assistant you already have (Claude Code, Codex, OpenClaw, Hermes and others) into one that knows your work. It runs on your own computer, with your own assistant and your own subscription; nobody else hosts it or sees your data.
 
-**New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you.
+It does not change your assistant or add abilities to it. It gives it what a custom-built business agent would have: a setup done by conversation, your routine work written down as workflows, a schedule that runs them, and a person's yes before anything that matters.
 
-Status: v1 in progress (scope: [`docs/scope-refresh.md`](docs/scope-refresh.md) section 9); see [`docs/next-steps.md`](docs/next-steps.md).
-The package is not published yet; until it is, testers install from a tarball the owner sends (START-HERE).
+**New to this? Read [`START-HERE.md`](START-HERE.md).** It takes you from nothing to a helper that sets everything up for you, click by click.
 
-Who can use it today: a person on a **Mac** or on **Windows 11 (Preview)**, with
-**Node 22 or newer**, an AI agent such as Claude Code that follows
-[`INSTALL.md`](INSTALL.md), and the one service a workflow reads (Telegram,
-email, Slack and a Google Sheet are optional). A Skills Wiki account
-is optional (INSTALL.md, section 11). Windows has not yet been tried on a real PC
-(human task 22) and has no always-on team host; Linux is untested.
+## What it does for you
 
-## What is certified
+- **Sets itself up by talking with you.** Your assistant asks the questions and explains each step in plain words; you never edit a config file.
+- **Finds the work you repeat.** It interviews you about a normal week, or looks for what repeats, and proposes workflows: morning inbox triage, new leads, CRM notes, invoices, meeting follow-ups, or anything you describe in your own words.
+- **Runs that work on a schedule**, and tells you what it found: in the chat, or on Telegram, email or Slack.
+- **Tells you honestly what your assistant can do.** Before a workflow is trusted, TaskFollow tests your assistant by watching a real effect, not by taking its word. Each answer is a plain yes or no, and every no comes with what is missing and what to do instead.
+- **Asks you first.** Money, legal matters, messages to customers and deletes always wait for your yes, however sure the assistant is.
+- **Explains afterwards.** `taskfollow why` shows what each run did and why, and who approved what.
+- **Learns from your corrections.** When you fix a result, your assistant proposes a short rule for that workflow, and adds it only after your yes.
+- **Lets you look first.** In consult mode it interviews you, tries your workflows once, writes a one-page report of what your assistant can do for you, and then removes what it added.
+
+## Why not just ask your assistant?
+
+You can tell an assistant "always ask me before you send anything". That is a request, not a guarantee: it holds only while the rule is in front of the model. In our own test, plain Claude Code kept the rule every time it was in its instructions; when a scheduled job's instructions left it out, it sent customer replies on its own in each of 3 runs, one of them answering a request to delete a person's records ([the test](docs/testing/2026-10-16-plain-agent-comparison.md)).
+
+TaskFollow's approvals do not depend on what the instructions say. An action that needs your yes is refused until you approve that exact action in your own terminal or on your own channel, and the assistant cannot approve it for itself.
+
+## What you need
+
+- A **Mac**, or **Windows 11** (a Preview: not yet tried on a real PC). Linux is untested.
+- **Node 22 or newer**, from https://nodejs.org (the LTS version).
+- An **AI assistant that can run commands on your computer**, for example Claude Code (a paid Claude plan works).
+- Only if a workflow needs them: the Telegram app, your own Google account (for a Google Sheet), an email app password. The setup asks what you use and tells you what you need.
+
+## Install
+
+TaskFollow is not on npm yet. Until it is, install the file whoever invited you sent, in a terminal, before you start your assistant:
+
+```bash
+npm install -g /path/to/taskfollow-0.1.0.tgz
+```
+
+Then make a folder for TaskFollow and open your assistant in it. With Claude Code:
+
+```bash
+mkdir -p ~/Desktop/taskfollow
+cd ~/Desktop/taskfollow
+claude
+```
+
+Then paste this one sentence into your assistant:
+
+> Please install TaskFollow for me. Run `npx --yes taskfollow instructions` and follow exactly what it prints. I am not technical: explain each step in plain words and tell me exactly what to click or type.
+
+From there your assistant leads. Sometimes it asks you to paste a line into a **new** terminal window yourself: those are the decisions that are only yours (approvals, keys, turning a workflow on). Never paste a password or key into the chat; TaskFollow opens its own page on your computer for those.
+
+## Which assistants
+
+| | Works with you in the chat | Runs your work while you are away |
+|---|---|---|
+| **Claude Code** | Yes, tested | Yes, tested (certified on macOS) |
+| **Codex, OpenClaw, Hermes, Pi, Gemini CLI, Cursor and other assistants that run commands** | Yes | Work that only reads and reports can run on your assistant's own scheduler. Work that sends, pays or deletes runs on TaskFollow's runner, which needs your model key (usually the one your assistant already uses), entered once on TaskFollow's page. |
+
+Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts it on its own, because its terms forbid invocation by other programs.
+
+Claude Cowork on the web has no terminal, so it cannot install TaskFollow. Install it with an assistant that has one; TaskFollow can then hand a workflow that only reads and reports to Cowork, as a skill to upload and a scheduled task to paste.
+
+Your assistant tells you what works on it: TaskFollow's checks say yes or no for each thing a workflow needs, and `taskfollow report` says what runs and what does not.
+
+## Commands you run yourself
+
+Your assistant runs most commands. These are the ones for you, in your own terminal:
+
+| Command | What it does |
+|---|---|
+| `taskfollow approvals list` | What is waiting for your yes |
+| `taskfollow approvals approve <id>` | Approve that exact action |
+| `taskfollow approvals reject <id> --reason '<text>'` | Refuse it |
+| `taskfollow why` | What ran in the last day, what it found, and why |
+| `taskfollow report` | Where the setup stands and what runs |
+| `taskfollow dryrun confirm <id>` | Turn on a workflow after you saw its dry run |
+| `taskfollow resume` | Carry on after a break or a problem |
+| `taskfollow pause` / `taskfollow unpause` | Stop everything at once / start again |
+| `taskfollow doctor` | Check that everything is healthy |
+| `taskfollow support bundle` | A file without secrets or personal data, to send for help |
+| `taskfollow uninstall` | Remove TaskFollow; your records and the audit are kept |
+
+## Your data and keys
+
+- Keys and passwords are entered on a page TaskFollow opens on your computer, never in the chat. They are kept in your computer's password safe.
+- Your records stay where you keep them: on your computer, or in your own Google Sheet.
+- Every action is written to an audit on your computer that `taskfollow why` reads.
+
+## Status
+
+Version 0.1.0. The v1 build is complete and in its real-user test; it is not yet published on npm. Claude Code on macOS is certified; Windows is a Preview; Linux is untested. What is next: [`docs/next-steps.md`](docs/next-steps.md). The scope: [`docs/scope-refresh.md`](docs/scope-refresh.md), section 9.
+
+## For developers
+
+### What is certified
 
 Support tiers follow spec §7.5. A runtime is **Certified** on a platform
 only when a person ran `taskfollow certify` there from a clean checkout and
@@ -33,15 +107,13 @@ D48). The record a run writes says which tier it reached and why.
 |---|---|---|---|---|---|
 | Claude Code | `claude-code` | **Certified** 2026-10-12 (commit `437692c`, Claude Code 2.1.296, Node 22.14.0, macOS on Intel) | Not certified yet | Unknown | First real certification run (task 14): 1,360 offline and 18 live tests passed. Linux and Windows need a run of their own (task 16, D115). |
 | Codex CLI | `codex` | Unknown | Unknown | Unknown | Its terms were reviewed and allow it (O2, D121). Its flags come from Codex's documentation and were not run (O1, task 15), so it stays Unknown until a certification passes. |
-| Antigravity | none | — | — | — | Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts it on its own, because its terms forbid invocation by other programs (D32, D114, D170, D175). |
+| Antigravity | none | — | — | — | In chat only; TaskFollow never starts it (D32, D114, D170, D175). |
 | Any other agent | none | Unknown | Unknown | Unknown | Installs and uses TaskFollow in its chat, through `taskfollow tool`; workflow skills go in `.agents/skills` and are listed in `AGENTS.md`; scheduled judging needs a model key (§7.4, D175). |
-
-Claude Cowork on the web has no terminal, so it cannot install TaskFollow. Install it with an agent that has one; TaskFollow can then hand a workflow that only reads and reports to Cowork, as a skill zip and a scheduled task (INSTALL.md 9c, D158, D160).
 
 When a certification passes, put its date, commit and agent version in
 this table (see [`docs/release-checklist.md`](docs/release-checklist.md)).
 
-## Development
+### Development
 
 - `npm test`: the offline suite (fakes only: no network, no real agent).
 - `npm run test:live`: the opt-in live checks, with your own keys in the
