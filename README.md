@@ -15,6 +15,7 @@ It does not change your assistant or add abilities to it. It gives it what a cus
 - **Asks you first.** Money, legal matters, messages to customers and deletes always wait for your yes, however sure the assistant is.
 - **Explains afterwards.** `taskfollow why` shows what each run did and why, and who approved what.
 - **Learns from your corrections.** When you fix a result, your assistant proposes a short rule for that workflow, and adds it only after your yes.
+- **Manages the skills you already have, if you want.** Setup offers [Skills Wiki](https://github.com/appleaa123/skills_wiki_opensource), free and on your computer: it moves your installed skills into one library and gives each of your assistants the right one for each request (`skillswiki release --all` puts them back). It also offers hosted Skills Wiki, a paid service with an account, for more skills and ready-made combos. Say no to both and nothing changes.
 - **Lets you look first.** In consult mode it interviews you, tries your workflows once, writes a one-page report of what your assistant can do for you, and then removes what it added.
 
 ## Why not just ask your assistant?
@@ -76,6 +77,7 @@ Your assistant runs most commands. These are the ones for you, in your own termi
 | `taskfollow doctor` | Check that everything is healthy |
 | `taskfollow support bundle` | A file without secrets or personal data, to send for help |
 | `taskfollow uninstall` | Remove TaskFollow and the keys it stored; your records and a copy of the audit are kept |
+| `taskfollow uninstall --remove-skillswiki` | The same, and put your skills back from local Skills Wiki and remove it |
 
 ## Your data and keys
 
