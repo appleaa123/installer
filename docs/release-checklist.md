@@ -1,9 +1,8 @@
 # Release checklist
 
-The installer is not published yet. `package.json` is no longer private
-(D175) and builds before packing (`prepack`), so `npm pack` makes a current
-tarball and `npm publish` works once the owner decides to publish (D119).
-This list prepares a release that a person installs from a tarball.
+`taskfollow@0.1.0` is on npm (2026-10-19, D177). `package.json` builds
+before packing (`prepack`), so `npm pack` and `npm publish` ship a current
+build. This list prepares each release; the owner runs `npm publish`.
 
 ## 1. Before
 
@@ -47,8 +46,8 @@ Semantic versioning, judged by what an existing install sees:
 
 ## 4b. Before anyone is handed START-HERE.md
 
-- [ ] The repository `appleaa123/installer` is public (D177), so the `repository` link in `package.json` works.
-- [ ] The package is published to npm under the name `taskfollow` (the name was free on 2026-10-19; search it for trademarks first; human task 43). Until then `npx --yes taskfollow instructions` and `npm install -g taskfollow` fail, so START-HERE.md cannot work.
+- [x] The repository `appleaa123/installer` is public (D177), so the `repository` link in `package.json` works.
+- [x] (0.1.0, 2026-10-19) The package is published to npm under the name `taskfollow` (the name was free on 2026-10-19; search it for trademarks first; human task 43). Until then `npx --yes taskfollow instructions` and `npm install -g taskfollow` fail, so START-HERE.md cannot work.
 - [ ] On a fresh Mac user and a fresh Windows user, follow START-HERE.md exactly, start to finish, with someone watching (`docs/testing/` has the observer sheet).
 
 ## 5. Not part of a release

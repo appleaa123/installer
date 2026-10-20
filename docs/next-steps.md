@@ -34,7 +34,7 @@ The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task
 
 The owner's guide for this is `docs/testing/2026-10-17-real-user-test.md`: Claude Code, Antigravity and Claude Cowork as a real user, the human-only probes folded in, and when to send it to friends.
 
-The owner installs TaskFollow on their own agent with only TaskFollow's guidance and uses it daily; friends try it on other agents; task 23 (a non-technical person installs it); then the owner publishes to npm (`npm publish`, their account) and makes the repository public (task 43, D177; `LICENSE` and `package.json` are ready). Every task for a person is in `docs/human-tasks.md` (37–43 for v1).
+The owner installs TaskFollow on their own agent with only TaskFollow's guidance and uses it daily; friends try it on other agents; task 23 (a non-technical person installs it); `taskfollow@0.1.0` is on npm and the repository is public (task 43 done 2026-10-19, D177). Every task for a person is in `docs/human-tasks.md` (37–43 for v1).
 
 ## Follow-ups (not yet planned)
 
