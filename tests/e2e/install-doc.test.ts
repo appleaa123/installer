@@ -105,6 +105,29 @@ describe("INSTALL.md", () => {
     expect(DOC).toContain("Only Claude Code has TaskFollow's tools registered as an MCP server; any other agent uses `taskfollow tool <name> '<json arguments>'`");
   });
 
+  it("tells any agent to work out what does not work, within three limits, and to keep the rules in its memory (D176)", () => {
+    const before = DOC.slice(DOC.indexOf("## Before you start"), DOC.indexOf("How to talk to the person"));
+    expect(before).toContain("**If something here does not work on you, work it out.**");
+    for (const limit of ["an approval (never approve your own request, never reuse a token)", "never write TaskFollow's files to make a check pass", "the steps that are the person's own"]) expect(before).toContain(limit);
+    expect(before).toContain("An honest no with a way forward is a correct result, not a failure.");
+    expect(before).toContain("point to them rather than copy them");
+    expect(before).toContain("never read it from your own settings");
+  });
+
+  it("names the skill folder and agent file for every agent, and says first that task steps are Claude Code only (D176)", () => {
+    expect(DOC).toContain("in `.agents/skills/<workflow>/` on any other agent");
+    expect(DOC).toContain("your agent file (`CLAUDE.md` on Claude Code, `AGENTS.md` on other agents)");
+    const taskSection = DOC.slice(DOC.indexOf("## 9a."), DOC.indexOf("## 9b."));
+    expect(taskSection.indexOf("**Task steps work only on Claude Code for now.**")).toBeLessThan(taskSection.indexOf("1. **Find out"));
+  });
+
+  it("the README tells the person what it is, why, and how to install it in one sentence (D176)", () => {
+    const README = readFileSync("README.md", "utf8");
+    for (const heading of ["## What it does for you", "## Why not just ask your assistant?", "## Install", "## Which assistants", "## Commands you run yourself"]) expect(README).toContain(heading);
+    expect(README).toContain("npx --yes taskfollow instructions");
+    expect(README.indexOf("## Install")).toBeLessThan(README.indexOf("## For developers"));
+  });
+
   it("states the five operator rules from spec §6.1", () => {
     for (const rule of ["1. Never invent an answer", "2. Always tell the person why", "3. Never request, repeat or store secrets", "4. At a blocking human step, stop", "5. After every `agent_action`, run the step's verify", "6. Never approve, edit or reject an approval yourself"]) {
       expect(DOC).toContain(rule);

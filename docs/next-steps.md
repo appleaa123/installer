@@ -1,6 +1,6 @@
 # TaskFollow: where things stand and what to do next
 
-Last updated 2026-10-17. The scope is `docs/scope-refresh.md` section 9 (D152, widened by D156); the owner's later choices are D165–D170. This file is the short, current view; `DECISIONS.md` is the record.
+Last updated 2026-10-19. The scope is `docs/scope-refresh.md` section 9 (D152, widened by D156); the owner's later choices are D165–D170. This file is the short, current view; `DECISIONS.md` is the record.
 
 ## Done
 
@@ -24,6 +24,7 @@ The current scope (9.1) is finished: approve-agent-call (#40 via #58, D151, task
 | 8, learning into my-rules.md | #63 | D173 | `src/core/learning.ts` (rule candidates, `learningsCommand`), `workflow-skill.ts` (`appendRule`, `NO_RULES_YET`), `lifecycle.ts` (`workflow rule`), `why.ts` + `why-tools.ts` (`rule_candidates`), `consult.ts` (`consultKeptRules`), `deliver.ts` (`deliveredZip`, the recorded folder), `tick.ts`, `cli.ts` (`learnings dismiss`), INSTALL.md rules 11 and 15, section 9 and 9b | `taskfollow workflow rule <id> --value '{"rule":"…"}'`; `why` lists "Corrections to turn into rules"; `taskfollow learnings [dismiss <n>]` |
 | Real-user readiness | #64 | D175 | `src/core/engine.ts` (a non-blocking auto step is blocked at once), `solutions/starter.json` + `starter-skillswiki.json` (`preflight.tools` not blocking; join lines), `check-commands.ts` (`UNPROFILED_AGENT`), `report.ts` (Agent and Runs lines), `skills.ts` (`.agents/skills`), `workflow-skill.ts` (`AGENTS.md`), `deliver.ts`, `email-page.ts` (sign-in name), `runner-steps.ts` (dry run of `agent_call`), `package.json` (`prepack`, not private), INSTALL.md, START-HERE.md, README.md | An install on any agent that can run commands reaches the questions; the report says in plain words what runs and what needs a model key; skills in `.agents/skills` and `AGENTS.md`; the email page names whose inbox is read; a dry run shows the call it would ask to approve |
 | Weekly re-check | #66 | D174 | `src/core/recheck.ts` (new: due, start, child, the check, notices), `check-runner.ts` (`quietOnError`), `tick.ts` (the `recheck` pass), `cli.ts` (`recheck-run`, the report flag), `why.ts` + `why-tools.ts` (`recheck`), `check-fresh.ts` (doctor), `report.ts` (the weekly sentence), INSTALL.md rule 11 | Nothing on a pass; on a fail, once a week: "TaskFollow's weekly check found that it can no longer run your agent…" by channel or in `why`; `taskfollow doctor` warns when it could not run |
+| INSTALL.md and README refresh | (this PR) | D176 | INSTALL.md (points 5-7, sections 1, 5, 9, 9a), README.md, START-HERE.md, `tests/e2e/install-doc.test.ts` | An agent other than Claude Code is told to work out what does not work on it, within three limits; the README says what TaskFollow is and how to install it |
 
 ## In progress
 
@@ -36,6 +37,8 @@ The owner's guide for this is `docs/testing/2026-10-17-real-user-test.md`: Claud
 The owner installs TaskFollow on their own agent with only TaskFollow's guidance and uses it daily; friends try it on other agents; task 23 (a non-technical person installs it); then the owner publishes to npm (`npm publish`, their account) and makes the repository public (task 43, D177; `LICENSE` and `package.json` are ready). Every task for a person is in `docs/human-tasks.md` (37–43 for v1).
 
 ## Follow-ups (not yet planned)
+
+- An agent writes its own profile and runs `taskfollow certify`; when it passes, that agent may run work unattended with no separate model key (owner's idea, 2026-10-19, D176). Certification already proves a forbidden tool is refused, so an agent-written profile is trusted only after it passes.
 
 - B7's `tools` half: a failed or refused `mcp__installer__*` call in a run lowers `tools` too (D162).
 - T6b MCP tool-name hints; the outbound "recorded" path counts notices as delivered; the consult cleanup always removes the user-wide `installer` MCP registration (known limit).
