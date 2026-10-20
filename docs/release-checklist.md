@@ -1,6 +1,6 @@
 # Release checklist
 
-`taskfollow@0.1.0` is on npm (2026-10-19, D177). `package.json` builds
+`taskfollow` is on npm: 0.1.0 and 0.1.1 (both 2026-10-19, D177; tag `v0.1.1`). `package.json` builds
 before packing (`prepack`), so `npm pack` and `npm publish` ship a current
 build. This list prepares each release; the owner runs `npm publish`.
 
