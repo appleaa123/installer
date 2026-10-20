@@ -82,8 +82,8 @@ Send it when all of these are true:
    npm login
    npm publish
    ```
-   The name `taskfollow` was free on 2026-10-17. Until you publish, you can send friends the `.tgz` from `npm pack`; START-HERE step 2 tells them what to do with it.
-3. **You've chosen a license.** There is none yet, so legally nobody else may use, copy or change the code. Pick one (for example MIT if you want it open, or a private "all rights reserved" note if not) and tell Claude, so it's added to the repo and `package.json` before publishing.
+   The name `taskfollow` was free on 2026-10-19 (human task 43 has the steps). Until you publish, you can send friends the `.tgz` from `npm pack`; START-HERE step 2 tells them what to do with it.
+3. **The license is in place and the repository is public.** You chose the same license as skills_wiki_opensource (Elastic License 2.0 with its added limitation, D177); `LICENSE` and `package.json` carry it. Make `appleaa123/installer` public when you publish (human task 43).
 4. **Friends get two things:** `START-HERE.md`, and for at least one non-technical friend, the observer sheet in `docs/testing/2026-10-14-real-life-install-test.md` (task 23: don't help them; write down every stall).
 
 **Tell friends what v1 deliberately doesn't do**, so they aren't surprised:

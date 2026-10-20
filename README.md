@@ -124,3 +124,10 @@ this table (see [`docs/release-checklist.md`](docs/release-checklist.md)).
 - Design spec: [`docs/superpowers/specs/2026-10-06-installer-design.md`](docs/superpowers/specs/2026-10-06-installer-design.md)
 - Decision log: [`DECISIONS.md`](DECISIONS.md)
 - Release checklist: [`docs/release-checklist.md`](docs/release-checklist.md)
+
+## License
+
+TaskFollow is source-available under the Elastic License 2.0 with one
+added limitation: you may not be paid to install, run or support it for
+someone else, or sell it inside a product. Using it for your own work,
+also inside a business, is allowed. See [`LICENSE`](LICENSE) (D177).

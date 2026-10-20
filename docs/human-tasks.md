@@ -267,6 +267,18 @@ Each task says why it is needed and what to do, step by step.
 
 **Paste back:** where it confused you or stopped, word for word; the Agent and Runs lines; whether the agent found the workflow skill in `.agents/skills` (it may need to be asked to read `AGENTS.md`); your answer for step 1.
 
+### 43. Publish TaskFollow to npm and make the repository public (D177, about 20 minutes)
+
+**Why:** START-HERE's `npx --yes taskfollow instructions` only works, on any agent, once the package is on npm. npm cannot reserve a name: the first publish claims `taskfollow` (free on 2026-10-19). An unscoped npm package is public, and you chose to make the repository public too. A publish can only be undone in its first 72 hours, so do this when Part E of `docs/testing/2026-10-17-real-user-test.md` says it is time.
+
+1. Search "taskfollow" for trademarks (for example the USPTO search and a web search). If someone owns it, stop and tell Claude.
+2. If you have no npm account, create one at npmjs.com and turn on two-factor sign-in.
+3. On GitHub, open `appleaa123/installer`, Settings, then Change visibility, and make it public. Claude scanned the whole history on 2026-10-19 and found no keys or tokens.
+4. From a clean, up-to-date `main`: `npm test`, then `npm login`, then `npm publish`.
+5. Check that `npm view taskfollow version` prints `0.1.0` and that the package page on npmjs.com shows the license and the repository link.
+
+**Paste back:** what `npm publish` printed at the end, and anything it warned about.
+
 ## Optional
 
 ### 18. Check the crontab entry on a Linux host (only if a client will run on Linux)
