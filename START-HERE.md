@@ -3,7 +3,7 @@
 This page is for you, not for your computer. TaskFollow turns the AI assistant you already have into one that knows your work: it sets itself up step by step, finds the jobs you repeat, runs them for you, and always asks you before anything is sent, paid or deleted. This page gets you from nothing to a helper who sets everything up for you. You do not need to know anything technical. You will need:
 
 - a **Mac** or a **Windows 11** computer,
-- an AI assistant that can run commands on your computer: for example **Claude Code** (a paid Claude plan works), Antigravity or Codex. Claude Code is the one TaskFollow has tested most, and the steps below use it. Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts Antigravity on its own, because Antigravity's terms forbid that,
+- an AI assistant that can run commands on your computer: for example **Claude Code** (a paid Claude plan works), Codex, OpenClaw, Hermes, Pi or Antigravity. Claude Code is the one TaskFollow has tested most, and the steps below use it. Any of them works with you in its chat; for work where a model judges something while you are away, an assistant other than Claude Code needs a model key of your own (if it already uses one, usually that one), and the helper tells you when. Antigravity can install and use TaskFollow with you in its chat; TaskFollow never starts Antigravity on its own, because Antigravity's terms forbid that,
 - the **Telegram** app on your phone only if you want messages there when you are away from the computer (without it, your assistant tells you everything in its own chat), and your own **Google account** if you keep your contacts in a Google Sheet. The helper asks what you use and tells you what you need,
 - some time without interruptions. If you get stuck, you can stop and carry on later.
 
@@ -66,6 +66,6 @@ From here the helper leads. It will ask you questions, and sometimes ask you to 
 
 ## If something goes wrong
 
-- **Never paste a password, a key or a secret into the chat with Claude.** TaskFollow opens its own page on your computer for those, and the helper will tell you when.
-- Tell Claude exactly what you see on the screen. It can help.
+- **Never paste a password, a key or a secret into the chat with your assistant.** TaskFollow opens its own page on your computer for those, and the helper will tell you when.
+- Tell your assistant exactly what you see on the screen. It can help.
 - If the window closes: open a terminal again, paste the `cd` line from step 4 to go back to your folder, and type `claude --continue`. It picks up where you stopped. With another assistant, open it again in your folder and say 'carry on with TaskFollow'.
