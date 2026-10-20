@@ -28,6 +28,7 @@ export const INPUT_KINDS = [
   "secret",
   "oauth",
   "file",
+  "url",
 ] as const;
 export type InputKind = (typeof INPUT_KINDS)[number];
 
@@ -157,4 +158,4 @@ export interface InstallState {
 }
 
 /** What an auto action may change in the install state, merged in the same save as its step record. */
-export type StatePatch = Partial<Pick<InstallState, "mode" | "roles" | "runtime">>;
+export type StatePatch = Partial<Pick<InstallState, "mode" | "roles" | "runtime" | "skillswiki">>;

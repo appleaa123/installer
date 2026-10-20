@@ -1,18 +1,24 @@
 import { ActionFailure } from "./failure.js";
-import { InputError } from "./inputs.js";
+import { InputError, SAFE_URL } from "./inputs.js";
 import { getSecret } from "./keychain.js";
 import { callTool, type McpTarget } from "./mcp.js";
-import type { Solution } from "./types.js";
+import { localSkillsOn } from "./skillswiki-local.js";
+import type { InstallState, Solution, StatePatch } from "./types.js";
 
 /** The one keychain item and the MCP server name this version knows (D52). */
 export const SKILLSWIKI_SECRET_ID = "skillswiki";
-export const SKILLSWIKI_MCP_NAME = "skillswiki";
+export const SKILLSWIKI_MCP_NAME = "skillswiki-hosted";
+/** D178: hosted Skills Wiki was registered as `skillswiki` before, the name local Skills Wiki gives its own server. */
+export const LEGACY_SKILLSWIKI_MCP_NAME = "skillswiki";
+
+/** The agent registrations hosted Skills Wiki may have: the old name only while local Skills Wiki does not use it. */
+export const hostedMcpNames = (state: InstallState | undefined): readonly string[] =>
+  localSkillsOn(state) ? [SKILLSWIKI_MCP_NAME] : [SKILLSWIKI_MCP_NAME, LEGACY_SKILLSWIKI_MCP_NAME];
 export const KEY_MISSING_HINT = "Skills Wiki key missing: run 'taskfollow secret skillswiki' first";
 export const URL_MISSING_HINT = "This install has no Skills Wiki URL: start again with --url <the MCP URL from your Skills Wiki dashboard>";
 /** Actions and checks that call Skills Wiki; a solution with any of them needs `start --url`. */
 export const SKILLSWIKI_ACTIONS: readonly string[] = ["register_mcp", "probe_mcp"];
 export const SKILLSWIKI_CHECKS: readonly string[] = ["combo_active"];
-const ALLOWED_URL = /^(https:\/\/|http:\/\/127\.0\.0\.1(:\d+)?\/)/;
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Raw = Record<string, unknown>;
@@ -63,6 +69,18 @@ function namesSkillswikiSkill(value: unknown): boolean {
   return Object.entries(value).some(([key, item]) => (key === "skill" && isWikiRef(item)) || (key === "skills" && Array.isArray(item) && item.some(isWikiRef)) || namesSkillswikiSkill(item));
 }
 
+/** D178: the solution asks for the URL during the install (`set_skillswiki_url`), so `start` needs no `--url`. */
+export const asksSkillswikiUrl = (solution: Solution): boolean => solution.steps.some((step) => step.auto?.action === "set_skillswiki_url");
+
+/** D178: the URL the person answered becomes the install's Skills Wiki URL; a URL given to `start --url` stays. */
+export function setSkillswikiUrlAction(args: Readonly<Record<string, unknown>>, state: InstallState | undefined): StatePatch {
+  if (state?.skillswiki) return {};
+  const stepId = args.url;
+  const record = typeof stepId === "string" ? state?.steps[stepId] : undefined;
+  if (record?.status !== "done" || typeof record.value !== "string") throw new ActionFailure(`The Skills Wiki address is not answered yet: answer '${String(stepId)}' first`);
+  return { skillswiki: { url: requireSkillswikiUrl(record.value) } };
+}
+
 /** A solution needs `start --url` when a step calls Skills Wiki or a bundled workflow's judge names one of its skills. */
 export function usesSkillswiki(solution: Solution): boolean {
   return (
@@ -74,7 +92,7 @@ export function usesSkillswiki(solution: Solution): boolean {
 /** The key only ever travels over https, or to this machine's own loopback (the test server). */
 export function requireSkillswikiUrl(url: string | undefined): string {
   if (!url) throw new InputError("This solution uses Skills Wiki: run start again with --url <the MCP URL from your Skills Wiki dashboard>");
-  if (!ALLOWED_URL.test(url)) throw new InputError(`--url must be an https URL, got '${url}'`);
+  if (!SAFE_URL.test(url)) throw new InputError(`--url must be an https URL, got '${url}'`);
   return url;
 }
 /** URL from the install state, key from the keychain; both are needed before Skills Wiki is called. */

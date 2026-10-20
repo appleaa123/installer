@@ -4,7 +4,7 @@ import { confinedPath } from "./actions.js";
 import { AUDIT_FILE, appendAudit, verifyAudit, withAuditLock } from "./audit.js";
 import { CHANNEL_IDS } from "./channels.js";
 import { CONNECTOR_SECRETS } from "./connectors.js";
-import { unregisterEverywhere } from "./disconnect.js";
+import { unregisterEverywhere, unregisterHosted } from "./disconnect.js";
 import { stopWatching } from "./watch.js";
 import { removeWritten } from "./workflow-skill.js";
 import { ActionFailure } from "./failure.js";
@@ -16,8 +16,9 @@ import { MODEL_SECRET_ID } from "./model.js";
 import { setPaused } from "./pause.js";
 import { TOOLS_MCP_NAME } from "./register.js";
 import { scheduleCommand } from "./scheduler.js";
-import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID } from "./skillswiki.js";
+import { SKILLSWIKI_SECRET_ID } from "./skillswiki.js";
 import { loadState } from "./state.js";
+import type { InstallState } from "./types.js";
 
 /**
  * `taskfollow uninstall` (spec §16.4, D34, D109): removes the engine's body and keeps the records. In order: pause, so
@@ -42,6 +43,15 @@ export async function exportAudit(home: string, now: string): Promise<{ file: st
     return verifyAudit(home);
   });
   return { file: target, lines: check.ok ? check.lines : 0, chain: check.ok ? "intact" : `broken at line ${check.line}: ${check.reason}` };
+}
+
+/** D178: local Skills Wiki is the person's own skills library, so it stays unless they asked for it to go. */
+const LOCAL_KEPT = "local Skills Wiki and your skills in its library (~/.skillswiki): 'taskfollow uninstall --remove-skillswiki', or 'skillswiki uninstall' then 'pipx uninstall skillswiki', puts the skills back and removes it";
+
+async function localSkillswikiAtUninstall(home: string, state: InstallState | undefined, remove: boolean, env: Env | undefined): Promise<{ readonly status: string; readonly detail?: string } | null> {
+  const { localSkillsOn, removeLocalSkillswiki } = await import("./skillswiki-local.js");
+  if (!localSkillsOn(state)) return null;
+  return remove ? removeLocalSkillswiki(home, env) : { status: "kept" };
 }
 
 async function deleteSecrets(env: Env | undefined): Promise<Record<string, string>> {
@@ -70,7 +80,7 @@ async function osCommands(home: string, now: () => string, options: ServiceOptio
   return commands;
 }
 
-export async function uninstall(home: string, person: { interactive: boolean; as?: string }, now: () => string, options: ServiceOptions & { env?: Env } = {}): Promise<Record<string, unknown>> {
+export async function uninstall(home: string, person: { interactive: boolean; as?: string; removeSkillswiki?: boolean }, now: () => string, options: ServiceOptions & { env?: Env } = {}): Promise<Record<string, unknown>> {
   if (!person.interactive) {
     await appendAudit(home, { ts: now(), actor: "agent", event: "engine.uninstall_refused", ref: "uninstall", payload: { command: "taskfollow uninstall" } });
     throw new InputError("Uninstalling removes the engine's registrations, keys and schedules: the person runs 'taskfollow uninstall' in their own terminal");
@@ -80,18 +90,19 @@ export async function uninstall(home: string, person: { interactive: boolean; as
   const watch = await stopWatching(home, options.env ?? process.env, now());
   await setPaused(home, true, { name: by, actor: "human", via: "cli" }, now(), "uninstall");
   const gateway = (await stopGateway(home, now)).status;
-  const profile = (await loadState(home))?.runtime?.profile;
-  const unregistered = { [SKILLSWIKI_MCP_NAME]: await unregisterEverywhere(home, profile, SKILLSWIKI_MCP_NAME), [TOOLS_MCP_NAME]: await unregisterEverywhere(home, profile, TOOLS_MCP_NAME) };
+  const state = (await loadState(home)) ?? undefined;
+  const unregistered = { [SKILLSWIKI_SECRET_ID]: await unregisterHosted(home, state), [TOOLS_MCP_NAME]: await unregisterEverywhere(home, state?.runtime?.profile, TOOLS_MCP_NAME) };
   // 9.13 item 5: the workflow skill folders and the CLAUDE.md section TaskFollow wrote, and nothing else of the person's.
   // Item 7a: open checks end and their test files, skills and tabs are removed with everything else TaskFollow wrote.
   await (await import("./check-fresh.js")).sweepChecks(home, now(), true);
   const removed = await removeWritten(home);
+  const local = await localSkillswikiAtUninstall(home, state, person.removeSkillswiki === true, options.env);
   const secrets = await deleteSecrets(options.env);
   const commands = await osCommands(home, now, options);
-  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, removed, secrets, watch_removed: watch } });
+  await appendAudit(home, { ts: now(), actor: "human", event: "engine.uninstalled", ref: "uninstall", payload: { by, gateway, unregistered, removed, secrets, watch_removed: watch, ...(local ? { skillswiki_local: local.status } : {}) } });
   return {
-    status: "uninstalled", gateway, unregistered, removed, secrets, audit_export: await exportAudit(home, now()), commands,
-    kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above", "the find-my-repetitive-work skill under exports/, only when TaskFollow knew no install folder (it stays with the home)"],
+    status: "uninstalled", gateway, unregistered, removed, secrets, audit_export: await exportAudit(home, now()), commands, ...(local ? { skillswiki_local: local } : {}),
+    kept: ["the client's own sheets and mailboxes (never touched)", "data/ and runs/ under the home", "the audit, exported as above", "the find-my-repetitive-work skill under exports/, only when TaskFollow knew no install folder (it stays with the home)", ...(local?.status === "kept" ? [LOCAL_KEPT] : [])],
     note: "Run the printed commands in your own terminal to unload what was loaded into the OS; once you have kept the audit export, delete the home folder yourself.",
   };
 }

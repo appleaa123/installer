@@ -225,26 +225,25 @@ Several of these, and an order-questions workflow, may all start on the same ema
 2. **The host.** Not available on Windows. On a Mac or Linux team host, `taskfollow host` reads the settings that keep the assistant running and prints the fix for each one that is not right, and the steps for a dedicated OS user; `taskfollow host service install` writes the boot services and prints their `sudo` commands. Never run those commands yourself: the person runs them in their own terminal.
 3. **Kill switch.** When the person wants everything to stop, run `taskfollow pause`: nothing is sent and no workflow runs, while incoming messages are still kept. Only the person starts it again, with `taskfollow unpause` in their own terminal, or the decision maker with /unpause in Telegram.
 4. **Support and removal.** `taskfollow support bundle` writes a file without secrets or personal data that the person may send for help. `taskfollow uninstall`, in the person's own terminal only, removes the engine's registrations, keys and schedules, exports the audit and keeps the records.
-## 11. Optional: Skills Wiki
+## 11. Optional: Skills Wiki, local and hosted
 
-Skills Wiki is a separate service that supplies curated skills to workflows and to the person's agent. The default install does not need it. Skip this section unless the person already has a Skills Wiki account and asks for it, and only on a fresh install: an install that was started with the default solution cannot be switched.
+The default starter asks two questions about Skills Wiki; both default to no, and saying no to both gives the install it always was.
 
-1. Ask whether the person has signed in to their Skills Wiki dashboard and can see an API key and an MCP URL there. If not, stop; nothing else depends on it. Never ask them to read the key to you.
-2. Store the key on the installer's page, then start with the Skills Wiki solution:
+1. **Local Skills Wiki** (`services.skills`, free, on the person's computer). It manages the skills the person already installed, across all their agents. Before you submit `skills`, make sure the person heard the question's `why` in full: **their installed skills move into the Skills Wiki library (`~/.skillswiki`)**, their agents then reach them through Skills Wiki, and `skillswiki release --all` puts them back. The step after it installs Skills Wiki with pipx and runs its setup from the person's home folder (never the install folder, so the workflow skills TaskFollow writes stay put); it needs Python 3.11 or newer and pipx. When either is missing, or the `skillswiki` command is not on the PATH, the step is blocked with the fix, the rest of the install goes on, and the report says what is limited; after the fix, run `taskfollow resume`. `taskfollow skills` then lists the library's skills as "Skills Wiki (local)". If the person later runs `skillswiki setup` themselves, ask them to run it from their home folder too.
+2. **Hosted Skills Wiki** (`services.skillswiki`, a paid service with a Skills Wiki account). Say plainly that it costs money and needs an account. If the person says yes, they paste the MCP URL shown in their Skills Wiki dashboard (it ends in `/mcp`; it is not a secret), then store the API key on the page that `taskfollow secret skillswiki` opens (never ask them to read the key to you), then activate their combo in the dashboard. The agent's connection is named `skillswiki-hosted`.
+3. **Adding one later.** `taskfollow add skillswiki` brings in the hosted steps. Local Skills Wiki moves the person's skills, so `taskfollow add skills` first refuses and prints that warning: tell the person, and only when they say yes run `taskfollow add skills --confirm-move`. Both work for installs started with this version of the starter.
+4. **A Skills Wiki starter.** A person who already has an account may start with it instead: `taskfollow secret skillswiki`, then
 
 ```bash
-taskfollow secret skillswiki
 taskfollow start --solution starter-skillswiki --url {{SKILLSWIKI_URL}}
 ```
 
-`taskfollow secret skillswiki` opens a page in the person's browser; they paste the API key from their dashboard and press Save, and it goes into the keychain without passing through you. Wait until the person says the page shows Done. `--url` is the MCP URL from their dashboard; it is not a secret. `taskfollow start` refuses to run while the key is missing and says so.
-
-3. Then repeat section 4 as usual. The extra steps connect your agent to Skills Wiki and ask the person to activate their combo in the dashboard. This starter still needs Telegram, also for a person on their own: Telegram is optional only in the default starter.
-4. Judges use the text of each skill file as it was when first used. `taskfollow packs` lists these pins; when Skills Wiki has a new version, the doctor tries it in sandbox and only the decision maker switches to it, in their own terminal (`taskfollow packs switch <pack> --as <their name>`). `taskfollow learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
+`--url` is the MCP URL from their dashboard. `taskfollow start` refuses to run while the key is missing and says so. This starter still needs Telegram, also for a person on their own: Telegram is optional only in the default starter.
+5. Judges use the text of each skill file as it was when first used. `taskfollow packs` lists these pins; when Skills Wiki has a new version, the doctor tries it in sandbox and only the decision maker switches to it, in their own terminal (`taskfollow packs switch <pack> --as <their name>`). `taskfollow learnings` lists the corrections, with personal data removed, sent to Skills Wiki.
 
 ## Removing the connection
 
-`taskfollow disconnect skillswiki` (only if section 11 was used) removes the Skills Wiki server from your configuration and deletes the key from the keychain. `taskfollow disconnect google-sheets` deletes the Google sign-in from the keychain; the person removes the app's access from their Google account at https://myaccount.google.com/connections. `taskfollow disconnect telegram` and `taskfollow disconnect email` delete the bot token or the app password and the channel's settings; stop the gateway first with `taskfollow gateway stop`.
+`taskfollow disconnect skillswiki` (hosted Skills Wiki) removes the Skills Wiki server from your configuration and deletes the key from the keychain. Local Skills Wiki is the person's own skills library, so `taskfollow uninstall` keeps it; `taskfollow uninstall --remove-skillswiki`, in the person's own terminal, puts their skills back, disconnects their agents and removes it. `taskfollow disconnect google-sheets` deletes the Google sign-in from the keychain; the person removes the app's access from their Google account at https://myaccount.google.com/connections. `taskfollow disconnect telegram` and `taskfollow disconnect email` delete the bot token or the app password and the channel's settings; stop the gateway first with `taskfollow gateway stop`.
 
 ## Operator rules
 

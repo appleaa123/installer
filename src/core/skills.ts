@@ -1,12 +1,13 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { ActionFailure } from "./failure.js";
 import { InputError } from "./inputs.js";
 import { callTool, type McpTarget } from "./mcp.js";
 import { loadProfileById, type RuntimeProfile } from "./profile.js";
 import { skillswikiTarget } from "./skillswiki.js";
+import { libraryRoot } from "./skillswiki-local.js";
 import { loadState } from "./state.js";
 
 /**
@@ -26,12 +27,14 @@ export const USER_SKILLS_ENV = "INSTALLER_AGENT_USER_SKILLS";
 export interface SkillRoots {
   readonly project?: string;
   readonly user?: string;
+  /** D178: local Skills Wiki's library, where the person's skills live once Skills Wiki moved them; only read. */
+  readonly library?: string;
   /** TaskFollow was started from the home folder: nothing is written there (no workflow skill, no CLAUDE.md). */
   readonly home_folder?: true;
 }
 
 export interface SkillEntry {
-  readonly source: "install folder" | "your own" | "Skills Wiki";
+  readonly source: "install folder" | "your own" | "Skills Wiki" | "Skills Wiki (local)";
   readonly name: string;
   readonly description: string;
   /** What a workflow names: the folder's absolute path, or `skillswiki:<pack>/<skill>/SKILL.md`. */
@@ -57,13 +60,14 @@ export const SHARED_SKILLS_DIR = ".agents/skills";
  * The one place the agent's skill folders are worked out (D175): the profile's own, or `.agents/skills` in the install
  * folder for an agent TaskFollow has no profile for, or whose profile names none. Never in the person's home folder.
  */
-export function skillRoots(profile: RuntimeProfile | undefined, workDir: string | undefined, env: NodeJS.ProcessEnv): SkillRoots {
+export function skillRoots(profile: RuntimeProfile | undefined, workDir: string | undefined, env: NodeJS.ProcessEnv, library?: string): SkillRoots {
   const dirs = profile?.skills_dirs ?? { project: SHARED_SKILLS_DIR };
   const user = env[USER_SKILLS_ENV] || (dirs?.user ? expandHome(dirs.user) : undefined);
   const project = workDir && dirs?.project ? join(workDir, dirs.project) : undefined;
   const homeFolder = workDir !== undefined && (realOrSame(workDir) === realOrSame(homedir()) || (project !== undefined && user !== undefined && realOrSame(project) === realOrSame(user)));
-  if (homeFolder) return { ...(user ? { user } : {}), home_folder: true };
-  return { ...(project ? { project } : {}), ...(user ? { user } : {}) };
+  const kept = library ? { library } : {};
+  if (homeFolder) return { ...(user ? { user } : {}), ...kept, home_folder: true };
+  return { ...(project ? { project } : {}), ...(user ? { user } : {}), ...kept };
 }
 
 /** The `---` block at the top of a SKILL.md: `key: value` lines, quotes removed, a folded `>`/`|` value joined. */
@@ -162,10 +166,11 @@ export async function inventory(home: string, env: NodeJS.ProcessEnv): Promise<{
   if (!state?.runtime) notes.push("No agent was found yet ('taskfollow probe'), so its skill folders are not known");
   else if (!profile?.skills_dirs) notes.push(SHARED_SKILLS_NOTE);
   if (state?.runtime) {
-    const roots = skillRoots(profile, state.work_dir, env);
+    const roots = skillRoots(profile, state.work_dir, env, await libraryRoot(home, state));
     if (roots.home_folder) notes.push(HOME_FOLDER_NOTE);
     if (roots.project) skills.push(...(await localSkills(roots.project, "install folder", notes)));
     if (roots.user) skills.push(...(await localSkills(roots.user, "your own", notes)));
+    if (roots.library) skills.push(...(await localSkills(roots.library, "Skills Wiki (local)", notes)));
   }
   if (state?.skillswiki) {
     try {
@@ -191,7 +196,7 @@ function inside(root: string, path: string): boolean {
 
 async function realRoots(roots: SkillRoots): Promise<string[]> {
   const found: string[] = [];
-  for (const root of [roots.project, roots.user]) {
+  for (const root of [roots.project, roots.user, roots.library]) {
     if (!root) continue;
     try {
       found.push(await realpath(root));
@@ -202,16 +207,23 @@ async function realRoots(roots: SkillRoots): Promise<string[]> {
   return found;
 }
 
-/** The folder's real path, once it is checked to be a skill inside one of the agent's skill folders. */
-async function skillFolder(ref: string, roots: SkillRoots): Promise<string> {
-  const shown = [roots.project, roots.user].filter(Boolean).join(", ") || "none known";
-  if (!isAbsolute(ref)) throw new InputError(`"${ref}" must be a skill folder from 'taskfollow skills' (a full path) or skillswiki:<pack>/<skill>/<path>`);
-  let real: string;
+/** D178: a folder local Skills Wiki moved into its library since the workflow named it is found there by its name. */
+async function movedOrSame(ref: string, roots: SkillRoots): Promise<string> {
   try {
-    real = await realpath(ref);
+    return await realpath(ref);
   } catch {
+    const moved = roots.library ? join(roots.library, basename(ref)) : undefined;
+    const real = moved ? await realpath(moved).catch(() => undefined) : undefined;
+    if (real) return real;
     throw new InputError(`The skill folder "${ref}" does not exist`);
   }
+}
+
+/** The folder's real path, once it is checked to be a skill inside one of the agent's skill folders. */
+async function skillFolder(ref: string, roots: SkillRoots): Promise<string> {
+  const shown = [roots.project, roots.user, roots.library].filter(Boolean).join(", ") || "none known";
+  if (!isAbsolute(ref)) throw new InputError(`"${ref}" must be a skill folder from 'taskfollow skills' (a full path) or skillswiki:<pack>/<skill>/<path>`);
+  const real = await movedOrSame(ref, roots);
   if (!(await realRoots(roots)).some((root) => inside(root, real))) throw new InputError(`"${ref}" is not inside your agent's skills folders (${shown})`);
   try {
     if (!(await stat(join(real, SKILL_FILE))).isFile()) throw new Error("not a file");

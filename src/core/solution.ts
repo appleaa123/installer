@@ -220,6 +220,16 @@ function checkModeReferences(steps: readonly StepDef[]): void {
   });
 }
 
+/** D178: set_skillswiki_url reads an earlier question whose answer is checked as an address when it is given. */
+function checkUrlReferences(steps: readonly StepDef[]): void {
+  steps.forEach((step, index) => {
+    if (step.auto?.action !== "set_skillswiki_url") return;
+    const ref = step.auto.args?.url;
+    const asked = steps.slice(0, index).find((earlier) => earlier.type === "ask" && earlier.step_id === ref);
+    if (asked?.input?.kind !== "url") throw new SolutionError(`Step '${step.step_id}': set_skillswiki_url args.url must name an earlier ask step with a url answer, got ${JSON.stringify(ref ?? null)}`);
+  });
+}
+
 /** probe_runtime may only name a runtime profile id, never a file (D34: solution text never grants capabilities). */
 function checkProbeArgs(steps: readonly StepDef[]): void {
   for (const step of steps) {
@@ -314,6 +324,7 @@ export function parseSolution(raw: unknown): Solution {
     return index;
   }, 0);
   checkModeReferences(steps);
+  checkUrlReferences(steps);
   checkWhenReferences(steps);
   checkProbeArgs(steps);
   checkSecretSteps(steps);

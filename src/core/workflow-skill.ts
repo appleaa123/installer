@@ -6,6 +6,7 @@ import { readConfig, writeConfig } from "./data-source.js";
 import { InputError } from "./inputs.js";
 import { loadProfileById, type RuntimeProfile } from "./profile.js";
 import { DISCOVERY_SKILL, REFERENCES_DIR, SKILL_FILE, skillRoots, type SkillRoots } from "./skills.js";
+import { libraryRoot } from "./skillswiki-local.js";
 import { loadState } from "./state.js";
 import { removeNotesFolder } from "./task-files.js";
 import { DEFAULT_TOOLS } from "./tool-set.js";
@@ -52,7 +53,7 @@ export const SHARED_AGENT_FILE = "AGENTS.md";
 export async function installTargets(home: string): Promise<{ readonly profile?: RuntimeProfile; readonly roots: SkillRoots; readonly agentFile: string | null }> {
   const state = await loadState(home);
   const profile = state?.runtime?.profile ? await loadProfileById(state.runtime.profile) : undefined;
-  const roots = skillRoots(profile, state?.work_dir, process.env);
+  const roots = skillRoots(profile, state?.work_dir, process.env, await libraryRoot(home, state ?? undefined));
   const file = profile ? profile.instructions_file : SHARED_AGENT_FILE;
   const agentFile = state?.work_dir && file && !roots.home_folder ? join(state.work_dir, file) : null;
   return { ...(profile ? { profile } : {}), roots, agentFile };

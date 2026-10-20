@@ -1,6 +1,6 @@
 {
   "id": "starter",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "data_contract": {
     "entities": {
       "contact": {
@@ -1126,6 +1126,227 @@
       "when": {
         "step": "mode.purpose",
         "equals": "install"
+      }
+    },
+    {
+      "step_id": "services.skills",
+      "phase": "MODE",
+      "type": "ask",
+      "title": "Should TaskFollow set up Skills Wiki to manage the AI skills you already have, across all your agents?",
+      "why": "Skills Wiki is free and runs on your computer. Your installed skills will move into the Skills Wiki library (~/.skillswiki), and your agents then reach them through Skills Wiki, which picks the right skill for each request. 'skillswiki release --all' puts them back. It needs Python 3.11 or newer and pipx. You can add it later.",
+      "blocking": true,
+      "input": {
+        "kind": "choice",
+        "options": [
+          "skills",
+          "none"
+        ]
+      },
+      "default": "none",
+      "when": {
+        "step": "mode.purpose",
+        "equals": "install"
+      }
+    },
+    {
+      "step_id": "services.skillswiki",
+      "phase": "MODE",
+      "type": "ask",
+      "title": "Do you want to connect hosted Skills Wiki for more skills and ready-made skill combos?",
+      "why": "Hosted Skills Wiki is a paid service and needs a Skills Wiki account. It gives your agent and your workflows its curated skills and combos. You can add it later.",
+      "blocking": true,
+      "input": {
+        "kind": "choice",
+        "options": [
+          "skillswiki",
+          "none"
+        ]
+      },
+      "default": "none",
+      "when": {
+        "step": "mode.purpose",
+        "equals": "install"
+      }
+    },
+    {
+      "step_id": "skills.install",
+      "phase": "BRAIN",
+      "type": "auto",
+      "title": "Install Skills Wiki and move your skills into it",
+      "why": "TaskFollow installs Skills Wiki with pipx and runs its setup from your home folder, which moves your installed skills into its library and connects your agents to it. A backup of everything it moves is kept in ~/.skillswiki/backups.",
+      "blocking": false,
+      "auto": {
+        "action": "install_skillswiki"
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skills",
+            "equals": "skills"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.url",
+      "phase": "BRAIN",
+      "type": "ask",
+      "title": "Paste your Skills Wiki address",
+      "why": "Your Skills Wiki dashboard shows your own MCP URL (it ends in /mcp). It is not a secret; the key comes next and stays in your keychain. If you started with --url, give the same address.",
+      "blocking": true,
+      "input": {
+        "kind": "url"
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.url-set",
+      "phase": "BRAIN",
+      "type": "auto",
+      "title": "Keep your Skills Wiki address",
+      "why": "The installer reaches Skills Wiki at this address from now on.",
+      "blocking": true,
+      "auto": {
+        "action": "set_skillswiki_url",
+        "args": {
+          "url": "brain.url"
+        }
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.key",
+      "phase": "BRAIN",
+      "type": "human_action",
+      "title": "Store your Skills Wiki key",
+      "why": "The installer reaches Skills Wiki with this key; it stays in your keychain and never passes through the agent.",
+      "blocking": true,
+      "instructions": [
+        "Open the page that 'taskfollow secret skillswiki' printed (the agent runs that command for you)",
+        "Paste the API key from your Skills Wiki dashboard and press Save",
+        "Tell the agent when the page says Done"
+      ],
+      "input": {
+        "kind": "secret",
+        "provider": "skillswiki"
+      },
+      "verify": {
+        "check": "secret_present",
+        "args": {
+          "id": "skillswiki"
+        }
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.register",
+      "phase": "BRAIN",
+      "type": "auto",
+      "title": "Connect your agent to Skills Wiki",
+      "why": "Your agent reads its skills from Skills Wiki through this connection; the key is read from the keychain on every request.",
+      "blocking": true,
+      "auto": {
+        "action": "register_mcp"
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.combo",
+      "phase": "BRAIN",
+      "type": "human_action",
+      "title": "Activate your combo in the Skills Wiki dashboard",
+      "why": "The active combo decides which skills your agent uses.",
+      "blocking": true,
+      "instructions": [
+        "Open your Skills Wiki dashboard",
+        "Activate the combo for this solution",
+        "Tell the agent when it is active"
+      ],
+      "verify": {
+        "check": "combo_active"
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "brain.probe-mcp",
+      "phase": "BRAIN",
+      "type": "auto",
+      "title": "Check that your agent reaches Skills Wiki",
+      "why": "Confirms the connection works from the folder your agent runs in; if it does not, Skills Wiki content is inlined instead.",
+      "blocking": true,
+      "auto": {
+        "action": "probe_mcp"
+      },
+      "when": {
+        "all": [
+          {
+            "step": "mode.purpose",
+            "equals": "install"
+          },
+          {
+            "step": "services.skillswiki",
+            "equals": "skillswiki"
+          }
+        ]
       }
     },
     {

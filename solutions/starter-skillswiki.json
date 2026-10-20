@@ -1,6 +1,6 @@
 {
   "id": "starter-skillswiki",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "data_contract": {
     "entities": {
       "contact": {
@@ -48,6 +48,10 @@
       "input": { "kind": "choice", "options": ["slack", "none"] }, "default": "none" },
     { "step_id": "services.whatsapp", "phase": "MODE", "type": "ask", "title": "Do your customers write to you on WhatsApp? Your assistant can read those messages and draft replies that you approve.", "why": "It needs a WhatsApp business number and two free accounts (Meta and Cloudflare); the setup page walks you through it. Your team keeps approving on your other channel. You can add it later.", "blocking": true,
       "input": { "kind": "choice", "options": ["whatsapp", "none"] }, "default": "none" },
+    { "step_id": "services.skills", "phase": "MODE", "type": "ask", "title": "Should TaskFollow set up Skills Wiki to manage the AI skills you already have, across all your agents?", "why": "Skills Wiki is free and runs on your computer. Your installed skills will move into the Skills Wiki library (~/.skillswiki), and your agents then reach them through Skills Wiki, which picks the right skill for each request. 'skillswiki release --all' puts them back. It needs Python 3.11 or newer and pipx. You can add it later.", "blocking": true,
+      "input": { "kind": "choice", "options": ["skills", "none"] }, "default": "none" },
+    { "step_id": "skills.install", "phase": "BRAIN", "type": "auto", "when": { "step": "services.skills", "equals": "skills" }, "title": "Install Skills Wiki and move your skills into it", "why": "TaskFollow installs Skills Wiki with pipx and runs its setup from your home folder, which moves your installed skills into its library and connects your agents to it. A backup of everything it moves is kept in ~/.skillswiki/backups.", "blocking": false,
+      "auto": { "action": "install_skillswiki" } },
     { "step_id": "brain.key", "phase": "BRAIN", "type": "human_action", "title": "Store your Skills Wiki key", "why": "The installer reaches Skills Wiki with this key; it stays in your keychain and never passes through the agent.", "blocking": true,
       "instructions": ["Open the page that 'taskfollow secret skillswiki' printed (the agent runs that command for you)", "Paste the API key from your Skills Wiki dashboard and press Save", "Tell the agent when the page says Done"],
       "input": { "kind": "secret", "provider": "skillswiki" },

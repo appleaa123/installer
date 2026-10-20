@@ -44,7 +44,7 @@ describe("the interview proposes from the shipped shapes (Task 7)", () => {
   });
 
   it("starter 2.3.0", () => {
-    expect(STARTER.version).toBe("2.3.0");
+    expect(STARTER.version).toBe("2.4.0");
   });
 
   it("a shape added with the person's rules and examples keeps its shape and writes both", async () => {

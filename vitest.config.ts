@@ -35,6 +35,8 @@ export default defineConfig({
       // 9.12 item 2: the inventory never reads the real ~/.claude/skills during a test run.
       INSTALLER_AGENT_USER_SKILLS: mkdtempSync(join(tmpdir(), "installer-user-skills-")),
       INSTALLER_CLAUDE_SETTINGS: join(mkdtempSync(join(tmpdir(), "installer-claude-")), "settings.json"),
+      // D178: an install that chose local Skills Wiki never runs the real pipx or moves real skills in a test run.
+      INSTALLER_SKILLSWIKI_INSTALL: "none",
     },
   },
 });

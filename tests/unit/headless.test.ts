@@ -1,7 +1,7 @@
 import { access, readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildArgv, fillTemplate, runHeadless, runProcess } from "../../src/core/headless.js";
+import { SKILLSWIKI_HOOK_OFF, buildArgv, fillTemplate, runHeadless, runProcess, runProfileCommand } from "../../src/core/headless.js";
 import { ProfileError, loadProfile, parseProfile } from "../../src/core/profile.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
@@ -156,5 +156,13 @@ describe("Codex-shaped headless calls: JSON Lines, a schema file, a resume comma
     const profile = parseProfile({ ...raw, headless: { ...raw.headless, result_line: { path: "item.type", equals: "final_answer" } } }, dirname(CODEX));
     const result = await runHeadless(profile, { prompt: "Reply with exactly this word: x" }, { cwd: await makeTempHome() });
     expect(result).toEqual({ ok: false, error: "printed no text at 'item.text'" });
+  });
+});
+
+describe("TaskFollow's own agent calls (D178)", () => {
+  it("switch local Skills Wiki's prompt hook off, keeping the rest of the environment", async () => {
+    const show = `console.log(JSON.stringify({ result: [process.env.${SKILLSWIKI_HOOK_OFF}, process.env.KEPT].join(" ") }))`;
+    const result = await runProfileCommand(await loadProfile(FAKE), { prompt: "x" }, () => [process.execPath, "-e", show], { cwd: await makeTempHome(), env: { ...process.env, KEPT: "yes" } });
+    expect(result).toMatchObject({ ok: true, text: "1 yes" });
   });
 });

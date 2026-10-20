@@ -11,6 +11,8 @@ export class InputError extends Error {
 export const AGENT_FORBIDDEN_KINDS: readonly InputKind[] = ["secret", "oauth"];
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** A URL a key may be sent to: https, or this machine's own loopback (the test servers). */
+export const SAFE_URL = /^(https:\/\/|http:\/\/127\.0\.0\.1(:\d+)?\/)/;
 const CRON_RANGES: readonly (readonly [number, number])[] = [
   [0, 59],
   [0, 23],
@@ -83,6 +85,11 @@ export function validateInput(input: StepInput | undefined, value: unknown): unk
     case "time":
       if (typeof value !== "string" || !TIME_PATTERN.test(value)) throw new InputError("Time must be HH:MM (24-hour)");
       return value;
+    case "url": {
+      const url = requireString(value, "Answer").trim();
+      if (!SAFE_URL.test(url)) throw new InputError(`The address must start with https://, got '${url}'`);
+      return url;
+    }
     case "cron":
       if (typeof value !== "string" || !isValidCron(value)) throw new InputError("Schedule must be a 5-field cron expression");
       return value.trim();

@@ -41,7 +41,11 @@ export interface ProcessResult {
   readonly stdout: string;
   readonly code: number | null;
   readonly error?: string;
+  /** Only from `runProcessWithStderr`: the end of what the command printed on stderr. */
+  readonly stderr?: string;
 }
+
+const MAX_STDERR_CHARS = 4_000;
 
 /** Spawns argv with no shell (on Windows through `spawnable`, D115); stdin gets `input` (keychain values travel that way) and is closed at once. Never rejects. */
 export async function runProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
@@ -50,11 +54,24 @@ export async function runProcess(argv: readonly string[], cwd: string, timeoutMs
   return spawnProcess(target.argv, cwd, timeoutMs, input, env);
 }
 
-function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+/** `runProcess` for tools that explain their failures on stderr (pipx, Skills Wiki, D178); its end is kept in `stderr`. */
+export async function runProcessWithStderr(argv: readonly string[], cwd: string, timeoutMs: number, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const target = await spawnable(argv);
+  if ("error" in target) return { stdout: "", code: null, error: target.error, stderr: "" };
+  return spawnProcess(target.argv, cwd, timeoutMs, undefined, env, true);
+}
+
+function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, input?: string, env?: NodeJS.ProcessEnv, keepStderr = false): Promise<ProcessResult> {
   const [file = "", ...args] = argv;
   return new Promise((done) => {
-    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "ignore"], ...(env ? { env } : {}) });
+    const child = spawn(file, args, { cwd, stdio: ["pipe", "pipe", "pipe"], ...(env ? { env } : {}) });
     let stdout = "";
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(-MAX_STDERR_CHARS);
+    });
+    const kept = (): { stderr?: string } => (keepStderr ? { stderr } : {});
     let failure: string | undefined;
     const timer = setTimeout(() => {
       failure = `timed out after ${timeoutMs} ms`;
@@ -70,11 +87,11 @@ function spawnProcess(argv: readonly string[], cwd: string, timeoutMs: number, i
     });
     child.on("error", (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
-      done({ stdout, code: null, error: error.code === "ENOENT" ? `'${file}' is not installed` : error.message });
+      done({ stdout, code: null, error: error.code === "ENOENT" ? `'${file}' is not installed` : error.message, ...kept() });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      done({ stdout, code, ...(failure ? { error: failure } : code === 0 ? {} : { error: `exited with code ${code}` }) });
+      done({ stdout, code, ...(failure ? { error: failure } : code === 0 ? {} : { error: `exited with code ${code}` }), ...kept() });
     });
     child.stdin.on("error", () => undefined);
     child.stdin.end(input);
@@ -171,9 +188,16 @@ export async function runHeadless(profile: RuntimeProfile, request: HeadlessRequ
   return runProfileCommand(profile, request, (file) => buildArgv(profile, request, file), options);
 }
 
+/**
+ * D178: local Skills Wiki's prompt hook stays quiet in TaskFollow's own agent calls; a judge or a task gets the
+ * workflow's skills from TaskFollow, never a suggestion to load another one.
+ */
+export const SKILLSWIKI_HOOK_OFF = "SKILLSWIKI_HOOK_OFF";
+export const agentEnv = (env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv => ({ ...(env ?? process.env), [SKILLSWIKI_HOOK_OFF]: "1" });
+
 /** Runs a command built from the profile (the headless call, or a task step's) and reads its answer the same way. */
 export async function runProfileCommand(profile: RuntimeProfile, request: HeadlessRequest, build: (schemaFile: string) => string[], options: HeadlessOptions & { readonly env?: NodeJS.ProcessEnv }): Promise<HeadlessResult> {
-  const { stdout, error } = await withSchemaFile(profile, request, (file) => runProcess(build(file), options.cwd, options.timeoutMs ?? HEADLESS_TIMEOUT_MS, undefined, options.env));
+  const { stdout, error } = await withSchemaFile(profile, request, (file) => runProcess(build(file), options.cwd, options.timeoutMs ?? HEADLESS_TIMEOUT_MS, undefined, agentEnv(options.env)));
   if (error) return { ok: false, error };
   return readAnswer(profile, request, stdout);
 }
