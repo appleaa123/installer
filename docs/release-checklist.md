@@ -37,7 +37,7 @@ Semantic versioning, judged by what an existing install sees:
 ## 4. Package
 
 - [ ] `npm run build`, then `npm pack --dry-run`: `dist/`, `profiles/`,
-      `connectors/`, `solutions/`, `INSTALL.md`, `README.md` and
+      `connectors/`, `solutions/`, `INSTALL.md`, `README.md`, `LICENSE` and
       `package.json`, and nothing from `tests/`, `src/` or `docs/` (the
       offline suite checks the same in `tests/e2e/release.test.ts`).
 - [ ] `npm pack` writes `taskfollow-<version>.tgz`. On a clean machine or a
@@ -47,7 +47,8 @@ Semantic versioning, judged by what an existing install sees:
 
 ## 4b. Before anyone is handed START-HERE.md
 
-- [ ] The package is published to npm under the name `taskfollow` (the name was free on 2026-10-14; search it for trademarks first). Until then `npx --yes taskfollow instructions` and `npm install -g taskfollow` fail, so START-HERE.md cannot work.
+- [ ] The repository `appleaa123/installer` is public (D177), so the `repository` link in `package.json` works.
+- [ ] The package is published to npm under the name `taskfollow` (the name was free on 2026-10-19; search it for trademarks first; human task 43). Until then `npx --yes taskfollow instructions` and `npm install -g taskfollow` fail, so START-HERE.md cannot work.
 - [ ] On a fresh Mac user and a fresh Windows user, follow START-HERE.md exactly, start to finish, with someone watching (`docs/testing/` has the observer sheet).
 
 ## 5. Not part of a release
