@@ -76,14 +76,8 @@ Cowork on the web has no terminal, so it can't install TaskFollow. It can run a 
 Send it when all of these are true:
 
 1. **Parts A, B and C are done, and no blocker is open.** A blocker is: the install stops and TaskFollow's own words don't get you past it, anything acts without your yes, or a workflow's result is wrong in a way its rules can't fix. Everything you noted is fixed or written down as a known limit.
-2. **TaskFollow is on npm,** so START-HERE's `npx --yes taskfollow instructions` works for anyone. From a clean, up-to-date `main`:
-   ```
-   npm test
-   npm login
-   npm publish
-   ```
-   The name `taskfollow` was free on 2026-10-19 (human task 43 has the steps). Until you publish, you can send friends the `.tgz` from `npm pack`; START-HERE step 2 tells them what to do with it.
-3. **The license is in place and the repository is public.** You chose the same license as skills_wiki_opensource (Elastic License 2.0 with its added limitation, D177); `LICENSE` and `package.json` carry it. Make `appleaa123/installer` public when you publish (human task 43).
+2. **TaskFollow is on npm** (done 2026-10-19: `taskfollow@0.1.0`), so START-HERE's `npx --yes taskfollow instructions` works for anyone. A fix after this test means a new version: `npm version patch --no-git-tag-version` on a branch, merge, then `npm publish` from `main` (`docs/release-checklist.md` section 3).
+3. **The license is in place and the repository is public.** You chose the same license as skills_wiki_opensource (Elastic License 2.0 with its added limitation, D177); `LICENSE` and `package.json` carry it, and `appleaa123/installer` is public (done 2026-10-19).
 4. **Friends get two things:** `START-HERE.md`, and for at least one non-technical friend, the observer sheet in `docs/testing/2026-10-14-real-life-install-test.md` (task 23: don't help them; write down every stall).
 
 **Tell friends what v1 deliberately doesn't do**, so they aren't surprised:

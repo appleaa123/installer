@@ -22,7 +22,7 @@ A terminal is a window where you type commands.
 
 To paste something into it, use Command and V on a Mac, or a right-click on Windows.
 
-If the person who invited you sent a file named `taskfollow-<version>.tgz`, TaskFollow is not published yet. Do this now, in this terminal, before you start any assistant (Claude Code or another one): type `npm install -g ` with a space at the end, drag the file into the terminal, and press Return.
+If the person who invited you sent a file named `taskfollow-<version>.tgz`, it is a test build of TaskFollow. Install it now, in this terminal, before you start any assistant (Claude Code or another one): type `npm install -g ` with a space at the end, drag the file into the terminal, and press Return.
 
 ## 3. Install Claude Code
 
