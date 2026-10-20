@@ -121,6 +121,8 @@ Each task says why it is needed and what to do, step by step.
 
 ### 24. Try Slack on a real workspace (before Slack is promised to a client)
 
+**2026-10-19:** you tried Slack on a real workspace and the integration works (your words; the item-by-item results below were not reported, so the task stays open for anything you saw). The README says nothing about it, by your choice.
+
 **Why:** Slack (D135) was built against a fake Slack. About 30 minutes with a Slack workspace you own (a free one is fine). Tell Claude the result of each item, with the exact wording of anything that surprises you.
 
 1. Run `taskfollow secret slack` and follow the page: create the app from the manifest (does Slack accept the pasted text? are the buttons named as the page says?), install it, copy the two tokens. On a workspace where only owners may install apps, see what Slack says and whether the page's "Request to Install" sentence fits.
