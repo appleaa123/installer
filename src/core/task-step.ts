@@ -23,6 +23,14 @@ import type { WorkflowStep } from "./workflow.js";
  * task that may change things. The agent's answer must fit the step's output schema.
  */
 export const TASK_INTERRUPTED = "the task started but the run stopped before it finished";
+/** D180: a task that may change things, ran, and recorded nothing: no action and no reason, so a person should look. */
+export const SILENT_NO_CHANGE = "the task was asked to make a change but made no change and gave no reason; check that nothing was missed";
+
+/** No line in the step's record: the agent called no tool and gave no reason (a reason with tool "none" is a line). */
+async function recordedNothing(path: string): Promise<boolean> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  return text.trim() === "";
+}
 const MINUTE_MS = 60_000;
 
 export const callsFile = (record: RunRecord, step: string): string => join(RUNS_DIR, record.workflow, record.run_id, `${step}.calls.jsonl`);
@@ -117,8 +125,9 @@ export async function runTaskStep(exec: Exec, record: RunRecord, step: WorkflowS
   const problems = validateSchema(spec.output, output);
   if (problems.length > 0) throw new ActionFailure(`The agent's answer does not fit the step's output: ${problems.join("; ")}`);
   const finished = exec.ctx.now();
-  await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: finished, duration_ms: Math.max(0, Date.parse(finished) - Date.parse(startedAt)), input_fingerprint: fingerprint(input), output });
+  const silent = spec.changes && (await recordedNothing(path));
+  await saveStep(exec.home, record, { step: step.id, status: "done", started_at: startedAt, finished_at: finished, duration_ms: Math.max(0, Date.parse(finished) - Date.parse(startedAt)), input_fingerprint: fingerprint(input), output, ...(silent ? { needs_human: [{ index: 0, reason: SILENT_NO_CHANGE }] } : {}) });
   // Review 4 of PR #54: a real run that finished under the hook proves the runner again (and TaskFollow's tools, when reached).
   if (!record.sandbox) await noteRunPassed(exec.home, record.workflow, exec.state, finished, await reachedOwnTools(path));
-  return { kind: "done", output, actions: spec.changes ? 1 : 0, needs_human: 0 };
+  return { kind: "done", output, actions: spec.changes && !silent ? 1 : 0, needs_human: silent ? 1 : 0 };
 }
