@@ -19,7 +19,8 @@ import { startFakeTelegram, type FakeTelegram } from "../helpers/fake-telegram.j
 import { makeTempHome } from "../helpers/temp-home.js";
 
 /** D174: once a week TaskFollow re-runs preflight T7 on the person's agent, only when there is a pass to keep fresh. */
-const NOW = "2026-10-20T09:00:00.000Z";
+// The real clock: the check_ping the fake agent makes runs in the MCP server, which checks expiry against the real time.
+const NOW = new Date().toISOString();
 const DAY_MS = 86_400_000;
 const ago = (days: number): string => new Date(Date.parse(NOW) - days * DAY_MS).toISOString();
 
