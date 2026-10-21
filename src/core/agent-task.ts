@@ -58,6 +58,7 @@ export function taskPrompt(prompt: string, input: unknown, changes: boolean, ski
     "Rules for this task:",
     `- Before each action, call ${REASON_TOOL} with the tool you are about to use and one sentence on why.`,
     changes ? "- Change only what this task asks for." : "- Only read. Do not change, publish, send, pay for or delete anything.",
+    ...(changes ? [`- If you decide to change nothing, first call ${REASON_TOOL} with the tool "none" and one sentence on why.`] : []),
     "- If a tool is refused, do not look for another way: say in your answer what a person should do.",
     "- Answer with the JSON the task asks for.",
     "",

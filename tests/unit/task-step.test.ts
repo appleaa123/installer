@@ -105,6 +105,53 @@ describe("running a task step (D139)", () => {
     expect(await loadStep(home2, run, "fix")).toMatchObject({ status: "done", output: null, skipped: true });
   });
 
+  describe("a task that may change things but made no call at all (D180)", () => {
+    const CREATED = { type: "object", properties: { created: { type: "boolean" } }, required: ["created"], additionalProperties: false };
+    const CREATE = { id: "calendar", task: { prompt: "Create the event.", input: {}, may_use: ["mcp__calendar__create_event"], changes: true, output: CREATED } };
+    const changing = (step: Record<string, unknown> = CREATE) => workflow({ ...WORKFLOW, workflow: "digest", steps: [step] });
+    const start = async (home: string, wf = changing()) => startRun({ ...request(home, wf), key: `digest:${AT}` });
+
+    it("marks the run as needing a person and tells the decision maker when it changed nothing and gave no reason", async () => {
+      const home = await runnerHome();
+      script({ created: false }, []);
+      const run = await start(home);
+      expect(run).toMatchObject({ status: "partial", needs_human: 1 });
+      expect(await loadStep(home, run, "calendar")).toMatchObject({ status: "done", output: { created: false }, needs_human: [{ index: 0, reason: expect.stringContaining("made no change and gave no reason") }] });
+      expect(await events(home)).toContain("run.escalated");
+    });
+
+    it("completes quietly when the agent said why it changed nothing", async () => {
+      const home = await runnerHome();
+      script({ created: false }, [{ tool: REASON_TOOL, input: { tool: "none", why: "the digest says there are no new newsletters" } }]);
+      const run = await start(home);
+      expect(run).toMatchObject({ status: "completed", needs_human: 0 });
+      expect(await events(home)).not.toContain("run.escalated");
+    });
+
+    it("completes quietly when it acted", async () => {
+      const home = await runnerHome();
+      script({ created: true }, [
+        { tool: REASON_TOOL, input: { tool: "mcp__calendar__create_event", why: "the digest has newsletters" } },
+        { tool: "mcp__calendar__create_event", input: { summary: "Daily Newsletter Digest" }, response: { id: "e1" } },
+      ]);
+      expect(await start(home)).toMatchObject({ status: "completed", needs_human: 0 });
+    });
+
+    it("never flags a read-only task that made no call", async () => {
+      const home = await runnerHome();
+      script({ order_found: false }, []);
+      expect(await startRun(request(home))).toMatchObject({ status: "completed", needs_human: 0 });
+    });
+
+    it("never flags a step its condition skipped, since no agent ran", async () => {
+      const home = await runnerHome();
+      script({ created: false }, []);
+      const run = await start(home, changing({ ...CREATE, when: "false" }));
+      expect(run).toMatchObject({ status: "completed", needs_human: 0 });
+      expect(await agentRan()).toBe(false);
+    });
+  });
+
   it("fails the run before the agent starts when the agent is older than task steps need", async () => {
     const home = await runnerHome();
     const state = await loadState(home);

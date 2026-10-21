@@ -66,6 +66,11 @@ describe("the command that hands a task to Claude Code (D139)", () => {
     expect(prompt).toContain("actions_reason");
     expect(prompt).toMatch(/do not (change|publish)/i);
   });
+
+  it("asks a task that may change things to give a reason when it changes nothing (D180)", () => {
+    expect(taskPrompt("Create the event.", {}, true)).toContain('with the tool "none"');
+    expect(taskPrompt("Find the order.", {}, false)).not.toContain('with the tool "none"');
+  });
 });
 
 describe("a task run with the agent's own tools, through the hook (fake agent)", () => {
