@@ -101,7 +101,7 @@ D48). The record a run writes says which tier it reached and why.
 
 | Runtime | Profile | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|---|
-| Claude Code | `claude-code` | **Certified** 2026-10-12 (commit `437692c`, Claude Code 2.1.296, Node 22.14.0, macOS on Intel) | Not certified yet | Unknown | First real certification run (task 14): 1,360 offline and 18 live tests passed. Linux and Windows need a run of their own (task 16, D115). |
+| Claude Code | `claude-code` | **Certified** 2026-10-21 (commit `a9f0ebe`, 0.2.0, Claude Code 2.1.305, Node 22.14.0, macOS on Intel) | Not certified yet | Unknown | 2,642 offline and 18 live tests passed. The commit is one after the `v0.2.0` tag; it changes only a test, so the package is the same. First certified 2026-10-12 (commit `437692c`, task 14). Linux and Windows need a run of their own (task 16, D115). |
 | Codex CLI | `codex` | Unknown | Unknown | Unknown | Its terms were reviewed and allow it (O2, D121). Its flags come from Codex's documentation and were not run (O1, task 15), so it stays Unknown until a certification passes. |
 | Antigravity | none | — | — | — | In chat only; TaskFollow never starts it (D32, D114, D170, D175). |
 | Any other agent | none | Unknown | Unknown | Unknown | Installs and uses TaskFollow in its chat, through `taskfollow tool`; workflow skills go in `.agents/skills` and are listed in `AGENTS.md`; scheduled judging needs a model key (§7.4, D175). |
