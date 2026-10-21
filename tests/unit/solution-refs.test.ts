@@ -54,10 +54,12 @@ describe("https: solution refs", () => {
 });
 
 describe("bundled solution names (D129)", () => {
-  it("loads the default starter by its short name, with no Skills Wiki steps", async () => {
+  it("loads the default starter by its short name, whose Skills Wiki steps come only with the person's yes (D178)", async () => {
     const loaded = await loadSolutionSource("starter");
     expect(loaded.solution.id).toBe("starter");
-    expect(loaded.solution.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
+    const hosted = loaded.solution.steps.filter((step) => step.step_id.startsWith("brain."));
+    expect(hosted.length).toBeGreaterThan(0);
+    for (const step of hosted) expect(JSON.stringify(step.when)).toContain('{"step":"services.skillswiki","equals":"skillswiki"}');
     expect(loaded.text).toBe(readFileSync("solutions/starter.json", "utf8"));
   });
 

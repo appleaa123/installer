@@ -11,7 +11,7 @@ import { loadChannel, saveChannel } from "../../src/core/channels.js";
 import { dryrunCommand } from "../../src/core/lifecycle.js";
 import { createInvite, joinWithCode } from "../../src/core/members.js";
 import { getSecret, setSecret } from "../../src/core/keychain.js";
-import { usesSkillswiki } from "../../src/core/skillswiki.js";
+import { asksSkillswikiUrl, usesSkillswiki } from "../../src/core/skillswiki.js";
 import { installerCliPath } from "../../src/core/register.js";
 import { parseSolution } from "../../src/core/solution.js";
 import { loadState } from "../../src/core/state.js";
@@ -235,15 +235,15 @@ describe("INSTALL.md", () => {
     expect(named.filter((name) => !COMMANDS.includes(name))).toEqual([]);
   });
 
-  it("the shipped starter loads, probes with the bundled profiles and needs no Skills Wiki (D126)", () => {
+  it("the shipped starter loads, probes with the bundled profiles and needs no Skills Wiki unless the person asks for it (D126, D178)", () => {
     const starter = parseSolution(JSON.parse(readFileSync("solutions/starter.json", "utf8")));
     expect(starter.steps[0]?.auto).toEqual({ action: "probe_runtime", args: {} });
-    expect(starter.steps.some((step) => step.step_id.startsWith("brain."))).toBe(false);
+    for (const step of starter.steps.filter((entry) => entry.step_id.startsWith("brain.") || entry.step_id.startsWith("skills."))) expect(JSON.stringify(step.when)).toMatch(/"step":"services\.(skills|skillswiki)"/);
     expect(starter.steps.map((step) => step.step_id)).toEqual(expect.arrayContaining(["preflight.tools", "data.google", "data.connect", "channels.telegram", "activate.schedule"]));
     expect(starter.steps.map((step) => step.phase)).toEqual(expect.arrayContaining(["CHANNELS", "WORKFLOWS", "DRY_RUN", "ACTIVATE"]));
     expect(starter.workflows?.map((workflow) => workflow.workflow)).toEqual(["contacts-summary", "weekly-note", "inbox-triage", "inbox-triage-replies", "lead-qualification", "crm-update", "invoice-processing", "invoices-due", "meeting-follow-up"]);
     expect(Object.keys(starter.data_contract?.entities.contact?.fields ?? {})).toEqual(["name", "email", "notes"]);
-    expect(usesSkillswiki(starter)).toBe(false);
+    expect(asksSkillswikiUrl(starter)).toBe(true);
   });
 
   it.each(["solutions/starter.json", "solutions/starter-skillswiki.json"])("%s lets the schedule block the install and runs its workflow in the computer's own zone (D130)", (file) => {
@@ -348,7 +348,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const agentHome = await makeTempHome();
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: agentHome, FAKE_AGENT_JUDGE: AGENT_CALLS, ...extraEnv };
     const script = starterScript(() => setSecret("skillswiki", fake.key, keychain), { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) });
-    return { fake, env, keychain, script, registration: join(agentHome, "mcp", "skillswiki.json") };
+    return { fake, env, keychain, script, registration: join(agentHome, "mcp", "skillswiki-hosted.json") };
   }
 
   it("the shipped starter completes with no Skills Wiki: no key, no --url, nothing registered (D126)", async () => {
@@ -357,7 +357,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...google.env, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: AGENT_CALLS };
     const script = {
-      answers: { "mode.purpose": "install", "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "team", "mode.shared-work": "yes", "mode.always-on": "no", "mode.decision-maker": "Owner", "services.records": "google-sheets", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" },
       perform: { ...dataSteps(keychain, env), ...lifecycleSteps(keychain, env) },
     };
     const home = await makeTempHome();
@@ -372,9 +372,14 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(run.final.status).toBe("complete");
     expect((await loadState(home))?.skillswiki).toBeUndefined();
     expect(await getSecret("skillswiki", keychain)).toBeNull();
-    expect(JSON.stringify(run.calls.map((call) => call.stdout))).not.toMatch(/skills ?wiki/i);
+    // D178: only the two questions that offer local and hosted Skills Wiki name it.
+    const offers = /"step_id":"services\.skills(wiki)?"/;
+    expect(JSON.stringify(run.calls.map((call) => call.stdout).filter((stdout) => !offers.test(stdout)))).not.toMatch(/skills ?wiki/i);
     expect(runCli(["doctor"], { home, env }).stdout).not.toMatch(/skills ?wiki/i);
-    expect(runCli(["report"], { home, env }).stdout).not.toMatch(/skills ?wiki|MCP not checked/i);
+    const report = runCli(["report"], { home, env }).stdout;
+    expect(report).toContain("taskfollow add skillswiki");
+    // D178: the answered questions (Working) and what can still be added name Skills Wiki; nothing else may.
+    expect(report.split("\n").filter((line) => !line.startsWith("➕ Can add") && !line.startsWith("✅ Working")).join("\n")).not.toMatch(/skills ?wiki|MCP not checked/i);
   });
 
   /** The shipped starter with only the test agent pinned: the shipped file lets the probe find a real agent on the machine. */
@@ -395,7 +400,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     ]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: solo };
     const script = {
-      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -418,7 +423,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const alone = JSON.stringify([{ tool: "memo.list", args: {} }, { tool: "channel.list", args: {} }, { tool: "done", summary: "No memos this week" }]);
     const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: alone };
     const script = {
-      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" },
       perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
     };
     const home = await makeTempHome();
@@ -427,6 +432,24 @@ describe("starter install, operated the way INSTALL.md says", () => {
     expect(run.final.status).toBe("complete");
     const shown = JSON.stringify(run.calls.map((call) => call.stdout));
     for (const hidden of ["channels.telegram", "channels.gateway", "channels.join-solo", "activate.gateway"]) expect(shown).not.toContain(hidden);
+  });
+
+  it("a person who chose local Skills Wiki on a computer where it cannot be installed still finishes, with that step blocked and the report saying so (D178)", async () => {
+    const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
+    const alone = JSON.stringify([{ tool: "memo.list", args: {} }, { tool: "done", summary: "No memos this week" }]);
+    const env = { ...keychain, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: alone };
+    const script = {
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "none", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "skills", "services.skillswiki": "none" },
+      perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }),
+    };
+    const home = await makeTempHome();
+    installs.push({ home, env });
+    const run = await operate({ home, solutionRef: `file:${await pinnedStarter()}`, script, startArgs: [], env });
+    expect(run.final.status).toBe("complete");
+    expect((await loadState(home))?.steps["skills.install"]).toMatchObject({ status: "blocked", hint: expect.stringContaining("Local Skills Wiki is not installed in this run") });
+    const report = runCli(["report"], { home, env }).stdout;
+    expect(report).toContain("⚠️ READY WITH LIMITS");
+    expect(report).toMatch(/⚠️ Limited +Install Skills Wiki and move your skills into it — /);
   });
 
   /** The person's email steps, with a fake mail server: the page's hand-off is written to the keychain as the page would. */
@@ -453,7 +476,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     const keychain = { INSTALLER_KEYCHAIN: "file", INSTALLER_KEYCHAIN_DIR: await makeTempHome() };
     const env = { ...keychain, ...TEST_TLS_ENV, FAKE_AGENT_HOME: await makeTempHome(), FAKE_AGENT_JUDGE: SOLO_CALLS, INSTALLER_KEYCHAIN_DIR: keychain.INSTALLER_KEYCHAIN_DIR };
     const script = {
-      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "email", "services.slack": "none", "services.whatsapp": "none" },
+      answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "email", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" },
       perform: { ...lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }), ...(await emailSteps(keychain, env)) },
     };
     const home = await makeTempHome();
@@ -473,7 +496,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add email");
@@ -501,7 +524,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add whatsapp");
@@ -544,7 +567,7 @@ describe("starter install, operated the way INSTALL.md says", () => {
     installs.push({ home, env });
     const first = await operate({
       home, solutionRef, startArgs: [], env,
-      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
+      script: { answers: { "mode.purpose": "install", "mode.who": "me", "mode.name": "Sam", "mode.always-on": "no", "services.records": "none", "services.telegram": "telegram", "services.email": "none", "services.slack": "none", "services.whatsapp": "none", "services.skills": "none", "services.skillswiki": "none" }, perform: lifecycleSteps(keychain, env, { workflow: "weekly-note", owner: "Sam" }) },
     });
     expect(first.final.status).toBe("complete");
     expect(runCli(["report"], { home, env }).stdout).toContain("taskfollow add slack");

@@ -7,7 +7,8 @@ import { InputError } from "./inputs.js";
 import { deleteSecret } from "./keychain.js";
 import { PROFILE_DIR_ENV, listBundledProfiles, loadProfile, loadProfileById, type RuntimeProfile } from "./profile.js";
 import { unregisterMcp } from "./register.js";
-import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID } from "./skillswiki.js";
+import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, hostedMcpNames } from "./skillswiki.js";
+import type { InstallState } from "./types.js";
 import { loadState } from "./state.js";
 
 export interface Disconnected {
@@ -50,6 +51,14 @@ export async function unregisterEverywhere(home: string, profileId: string | nul
   } catch (error) {
     return { unregistered: false, note: `Could not remove the agent's '${name}' registration (${(error as Error).message})` };
   }
+}
+
+/** Every registration hosted Skills Wiki may have (D178), each removed everywhere; one result for all of them. */
+export async function unregisterHosted(home: string, state: InstallState | undefined): Promise<{ readonly unregistered: boolean; readonly note?: string }> {
+  const results = [];
+  for (const name of hostedMcpNames(state)) results.push(await unregisterEverywhere(home, state?.runtime?.profile, name));
+  const notes = results.flatMap((result) => (result.note ? [result.note] : []));
+  return { unregistered: results.some((result) => result.unregistered), ...(notes.length > 0 ? { note: notes.join("; ") } : {}) };
 }
 
 /** The connector's display name; a definition that fails to load must never stop the sign-in from being deleted. */
@@ -96,7 +105,7 @@ export async function disconnect(home: string, id: string, now: () => string): P
   if ((CHANNEL_IDS as readonly string[]).includes(id)) return disconnectChannel(home, id as ChannelId, now);
   if (id !== SKILLSWIKI_SECRET_ID) return disconnectConnector(home, id, now);
   const state = await loadState(home);
-  const { unregistered, note } = await unregisterEverywhere(home, state?.runtime?.profile);
+  const { unregistered, note } = await unregisterHosted(home, state ?? undefined);
   const deleted = await deleteSecret(id);
   if (state) await appendAudit(home, { ts: now(), actor: "human", event: "secret.disconnected", ref: id, payload: { unregistered, secret_deleted: deleted } });
   return { status: "disconnected", unregistered, secret_deleted: deleted, ...(note ? { note } : {}) };

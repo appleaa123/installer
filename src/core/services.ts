@@ -1,5 +1,6 @@
 import { revise, type Advanced, type EngineDeps } from "./engine.js";
 import { InputError } from "./inputs.js";
+import { LOCAL_SKILLS_OPTION, MOVE_WARNING } from "./skillswiki-local.js";
 import { stepVisible } from "./visibility.js";
 import type { InstallState, Solution, StepDef, StepWhen } from "./types.js";
 
@@ -58,8 +59,11 @@ async function continueAfterConsult(deps: EngineDeps, state: InstallState): Prom
 
 const PURPOSE = "mode.purpose";
 
-/** `taskfollow add <service>`: the answer gains the service and its steps come into view. Never guesses a name. */
-export async function addService(deps: EngineDeps, state: InstallState, option: string): Promise<Advanced> {
+/**
+ * `taskfollow add <service>`: the answer gains the service and its steps come into view. Never guesses a name. Local
+ * Skills Wiki moves the person's skills, so it is added only once they agreed to that (`confirmed`, D178).
+ */
+export async function addService(deps: EngineDeps, state: InstallState, option: string, confirmed = false): Promise<Advanced> {
   if (option === "install") return continueAfterConsult(deps, state);
   const all = pickers(deps.solution);
   if (all.length === 0) throw new InputError("This install was made before services could be chosen, so nothing can be added to it this way");
@@ -77,6 +81,7 @@ export async function addService(deps: EngineDeps, state: InstallState, option: 
   }
   if (state.steps[picker.step_id]?.status !== "done") throw new InputError(`Finish the install first: the question '${picker.title}' is not answered yet. Answer it, then add ${option}`);
   if (included(picker, state, option)) throw new InputError(`${option} is already part of this setup`);
+  if (option === LOCAL_SKILLS_OPTION && !confirmed) throw new InputError(MOVE_WARNING);
   const current = state.steps[picker.step_id]?.value;
   const value = picker.input?.kind === "multi_choice" ? [...(Array.isArray(current) ? current : []), option] : option;
   return revise(deps, state, picker.step_id, value, "agent");

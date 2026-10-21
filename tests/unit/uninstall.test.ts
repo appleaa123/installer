@@ -110,3 +110,39 @@ describe("taskfollow uninstall (§16.4, D109)", () => {
   });
 });
 
+
+describe("hosted and local Skills Wiki registrations at uninstall (D178)", () => {
+  it("removes hosted Skills Wiki's registration, and the old 'skillswiki' name when local Skills Wiki is not on", async () => {
+    const { home, env } = await installedHome();
+    await registerMcpConfig(await loadProfileById("fake-agent"), "skillswiki-hosted", JSON.stringify({ type: "http", url: "https://skills.example/mcp" }), home);
+    const result = await uninstall(home, { interactive: true, as: "Owner" }, () => AT, { ...OS, env });
+    expect(result.unregistered).toMatchObject({ skillswiki: { unregistered: true } });
+    expect([await registered(home, "skillswiki-hosted"), await registered(home, "skillswiki")]).toEqual([false, false]);
+  });
+
+  it("keeps the 'skillswiki' server when local Skills Wiki is on: it is local Skills Wiki's own", async () => {
+    const { home, env } = await installedHome();
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, steps: { ...state.steps, "services.skills": { status: "done", at: AT, by: "human", value: "skills" } } });
+    await registerMcpConfig(await loadProfileById("fake-agent"), "skillswiki-hosted", JSON.stringify({ type: "http", url: "https://skills.example/mcp" }), home);
+    await uninstall(home, { interactive: true, as: "Owner" }, () => AT, { ...OS, env });
+    expect([await registered(home, "skillswiki-hosted"), await registered(home, "skillswiki")]).toEqual([false, true]);
+  });
+});
+
+describe("local Skills Wiki at uninstall (D178)", () => {
+  it("is kept by default, and the person is told how to remove it", async () => {
+    const { home, env } = await installedHome();
+    const state = await loadState(home);
+    if (state) await saveState(home, { ...state, steps: { ...state.steps, "services.skills": { status: "done", at: AT, by: "human", value: "skills" } } });
+    const result = await uninstall(home, { interactive: true, as: "Owner" }, () => AT, { ...OS, env });
+    expect(result.skillswiki_local).toEqual({ status: "kept" });
+    expect(result.kept).toContainEqual(expect.stringContaining("taskfollow uninstall --remove-skillswiki"));
+  });
+
+  it("is not mentioned when the person never chose it", async () => {
+    const { home, env } = await installedHome();
+    const result = await uninstall(home, { interactive: true, as: "Owner", removeSkillswiki: true }, () => AT, { ...OS, env });
+    expect(result.skillswiki_local).toBeUndefined();
+  });
+});

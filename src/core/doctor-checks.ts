@@ -144,6 +144,22 @@ async function skillswikiCheck(ctx: DoctorContext): Promise<DoctorCheck | null> 
   return { id: "skillswiki", status: "warn", detail: "reachable, but no combo is active", fix: "Activate the combo in the Skills Wiki dashboard" };
 }
 
+/** D178: local Skills Wiki, when the person chose it, answers at the path TaskFollow recorded and is the pinned version. */
+async function localSkillsCheck(ctx: DoctorContext): Promise<DoctorCheck | null> {
+  const { SKILLSWIKI_SOURCE, SKILLSWIKI_VERSION, UNWIRED_STATES, askDoctor, localSkillsOn, readLocalSkillswiki, wiringKey } = await import("./skillswiki-local.js");
+  const reinstall = `pipx install --force ${SKILLSWIKI_SOURCE}`;
+  if (!localSkillsOn(ctx.state ?? undefined)) return null;
+  const local = await readLocalSkillswiki(ctx.home);
+  if (!local) return { id: "skills_local", status: "warn", detail: "local Skills Wiki was chosen but is not installed yet", fix: "taskfollow resume" };
+  const answer = await askDoctor(local.bin, ctx.env);
+  if (!answer) return { id: "skills_local", status: "fail", detail: `${local.bin} does not answer 'skillswiki doctor'`, fix: `Run '${local.bin} doctor' in a terminal to see why; '${reinstall}' installs it again` };
+  if (answer.version !== SKILLSWIKI_VERSION) return { id: "skills_local", status: "warn", detail: `Skills Wiki ${answer.version} is installed; this TaskFollow is tested with ${SKILLSWIKI_VERSION}`, fix: `'${reinstall}' puts the tested version back` };
+  const agent = ctx.state?.runtime?.profile;
+  const wired = agent ? answer.mcp[wiringKey(agent)] : undefined;
+  if (agent && wired !== undefined && UNWIRED_STATES.includes(wired)) return { id: "skills_local", status: "warn", detail: `your agent (${agent}) is not connected to Skills Wiki's MCP server, so it cannot load the skills Skills Wiki keeps`, fix: "In a terminal where your agent's command works, run 'skillswiki setup' from your home folder" };
+  return ok("skills_local", `Skills Wiki ${answer.version}; skills in ${answer.library}`);
+}
+
 async function channelsCheck(ctx: DoctorContext): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
   for (const config of await listChannels(ctx.home)) {
@@ -263,6 +279,7 @@ export const DOCTOR_CHECKS: readonly DoctorCheckDef[] = [
   { id: "checks", run: async (ctx) => (await import("./check-fresh.js")).checksDoctor(ctx) },
   { id: "secrets", run: secretsCheck },
   { id: "skillswiki", run: skillswikiCheck },
+  { id: "skills_local", run: localSkillsCheck },
   { id: "packs", run: packsCheck },
   { id: "channels", run: channelsCheck },
   { id: "runner", run: runnerCheck },

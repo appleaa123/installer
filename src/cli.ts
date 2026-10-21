@@ -52,7 +52,7 @@ import { inventory } from "./core/skills.js";
 import { checkCommand } from "./core/check-commands.js";
 import { launchCheckPage, openWithSystem, serveCheckPage } from "./core/check-page.js";
 import { latestByNeed, loadChallenge } from "./core/checks.js";
-import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
+import { KEY_MISSING_HINT, SKILLSWIKI_SECRET_ID, asksSkillswikiUrl, fetchSkillswikiSolution, requireSkillswikiUrl, usesSkillswiki } from "./core/skillswiki.js";
 import { SolutionError, fetchHttps, loadSolutionSource } from "./core/solution.js";
 import { StateCorruptError, loadState, saveState } from "./core/state.js";
 import { serveStdio } from "./core/mcp-server.js";
@@ -92,6 +92,8 @@ interface Flags {
   readonly reason?: string;
   readonly sheet?: string;
   readonly sandbox?: boolean;
+  readonly "confirm-move"?: boolean;
+  readonly "remove-skillswiki"?: boolean;
 }
 
 function emit(stream: NodeJS.WriteStream, value: unknown): void {
@@ -101,7 +103,7 @@ function emit(stream: NodeJS.WriteStream, value: unknown): void {
 const OPTIONS = {
   home: { type: "string" }, solution: { type: "string" }, value: { type: "string" }, "value-file": { type: "string" }, done: { type: "boolean" }, json: { type: "boolean" },
   profile: { type: "string" }, url: { type: "string" }, as: { type: "string" }, reason: { type: "string" }, sheet: { type: "string" },
-  sandbox: { type: "boolean" }, workflow: { type: "string" },
+  sandbox: { type: "boolean" }, workflow: { type: "string" }, "confirm-move": { type: "boolean" }, "remove-skillswiki": { type: "boolean" },
 } as const;
 const OPTION_LIST = Object.keys(OPTIONS).map((name) => `--${name}`).join(", ");
 
@@ -218,7 +220,7 @@ async function startCommand(home: string, flags: Flags): Promise<unknown> {
   if (!flags.solution) throw new InputError("start needs --solution <ref>");
   const ref = flags.solution.startsWith("file:") ? `file:${resolve(flags.solution.slice("file:".length))}` : flags.solution;
   const { solution, text } = await solutionSource(ref, flags);
-  const url = flags.url === undefined && !usesSkillswiki(solution) ? undefined : requireSkillswikiUrl(flags.url);
+  const url = flags.url === undefined && (!usesSkillswiki(solution) || asksSkillswikiUrl(solution)) ? undefined : requireSkillswikiUrl(flags.url);
   const created = await mkdir(home, { recursive: true, mode: HOME_MODE });
   if (created !== undefined) await chmod(home, HOME_MODE);
   else await requirePrivateHome(home);
@@ -385,8 +387,8 @@ const STANDALONE: Readonly<Record<string, Standalone>> = {
 const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
   next: async ({ state, deps }) => (await advance(deps, state)).result,
   /** D134: add a service the person did not choose during the install; its steps then appear. */
-  add: async ({ state, deps }, _flags, arg) => {
-    const added = await addService(deps, state, requireArg(arg, "add"));
+  add: async ({ state, deps }, flags, arg) => {
+    const added = await addService(deps, state, requireArg(arg, "add"), flags["confirm-move"] === true);
     return added.note ? { ...added.result, note: added.note } : added.result;
   },
   submit: async ({ state, deps }, flags, arg) => (await submit(deps, state, requireArg(arg, "submit"), submitPayload(flags))).result,
@@ -445,7 +447,7 @@ const ON_INSTALL: Readonly<Record<string, OnInstall>> = {
     if (arg !== "bundle") throw new InputError("support takes: bundle");
     return supportBundle(deps.home, deps.now);
   },
-  uninstall: async ({ deps }, flags) => uninstall(deps.home, person(flags), deps.now),
+  uninstall: async ({ deps }, flags) => uninstall(deps.home, { ...person(flags), removeSkillswiki: flags["remove-skillswiki"] === true }, deps.now),
 };
 
 async function run(argv: readonly string[]): Promise<number> {

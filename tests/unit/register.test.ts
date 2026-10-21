@@ -18,7 +18,7 @@ const URL = "https://wiki.test/mcp";
 const HELPER = "'/usr/bin/node' '/opt/installer/dist/cli.js' mcp-headers skillswiki";
 let agentHome = "";
 
-const registered = (): Promise<string> => readFile(join(agentHome, "mcp", "skillswiki.json"), "utf8");
+const registered = (name = "skillswiki"): Promise<string> => readFile(join(agentHome, "mcp", `${name}.json`), "utf8");
 
 beforeEach(async () => {
   agentHome = await makeTempHome();
@@ -108,13 +108,13 @@ describe("register_mcp in an install", () => {
   it("registers Skills Wiki in the probed agent with the installer's own headers helper", async () => {
     const { started } = await install("k-1");
     expect(started.result).toEqual({ status: "complete" });
-    expect(JSON.parse(await registered())).toMatchObject({ type: "http", url: URL, headersHelper: expect.stringMatching(/mcp-headers skillswiki$/) });
+    expect(JSON.parse(await registered("skillswiki-hosted"))).toMatchObject({ type: "http", url: URL, headersHelper: expect.stringMatching(/mcp-headers skillswiki$/) });
   });
 
   it("fails with the key hint when no key is stored, and nothing is registered", async () => {
     const { started } = await install();
     expect(started.result).toMatchObject({ status: "step", view: { step: { step_id: "brain.register" }, status: "failed", hint: KEY_MISSING_HINT } });
-    await expect(registered()).rejects.toThrow();
+    await expect(registered("skillswiki-hosted")).rejects.toThrow();
   });
 
   it("fails, then blocks after three refusals by the agent (D53)", async () => {

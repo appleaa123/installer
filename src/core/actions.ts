@@ -11,7 +11,7 @@ import { listBundledProfiles, loadProfileById, type RuntimeProfile } from "./pro
 import { probeMcp, runProbe, withMcpProbe } from "./probe.js";
 import { setSandboxMode } from "./sandbox.js";
 import { TOOLS_MCP_NAME, headersHelperCommand, installerCliPath, registerMcp, registerMcpConfig, toolsServerConfig } from "./register.js";
-import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, skillswikiTarget } from "./skillswiki.js";
+import { SKILLSWIKI_MCP_NAME, SKILLSWIKI_SECRET_ID, activeComboSlug, setSkillswikiUrlAction, skillswikiTarget } from "./skillswiki.js";
 import type { Action, CapabilityMap, Check, InstallState, StatePatch } from "./types.js";
 
 export interface CheckResult {
@@ -141,6 +141,16 @@ const ACTIONS: Readonly<Record<string, ActionRun>> = {
     return { runtime: await runProbe({ profiles, cwd: await probeDir(home) }) };
   },
   derive_mode: async (_home, args, state) => deriveModeAction(args, state),
+  /** D178: local Skills Wiki, installed with pipx and set up from the person's home folder; its skills move into its library. */
+  install_skillswiki: async (home) => {
+    const { installLocalSkillswiki } = await import("./skillswiki-local.js");
+    const { local, moved, backup } = await installLocalSkillswiki(home);
+    const { appendAudit } = await import("./audit.js");
+    await appendAudit(home, { ts: now(), actor: "engine", event: "skillswiki.installed", ref: "skillswiki-local", payload: { version: local.version, library: local.library, moved, backup } });
+    return {};
+  },
+  /** D178: the Skills Wiki address the person pasted from their dashboard, kept where `start --url` keeps it. */
+  set_skillswiki_url: async (_home, args, state) => setSkillswikiUrlAction(args, state),
   register_mcp: async (home, _args, state) => {
     const { profile } = await probedRuntime(state);
     const { url } = await skillswikiTarget(state?.skillswiki?.url);
