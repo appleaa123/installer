@@ -15,6 +15,27 @@ describe("reading mail that has only an HTML part (D143)", () => {
     expect(parseMail(raw).text).toBe("plain words");
   });
 
+  it("reads the HTML part when the plain-text part is only a placeholder pointing online (D179)", () => {
+    const stub = "Oops! Looks like your email provider is scrambling the email :( Click here to read it in full online:\r\nhttps://www.example.com/issues/today\r\n";
+    const story = "<p>Holiday airfares are the highest in ten years because jet fuel costs more.</p>".repeat(30);
+    const raw = Buffer.from(`From: crew@example.com\r\nSubject: Today\r\nMessage-ID: <n1@example.com>\r\nContent-Type: multipart/alternative; boundary="B"\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n${stub}--B\r\nContent-Type: text/html\r\n\r\n${story}\r\n--B--\r\n`, "latin1");
+    const text = parseMail(raw).text;
+    expect(text).toContain("Holiday airfares are the highest in ten years");
+    expect(text).not.toContain("scrambling");
+  });
+
+  it("keeps a short plain-text part when the HTML part is short too, so reply codes stay as typed (D179)", () => {
+    const raw = Buffer.from('From: s@example.com\r\nSubject: Re: approval\r\nMessage-ID: <a@b>\r\nContent-Type: multipart/alternative; boundary="B"\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\nA42\r\n\r\nOn Tue, Oct 6, 2026 at 9:00 AM installer wrote:\r\n> Approval 42 waits\r\n--B\r\nContent-Type: text/html\r\n\r\n<div>A42</div><div>Sent from my phone</div><blockquote>Approval 42 waits</blockquote>\r\n--B--\r\n', "latin1");
+    expect(parseMail(raw).text).toBe("A42");
+  });
+
+  it("keeps a full plain-text part even when the HTML part is longer (D179)", () => {
+    const plain = "Here is the whole update in plain words. ".repeat(20);
+    const html = `<p>${"Here is the whole update with markup and more. ".repeat(80)}</p>`;
+    const raw = Buffer.from(`From: s@example.com\r\nSubject: x\r\nMessage-ID: <a@b>\r\nContent-Type: multipart/alternative; boundary="B"\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\n${plain}\r\n--B\r\nContent-Type: text/html\r\n\r\n${html}\r\n--B--\r\n`, "latin1");
+    expect(parseMail(raw).text).toBe(plain.trim());
+  });
+
   it("reads the HTML part of a multipart message without a plain-text part, decoded", () => {
     const html = Buffer.from("<p>Café order &amp; refund</p>").toString("base64");
     const raw = Buffer.from(`From: s@example.com\r\nSubject: x\r\nMessage-ID: <a@b>\r\nContent-Type: multipart/mixed; boundary="B"\r\n\r\n--B\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${html}\r\n--B--\r\n`, "latin1");
