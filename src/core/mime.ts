@@ -1,7 +1,7 @@
 /**
  * Just enough of RFC 5322 / MIME to read what a person typed: the sender's address, the subject, the message ids
  * and the first `text/plain` part, decoded (base64, quoted-printable, charset). Mail with only an HTML part is read
- * as plain text (D143): scripts, styles, comments and tags are dropped and never rendered. Quoted earlier messages are cut, so a reply code is the first thing in the text. Attachments are listed with
+ * as plain text (D143), and so is mail whose plain-text part is only a short placeholder (D179): scripts, styles, comments and tags are dropped and never rendered. Quoted earlier messages are cut, so a reply code is the first thing in the text. Attachments are listed with
  * their bytes (D132): the caller saves them; nothing here opens, runs or renders them.
  */
 export interface MailAttachment {
@@ -110,12 +110,18 @@ export function htmlToText(html: string): string {
   return text.split("\n").map((line) => line.replace(/[ \t\u00a0]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** What the person typed: the plain-text part, else the HTML part as plain text. */
+/** D179: a plain-text part this short, beside an HTML part with this much text, is a placeholder ("read it online"). */
+const PLACEHOLDER_MAX_CHARS = 600;
+const FULL_HTML_MIN_CHARS = 2000;
+
+/** What the person typed: the plain-text part, else the HTML part as plain text; the HTML part too when the plain one is a placeholder (D179). */
 function plainText(headers: Headers, body: string): string | null {
   const plain = textPart(headers, body, 0, "text/plain");
-  if (plain !== null) return plain;
   const html = textPart(headers, body, 0, "text/html");
-  return html === null ? null : htmlToText(html);
+  const htmlText = html === null ? null : htmlToText(html);
+  if (plain === null) return htmlText;
+  const placeholder = plain.trim().length < PLACEHOLDER_MAX_CHARS && htmlText !== null && htmlText.length >= FULL_HTML_MIN_CHARS;
+  return placeholder ? htmlText : plain;
 }
 
 function fileNameOf(headers: Headers): string {
