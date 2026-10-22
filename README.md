@@ -87,7 +87,7 @@ Your assistant runs most commands. These are the ones for you, in your own termi
 
 ## Status
 
-Version 0.2.1 (first published on npm on 2026-10-19, as 0.1.0). The v1 build is complete and in its real-user test. Claude Code on macOS is certified; Windows is a Preview; Linux is untested. What is next: [`docs/next-steps.md`](docs/next-steps.md). The scope: [`docs/scope-refresh.md`](docs/scope-refresh.md), section 9.
+Version 0.2.2 (first published on npm on 2026-10-19, as 0.1.0). The v1 build is complete and in its real-user test. Claude Code on macOS is certified; Windows is a Preview; Linux is untested. What is next: [`docs/next-steps.md`](docs/next-steps.md). The scope: [`docs/scope-refresh.md`](docs/scope-refresh.md), section 9.
 
 ## For developers
 
