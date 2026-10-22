@@ -22,7 +22,7 @@ It does not change your assistant or add abilities to it. It gives it what a cus
 
 You can tell an assistant "always ask me before you send anything". That is a request, not a guarantee: it holds only while the rule is in front of the model. In our own test, plain Claude Code kept the rule every time it was in its instructions; when a scheduled job's instructions left it out, it sent customer replies on its own in each of 3 runs, one of them answering a request to delete a person's records ([the test](docs/testing/2026-10-16-plain-agent-comparison.md)).
 
-TaskFollow's approvals do not depend on what the instructions say. An action that needs your yes is refused until you approve that exact action in your own terminal or on your own channel, and the assistant cannot approve it for itself.
+TaskFollow's approvals do not depend on what the instructions say. An action that needs your yes is refused until you approve that exact action in your own terminal or on your own channel, and the assistant cannot approve it for itself inside TaskFollow's workflows. An assistant you run yourself, as your own user and allowed to run commands without asking you, could still get around this; running the assistant as a separate user is planned.
 
 ## What you need
 
