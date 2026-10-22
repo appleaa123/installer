@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ANSWER_TOOL, REASON_TOOL, decide, handleHook, matchesRule, summarize, type HookConfig } from "../../src/core/agent-hook.js";
+import { ANSWER_TOOL, REASON_TOOL, decide, handleHook, matchesRule, shellWords, summarize, type HookConfig } from "../../src/core/agent-hook.js";
 import { makeTempHome } from "../helpers/temp-home.js";
 
 const pre = (tool_name: string, tool_input: unknown) => ({ hook_event_name: "PreToolUse", session_id: "s1", tool_use_id: "t1", tool_name, tool_input });
@@ -61,6 +63,60 @@ describe("which calls a task step may make (D137)", () => {
     const command = "shopify store execute -s a.myshopify.com -q 'mutation{x}' --allow-mutations";
     expect(decide(pre("Bash", { command }), READ_ONLY)).toMatchObject({ allow: false });
     expect(decide(pre("Bash", { command }), { ...READ_ONLY, changes: true })).toEqual({ allow: true });
+  });
+
+  const BASE = "shopify store execute -s a.myshopify.com -q 'mutation{x}' --no-input ";
+  it.each([
+    `--allow-"mutations"`,
+    "--allow-mut''ations",
+    "--allow-mutation\\s",
+    "--allow-mutation${x}s",
+    "--allow-mutation{s,s}",
+    "--allow-mutation[s]",
+    "--allow-mutation?",
+    `"--allow-mutation$x"`,
+    "--allow-mutations=true",
+    "'--allow-mutations'",
+    "--allow-mutations 'open",
+  ])("refuses a write flag the shell would rebuild, in a read-only step (D181): %s", (flag) => {
+    expect(decide(pre("Bash", { command: `${BASE}${flag}` }), READ_ONLY)).toMatchObject({ allow: false });
+  });
+
+  it("still allows a quoted GraphQL query with $ and braces in a read-only step, and any write flag in a step that may change things (D181)", () => {
+    const lookup = "shopify store execute -s demo.myshopify.com -q '{orders(first:1,query:\"name:1001\"){nodes{name displayFulfillmentStatus}}}' --no-input";
+    const variables = "shopify store execute -s a.myshopify.com -q 'query($id: ID!){order(id: $id){name}}' --variables '{\"id\":\"gid://shopify/Order/1\"}' --no-input";
+    expect(decide(pre("Bash", { command: lookup }), READ_ONLY)).toEqual({ allow: true });
+    expect(decide(pre("Bash", { command: variables }), READ_ONLY)).toEqual({ allow: true });
+    expect(decide(pre("Bash", { command: `${BASE}--allow-"mutations"` }), { ...READ_ONLY, changes: true })).toEqual({ allow: true });
+  });
+
+  it("says how to write a refused read-only command, naming a backslash in double quotes too (D181)", () => {
+    const refused = decide(pre("Bash", { command: `${BASE}--variables "{\\"id\\":1}"` }), READ_ONLY);
+    expect(refused.allow === false && refused.reason).toContain("or a backslash in single quotes");
+  });
+});
+
+describe("the words a shell passes on (D181)", () => {
+  const COMMANDS = [
+    "shopify store execute -s a.myshopify.com -q '{shop{name}}' --no-input",
+    "shopify store execute -q 'query($id: ID!){order(id: $id){name}}' --variables '{\"id\":1}'",
+    `shopify store execute -q "plain double" --allow-"mutations"`,
+    "shopify store execute --allow-mut''ations --allow-mutation\\s",
+    "shopify  store\texecute   ''  x\"\"y",
+  ];
+  const run = (shell: string, command: string): string[] => {
+    const out = spawnSync(shell, ["-c", `printf '%s\\0' ${command.replace(/^shopify /, "")}`], { encoding: "utf8" });
+    return ["shopify", ...out.stdout.split("\0").slice(0, -1)];
+  };
+
+  it.each(COMMANDS)("matches bash and zsh word for word: %s", (command) => {
+    const words = shellWords(command);
+    expect(words).not.toBeNull();
+    for (const shell of ["/bin/bash", "/bin/zsh"].filter((path) => existsSync(path))) expect(words).toEqual(run(shell, command));
+  });
+
+  it.each(["x ${y}", "x $y", "x {a,b}", "x *", "x ~", "x a(b)", `x "$y"`, 'x "a\\"b"', "x 'open", 'x "open', "x \\"])("refuses what the shell would expand, or a quote left open: %s", (command) => {
+    expect(shellWords(command)).toBeNull();
   });
 });
 

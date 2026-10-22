@@ -24,6 +24,9 @@ const SUMMARY_MAX = 200;
 const SHELL_JOIN = /[;&|`<>\n\r]|\$\(/;
 /** Flags and variables that turn a read into a write for command-line tools we know of. */
 const WRITE_FLAGS = ["--allow-mutations", "SHOPIFY_FLAG_ALLOW_MUTATIONS"];
+/** Outside quotes the shell expands these (bash and zsh), so in a step that may only read they must sit in single quotes: the words checked are then the words run (D181). */
+const EXPANDS = /[$`{}[\]*?~()]/;
+const READ_ONLY_REFUSED = "This step may only read; it cannot change anything.";
 
 export interface HookConfig {
   /** The step's record file (JSON Lines). */
@@ -121,8 +124,45 @@ export function decide(event: Raw, config: HookConfig): Decision {
   if (tool !== "Bash") return { allow: true };
   const command = commandOf(event.tool_input);
   if (SHELL_JOIN.test(command)) return { allow: false, reason: "Run one command at a time, without ; & | > < ` or $( )." };
-  if (!config.changes && WRITE_FLAGS.some((flag) => command.includes(flag))) return { allow: false, reason: "This step may only read; it cannot change anything." };
+  if (config.changes) return { allow: true };
+  if (WRITE_FLAGS.some((flag) => command.includes(flag))) return { allow: false, reason: READ_ONLY_REFUSED };
+  const words = shellWords(command);
+  if (words === null) return { allow: false, reason: "This step may only read: put text with $ { } [ ] * ? ~ ( ) or a backslash in single quotes, and close every quote." };
+  if (words.some((word) => WRITE_FLAGS.some((flag) => word.startsWith(flag)))) return { allow: false, reason: READ_ONLY_REFUSED };
   return { allow: true };
+}
+
+/** The words the shell passes on for `command`, or null when it would expand something or a quote is left open (D181). */
+export function shellWords(command: string): string[] | null {
+  const words: string[] = [];
+  let word: string | null = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i] ?? "";
+    if (/\s/.test(ch)) {
+      if (word !== null) words.push(word);
+      word = null;
+      continue;
+    }
+    word ??= "";
+    if (ch === "'" || ch === '"') {
+      const end = command.indexOf(ch, i + 1);
+      if (end < 0) return null;
+      const inner = command.slice(i + 1, end);
+      if (ch === '"' && /[$`\\]/.test(inner)) return null;
+      word += inner;
+      i = end;
+    } else if (ch === "\\") {
+      if (i + 1 >= command.length) return null;
+      i += 1;
+      word += command[i];
+    } else if (EXPANDS.test(ch)) {
+      return null;
+    } else {
+      word += ch;
+    }
+  }
+  if (word !== null) words.push(word);
+  return words;
 }
 
 /** Tokens recognisable by their prefix (Shopify, Slack, OpenAI-style, GitHub, GitLab); also used to check delivered text (D160). */
